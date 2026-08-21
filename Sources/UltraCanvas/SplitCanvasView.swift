@@ -185,9 +185,30 @@ public final class SplitCanvasView: NSView {
         return (target, DropZone.at(point, in: frame))
     }
 
+    /// The pane id carried by a drag.
+    ///
+    /// `NSItemProvider(item:typeIdentifier:)` — which is what SwiftUI's `.onDrag` builds —
+    /// writes the value as DATA under the type, not as a pasteboard string. Reading it with
+    /// `string(forType:)` alone returns empty, so every drop resolved to no pane and
+    /// silently did nothing. Both encodings are accepted here.
     private func draggedPane(from info: NSDraggingInfo) -> PaneID? {
-        guard let raw = info.draggingPasteboard.string(forType: panePasteboardType) else { return nil }
-        return PaneID(uuidString: raw)
+        let pasteboard = info.draggingPasteboard
+        if let raw = pasteboard.string(forType: panePasteboardType),
+           let id = PaneID(uuidString: raw) {
+            return id
+        }
+        guard let data = pasteboard.data(forType: panePasteboardType) else { return nil }
+        if let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           let id = PaneID(uuidString: raw) {
+            return id
+        }
+        // NSItemProvider round-trips an NSString as a property list.
+        if let raw = try? PropertyListSerialization.propertyList(from: data, format: nil) as? String,
+           let id = PaneID(uuidString: raw) {
+            return id
+        }
+        return nil
     }
 
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -225,6 +246,11 @@ public final class SplitCanvasView: NSView {
         activeDrop = (paneID, plan.target, plan.zone)
         dragTree = preview
         animateNextLayout = true
+        // `layoutSubtreeIfNeeded()` is a no-op unless the view is actually marked dirty.
+        // Without this the preview tree is set but never laid out, so the panes do not move
+        // and `currentResult` stays stale — which also puts the landing outline on the
+        // pane's OLD frame.
+        needsLayout = true
         layoutSubtreeIfNeeded()
 
         // The landing outline goes around the dragged pane's NEW frame — which, now that

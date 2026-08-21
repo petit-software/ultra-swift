@@ -67,17 +67,6 @@ public struct PaneHeader: View {
             .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
     }
 
-    /// The drag affordance. The whole header is draggable, but a handle is what says so
-    /// without the user having to discover it by accident.
-    private var dragHandle: some View {
-        Image(systemName: "line.3.horizontal")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isHovering ? Token.Colour.secondaryLabel : Token.Colour.tertiaryLabel)
-            .opacity(isHovering ? 1 : 0.5)
-            .animation(Token.Motion.structuralRespectingPreferences, value: isHovering)
-            .accessibilityLabel("Drag to rearrange")
-    }
-
     private func identity(showSubtitle: Bool) -> some View {
         HStack(spacing: 6) {
             icon
@@ -98,8 +87,6 @@ public struct PaneHeader: View {
         HStack(spacing: 6) {
             // A head-truncated subtitle reading "…t" is worse than no subtitle, so drop
             // parts of the identity as the pane narrows rather than mangling them.
-            dragHandle
-
             ViewThatFits(in: .horizontal) {
                 identity(showSubtitle: true)
                 identity(showSubtitle: false)
@@ -163,9 +150,6 @@ struct PaneDragPreview: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Token.Colour.tertiaryLabel)
             Image(systemName: descriptor.icon)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Token.Colour.accent)

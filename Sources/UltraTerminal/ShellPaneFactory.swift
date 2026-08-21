@@ -84,9 +84,12 @@ public final class ShellPaneFactory {
     }
 
     public static func record(for spec: ShellSpec, agent: String?, cwd: String?) -> PaneRecord {
+        // A shell pane is identified by WHERE IT IS. The folder name alone is ambiguous
+        // across checkouts, and name-plus-path said the same thing twice, so the header
+        // carries the path and nothing else. An agent pane still says which agent it runs.
         PaneRecord(kind: .shell,
-                   title: agent ?? (cwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "shell"),
-                   subtitle: cwd.map { abbreviate($0) },
+                   title: agent ?? (cwd.map { abbreviate($0) } ?? "shell"),
+                   subtitle: agent == nil ? nil : cwd.map { abbreviate($0) },
                    icon: agent == nil ? "apple.terminal" : "sparkles",
                    cwd: cwd,
                    command: agent)
