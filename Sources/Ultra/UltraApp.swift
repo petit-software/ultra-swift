@@ -129,6 +129,14 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("e", modifiers: [.command, .option])
             .disabled(store == nil)
 
+            Button("New Todo Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.todo, for: store)
+                store.split(edge: .right)
+            }
+            .keyboardShortcut("y", modifiers: [.command, .option])
+            .disabled(store == nil)
+
             Menu("New Agent Pane") {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {
