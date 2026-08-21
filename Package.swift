@@ -28,10 +28,14 @@ let package = Package(
                 dependencies: ["UltraCore", "UltraDesign", "UltraLayout",
                                .product(name: "SwiftTerm", package: "SwiftTerm")]),
         .target(name: "UltraCanvas", dependencies: ["UltraLayout", "UltraDesign", "UltraCore"]),
-        .executableTarget(name: "Ultra", dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal", "UltraLayout", "UltraDesign"]),
+        // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
+        // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
+        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout"]),
+        .executableTarget(name: "Ultra", dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal", "UltraTiles", "UltraLayout", "UltraDesign"]),
         .testTarget(name: "UltraLayoutTests", dependencies: ["UltraLayout"]),
         .testTarget(name: "UltraCanvasTests", dependencies: ["UltraCanvas", "UltraTerminal", "UltraLayout"]),
         .testTarget(name: "UltraCoreTests", dependencies: ["UltraCore", "UltraLayout"]),
         .testTarget(name: "UltraTerminalTests", dependencies: ["UltraTerminal"]),
+        .testTarget(name: "UltraTilesTests", dependencies: ["UltraTiles", "UltraCore"]),
     ]
 )

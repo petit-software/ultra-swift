@@ -121,6 +121,14 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(store == nil)
 
+            Button("New File Tree Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.fileTree, for: store)
+                store.split(edge: .right)
+            }
+            .keyboardShortcut("e", modifiers: [.command, .option])
+            .disabled(store == nil)
+
             Menu("New Agent Pane") {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {

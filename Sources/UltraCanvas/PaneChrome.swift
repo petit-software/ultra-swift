@@ -11,18 +11,13 @@ public struct PaneActions {
     public var split: (PaneID, UltraLayout.Edge) -> Void
     public var close: (PaneID) -> Void
     public var focus: (PaneID) -> Void
-    /// Called the instant a pane drag begins, so the canvas can mark the source as a
-    /// phantom before the first `draggingUpdated` arrives.
-    public var beginDrag: (PaneID) -> Void
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
-                focus: @escaping (PaneID) -> Void,
-                beginDrag: @escaping (PaneID) -> Void = { _ in }) {
+                focus: @escaping (PaneID) -> Void) {
         self.split = split
         self.close = close
         self.focus = focus
-        self.beginDrag = beginDrag
     }
 
     public static let inert = PaneActions(split: { _, _ in }, close: { _ in }, focus: { _ in })
@@ -123,57 +118,9 @@ public struct PaneHeader: View {
         .contentShape(.rect)
         .onHover { isHovering = $0 }
         .onTapGesture { actions.focus(paneID) }
-        // The header is the drag handle. Rearranging is also available from the keyboard
-        // via Move commands, so this is an accelerator, not the only route.
-        .onDrag {
-            // Marks the source as a phantom immediately, before the first
-            // `draggingUpdated` reaches the canvas.
-            actions.beginDrag(paneID)
-            return NSItemProvider(item: paneID.uuidString as NSString,
-                                  typeIdentifier: panePasteboardType.rawValue)
-        } preview: {
-            PaneDragPreview(descriptor: descriptor)
-        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(descriptor.subtitle.map { "\(descriptor.title), \($0)" }
                             ?? descriptor.title)
-    }
-}
-
-/// What follows the cursor: a compact, lifted glass card naming the pane.
-///
-/// Deliberately NOT a full-size snapshot of the pane. The whole point of the drag is to
-/// watch the canvas reflow underneath, and a pane-sized phantom would cover the very thing
-/// the user is trying to read.
-struct PaneDragPreview: View {
-    let descriptor: PaneDescriptor
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: descriptor.icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Token.Colour.accent)
-            Text(descriptor.title)
-                .font(Token.Type_.tileTitle)
-                .foregroundStyle(Token.Colour.label)
-            if let subtitle = descriptor.subtitle {
-                Text(subtitle)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.regularMaterial,
-                    in: RoundedRectangle(cornerRadius: Token.Space.paneRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Token.Space.paneRadius, style: .continuous)
-                .strokeBorder(Token.Colour.accent.opacity(0.55), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
-        .opacity(Double(Token.Drag.previewOpacity))
-        .scaleEffect(Token.Drag.liftScale)
     }
 }
 
@@ -231,23 +178,6 @@ public final class PaneContainerView: NSView {
         didSet { guard isFocused != oldValue else { return }; refresh() }
     }
 
-    /// True while THIS pane is the one being dragged.
-    ///
-    /// The pane is not hidden — during a drop preview it slides to where the drop would put
-    /// it, and rendering it faded there is what distinguishes "this is a preview" from
-    /// "this already happened". Scale is deliberately NOT applied here: it lives on the drag
-    /// preview card, because transforming a frame-laid-out AppKit view fights the layout
-    /// pass on every frame.
-    public var isDragSource: Bool = false {
-        didSet {
-            guard isDragSource != oldValue else { return }
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = Token.Motion.grabDuration
-                context.timingFunction = Token.Motion.reflowCurve
-                animator().alphaValue = isDragSource ? Token.Drag.phantomOpacity : 1
-            }
-        }
-    }
 
     /// The close control disappears when a pane is the last one — there is nothing to
     /// close back to.

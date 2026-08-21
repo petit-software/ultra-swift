@@ -5,6 +5,7 @@ import UltraCore
 import UltraDesign
 import UltraLayout
 import UltraTerminal
+import UltraTiles
 
 /// Builds a workspace whose panes are real shells.
 ///
@@ -29,10 +30,29 @@ enum ShellWorkspace {
         let factory = ShellPaneFactory(theme: theme, defaultDirectory: directory,
                                        restoring: records)
 
+        // Non-shell tiles. `injectIntoShell` is the shared "send to shell" verb: it targets
+        // the focused pane when that pane IS a shell, and otherwise the first shell in the
+        // layout — a file tree cannot type into itself.
+        let root = URL(fileURLWithPath: directory)
+        let tiles = TileFactory(context: TileContext(
+            root: root,
+            injectIntoShell: { [weak factory] text in
+                guard let factory, let target = Registry.injectionTarget else { return }
+                factory.inject(text, into: target, submit: false)
+            },
+            revealInFinder: { url in
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }), restoring: records)
+
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
                                 theme: theme,
                                 workspaceID: document?.id ?? UUID(),
                                 storage: storage) { paneID in
+            // Tiles first: the factory returns nil for anything it does not own, and the
+            // shell factory picks up everything else. The canvas never learns the difference.
+            if let tile = tiles.makeContent(for: paneID) {
+                return PaneContent(view: tile.view, record: tile.record)
+            }
             let content = factory.makeContent(for: paneID)
             return PaneContent(view: content.view, record: content.record)
         }
@@ -43,7 +63,10 @@ enum ShellWorkspace {
         store.windowFrame = document?.windowFrame?.rect
 
         // Closing a pane is the only thing that kills its PTY.
-        store.surfaces.onRelease = { [weak factory] paneID in factory?.release(paneID) }
+        store.surfaces.onRelease = { [weak factory, weak tiles] paneID in
+            factory?.release(paneID)
+            tiles?.release(paneID)
+        }
         // Once geometry stops moving, every shell gets its authoritative size.
         store.onGeometrySettled = { [weak factory] in factory?.commitResize() }
         // A shell renames its own pane as it runs; the header follows.
@@ -55,17 +78,41 @@ enum ShellWorkspace {
         // Keyed by workspace, not a singleton: with tabs there are several live factories
         // at once and a menu command must reach the one belonging to the focused tab.
         Registry.factories[store.workspaceID] = factory
+        Registry.tiles[store.workspaceID] = tiles
+        Registry.stores[store.workspaceID] = store
         return store
     }
 
     /// The live factory, so menu commands can reach the shells.
     enum Registry {
         @MainActor static var factories: [UUID: ShellPaneFactory] = [:]
+        @MainActor static var tiles: [UUID: TileFactory] = [:]
+        @MainActor static var stores: [UUID: LayoutStore] = [:]
+
+        /// The pane a tile's "send to shell" should type into: the focused pane when it is
+        /// itself a shell, otherwise the first shell in the layout. Nil when the workspace
+        /// holds no shell at all, in which case the verb is a no-op rather than a guess.
+        @MainActor static var injectionTarget: PaneID? {
+            for (id, store) in stores {
+                guard let factory = factories[id] else { continue }
+                let focused = store.tree.focused
+                if factory.shells[focused] != nil { return focused }
+                if let any = store.tree.paneIDs.first(where: { factory.shells[$0] != nil }) {
+                    return any
+                }
+            }
+            return nil
+        }
     }
 
     /// Launch the next new pane as an agent rather than a plain shell.
     static func stageAgent(_ agent: AgentDefinition?, for store: LayoutStore) {
         Registry.factories[store.workspaceID]?.stageAgent(agent)
+    }
+
+    /// Make the next new pane a tile of this kind rather than a shell.
+    static func stageTile(_ kind: PaneRecord.Kind, for store: LayoutStore) {
+        Registry.tiles[store.workspaceID]?.stage(kind)
     }
 
     /// Agents that are actually installed, probed through a login shell.

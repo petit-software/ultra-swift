@@ -21,8 +21,6 @@ public final class LayoutStore {
     public var workspaceSubtitle: String?
     /// Last laid-out canvas bounds, so commands can reason about geometry.
     public internal(set) var canvasBounds: CGRect = .zero
-    /// The pane currently being dragged, if any. Drives the phantom state on the source.
-    public var draggingPane: PaneID?
 
     @ObservationIgnored public let surfaces: PaneSurfaceStore
     @ObservationIgnored public let undoManager = UndoManager()
@@ -57,11 +55,7 @@ public final class LayoutStore {
         surfaces.actions = PaneActions(
             split: { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) },
             close: { [weak self] paneID in self?.close(paneID) },
-            focus: { [weak self] paneID in self?.focus(paneID) },
-            beginDrag: { [weak self] paneID in
-                self?.draggingPane = paneID
-                self?.surfaces.existingSurface(for: paneID)?.isDragSource = true
-            })
+            focus: { [weak self] paneID in self?.focus(paneID) })
     }
 
     public var layoutResult: LayoutResult {
