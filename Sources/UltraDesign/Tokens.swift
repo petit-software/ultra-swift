@@ -85,6 +85,38 @@ public enum Token {
         public static var structuralRespectingPreferences: Animation? {
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : structural
         }
+
+        // MARK: Drop-preview reflow
+
+        /// How long panes take to slide aside when a drop target changes.
+        ///
+        /// Long enough to read as *moving*, short enough that a drag across three panes
+        /// does not feel like wading. Zero under Reduce Motion, where the panes jump.
+        public static var reflowDuration: CFTimeInterval {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.28
+        }
+
+        /// Decelerating cubic bezier. Panes commit to the move immediately and settle into
+        /// it — an ease-in-out would make them look hesitant about where they are going.
+        public static var reflowCurve: CAMediaTimingFunction {
+            CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
+        }
+
+        /// The grab / release micro-interaction on the pane being dragged.
+        public static let grabDuration: CFTimeInterval = 0.18
+    }
+
+    // MARK: Drag
+
+    public enum Drag {
+        /// What is left behind at the source: a phantom, not a hole. Keeping the pane
+        /// visible-but-faded is what makes the reflow legible — you can see the thing you
+        /// are moving and the space it came from at the same time.
+        public static let phantomOpacity: CGFloat = 0.38
+        /// The dragged preview lifts slightly. Scale lives on the PREVIEW, never on the
+        /// source pane: scaling a frame-laid-out AppKit view fights the layout pass.
+        public static let liftScale: CGFloat = 1.03
+        public static let previewOpacity: CGFloat = 0.92
     }
 
     // MARK: Environment

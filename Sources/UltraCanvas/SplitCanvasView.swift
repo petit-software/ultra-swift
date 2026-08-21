@@ -15,6 +15,8 @@ public final class SplitCanvasView: NSView {
     private let dropIndicator = DropIndicatorView()
     /// Non-nil only while a pane drag is over this canvas.
     private(set) var activeDrop: (paneID: PaneID, target: PaneID, zone: DropZone)?
+    /// Set for exactly one layout pass, by the drop-preview path only.
+    private var animateNextLayout = false
 
     /// Transient tree used while a divider is being dragged. The model is not written
     /// during the drag: that keeps `@Observable` quiet, keeps undo to one entry per drag,
@@ -128,14 +130,28 @@ public final class SplitCanvasView: NSView {
         let result = UltraLayout.layout(displayTree, in: canvas, metrics: metrics)
         currentResult = result
 
-        // Implicit CALayer animation off: a pane must track the cursor exactly during a
-        // divider drag. Nothing animates while dragging.
+        // A divider drag must track the cursor EXACTLY, so implicit animation stays off for
+        // it. A drop preview is the opposite: the panes are supposed to be seen moving
+        // aside. `animateNextLayout` is set only by the drop-preview path.
+        let animating = animateNextLayout && Token.Motion.reflowDuration > 0
+        animateNextLayout = false
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        if animating {
+            CATransaction.setAnimationDuration(Token.Motion.reflowDuration)
+            CATransaction.setAnimationTimingFunction(Token.Motion.reflowCurve)
+        } else {
+            CATransaction.setDisableActions(true)
+        }
         for (paneID, frame) in result.frames {
             guard let surface = store.surfaces.existingSurface(for: paneID) else { continue }
             surface.isHidden = false
-            surface.frame = frame          // <- the entire rendering step
+            // `animator()` is what routes a frame change through the running CATransaction.
+            // Assigning `frame` directly would snap even inside an animated transaction.
+            if animating {
+                surface.animator().frame = frame
+            } else {
+                surface.frame = frame      // <- the entire rendering step
+            }
         }
         for paneID in result.hidden {
             store.surfaces.existingSurface(for: paneID)?.isHidden = true
@@ -184,24 +200,79 @@ public final class SplitCanvasView: NSView {
 
     private func updateDrop(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let paneID = draggedPane(from: sender), store.tree.contains(paneID) else { return [] }
+        if store.draggingPane != paneID {
+            store.draggingPane = paneID
+            setDragSource(paneID)
+        }
         let point = convert(sender.draggingLocation, from: nil)
-        guard let plan = dropPlan(at: point, dragging: paneID),
-              let frame = currentResult.frames[plan.target] else {
+        guard let plan = dropPlan(at: point, dragging: paneID) else {
+            clearDrop()
+            return []
+        }
+        // Unchanged target and zone: do nothing. Recomputing on every mouse-moved event
+        // would restart the reflow animation each frame and the panes would never arrive.
+        if let current = activeDrop,
+           current.paneID == paneID, current.target == plan.target, current.zone == plan.zone {
+            return .move
+        }
+        // THE preview: the tree exactly as it would be after the drop. Rendering that is
+        // what makes the other panes slide aside — they are not being nudged for effect,
+        // they are already standing where the drop will actually leave them.
+        guard let preview = previewTree(dragging: paneID, plan: plan) else {
             clearDrop()
             return []
         }
         activeDrop = (paneID, plan.target, plan.zone)
-        dropIndicator.show(plan.zone.indicator(in: frame))
+        dragTree = preview
+        animateNextLayout = true
+        layoutSubtreeIfNeeded()
+
+        // The landing outline goes around the dragged pane's NEW frame — which, now that
+        // the canvas reflows, is where the pane is already sitting.
+        if let landing = currentResult.frames[paneID] {
+            dropIndicator.show(landing, animated: true)
+        }
         dropIndicator.setAccessibilityLabel(plan.zone.accessibilityDescription)
         return .move
+    }
+
+    /// The tree that a drop would produce, or nil if the operation is not legal.
+    /// Pure: it copies the tree and never touches the model.
+    func previewTree(dragging paneID: PaneID,
+                             plan: (target: PaneID, zone: DropZone)) -> LayoutTree? {
+        var preview = store.tree
+        let ok: Bool
+        switch plan.zone {
+        case .centre: ok = preview.swap(paneID, plan.target)
+        case .edge(let edge): ok = preview.move(paneID, toEdgeOf: plan.target, edge: edge)
+        }
+        return ok ? preview : nil
     }
 
     public override func draggingExited(_ sender: NSDraggingInfo?) { clearDrop() }
     public override func draggingEnded(_ sender: NSDraggingInfo) { clearDrop() }
 
+    /// Exactly one pane wears the phantom state at a time.
+    private func setDragSource(_ paneID: PaneID?) {
+        for id in store.tree.paneIDs {
+            store.surfaces.existingSurface(for: id)?.isDragSource = (id == paneID)
+        }
+    }
+
     private func clearDrop() {
+        let hadPreview = dragTree != nil
         activeDrop = nil
+        store.draggingPane = nil
+        setDragSource(nil)
+        dragTree = nil
         dropIndicator.hide()
+        // Animate back out of the preview too, so a drag that leaves the window settles
+        // instead of snapping. Only when there WAS a preview — a plain clear must not
+        // animate an unrelated layout pass.
+        if hadPreview {
+            animateNextLayout = true
+            needsLayout = true
+        }
     }
 
     public override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
@@ -213,6 +284,9 @@ public final class SplitCanvasView: NSView {
         let point = convert(sender.draggingLocation, from: nil)
         defer { clearDrop() }
         guard let plan = dropPlan(at: point, dragging: paneID) else { return false }
+        // The panes are already standing in the previewed positions, and the committed tree
+        // is identical to the preview — so this writes the model without moving anything on
+        // screen. The drop looks like the drag simply stopping, which is the point.
         switch plan.zone {
         case .centre: store.swap(paneID, plan.target)
         case .edge(let edge): store.move(paneID, toEdgeOf: plan.target, edge: edge)

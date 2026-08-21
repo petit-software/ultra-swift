@@ -78,12 +78,12 @@ final class DropIndicatorView: NSView {
         addSubview(glass)
         isHidden = true
 
-        // Under Reduce Transparency the material is replaced by a solid, high-contrast
-        // fill rather than being quietly dropped.
-        if Token.Environment_.reduceTransparency {
-            glass.isHidden = true
-            layer?.backgroundColor = Token.Colour.accent.nsColor.withAlphaComponent(0.35).cgColor
-        }
+        // Stroke-led, not a filled slab. The canvas now reflows to the previewed layout, so
+        // the dragged pane is ALREADY sitting inside this rect — a solid fill would cover
+        // the very thing it is pointing at. The border frames it; the wash just lifts it.
+        glass.isHidden = true
+        layer?.backgroundColor = Token.Colour.accent.nsColor
+            .withAlphaComponent(Token.Environment_.reduceTransparency ? 0.30 : 0.12).cgColor
         layer?.borderWidth = 2
         layer?.borderColor = Token.Colour.accent.nsColor.cgColor
         layer?.cornerRadius = Token.Space.paneRadius
@@ -97,11 +97,21 @@ final class DropIndicatorView: NSView {
     /// Purely decorative and must never take the mouse mid-drag.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func show(_ rect: CGRect) {
+    /// - Parameter animated: slide from the previous landing rect to this one. Only ever
+    ///   true when the outline is already visible; appearing should be instant, moving
+    ///   should not.
+    func show(_ rect: CGRect, animated: Bool = false) {
+        let moving = animated && !isHidden && Token.Motion.reflowDuration > 0
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        frame = rect
-        glass.frame = bounds
+        if moving {
+            CATransaction.setAnimationDuration(Token.Motion.reflowDuration)
+            CATransaction.setAnimationTimingFunction(Token.Motion.reflowCurve)
+            animator().frame = rect
+        } else {
+            CATransaction.setDisableActions(true)
+            frame = rect
+        }
+        glass.frame = CGRect(origin: .zero, size: rect.size)
         isHidden = false
         CATransaction.commit()
     }
