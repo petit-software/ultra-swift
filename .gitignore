@@ -1,0 +1,13 @@
+# SwiftPM build products
+.build/
+.swiftpm/
+
+# Packaged app bundle (rebuilt from source)
+Ultra.app/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+
+# macOS
+.DS_Store

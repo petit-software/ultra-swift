@@ -1,0 +1,128 @@
+import SwiftUI
+import UltraCanvas
+import UltraLayout
+
+/// Every pane verb, declared once.
+///
+/// These are declared on the MAIN MENU rather than on a view, and that is load-bearing:
+/// `NSApp.mainMenu.performKeyEquivalent` runs before the key window's first responder sees
+/// the event, so these fire even while a full-screen TUI owns the keyboard. A
+/// `.keyboardShortcut` on a view inside a pane would never see the key.
+enum PaneCommands {
+
+    static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
+
+    static let splits: [AppCommand] = [
+        AppCommand(id: "pane.split.right", title: "Split Right", menuPath: ["Pane", "Split"],
+                   binding: KeyBinding("d", [.command])) { $0.split(edge: .right) },
+        AppCommand(id: "pane.split.down", title: "Split Down", menuPath: ["Pane", "Split"],
+                   binding: KeyBinding("d", [.command, .shift])) { $0.split(edge: .bottom) },
+        AppCommand(id: "pane.split.left", title: "Split Left", menuPath: ["Pane", "Split"],
+                   binding: KeyBinding("d", [.command, .option])) { $0.split(edge: .left) },
+        AppCommand(id: "pane.split.up", title: "Split Up", menuPath: ["Pane", "Split"],
+                   binding: KeyBinding("d", [.command, .option, .shift])) { $0.split(edge: .top) },
+    ]
+
+    static let focusMoves: [AppCommand] = [
+        (Edge.left, KeyEquivalent.leftArrow), (.right, .rightArrow),
+        (.top, .upArrow), (.bottom, .downArrow),
+    ].map { edge, key in
+        AppCommand(id: "pane.focus.\(edge.rawValue)",
+                   title: "Focus \(edge.actionName)",
+                   menuPath: ["Pane", "Focus"],
+                   binding: KeyBinding(key, [.command, .option])) { $0.moveFocus(edge) }
+    }
+
+    static let resizes: [AppCommand] = [
+        (Edge.left, KeyEquivalent.leftArrow), (.right, .rightArrow),
+        (.top, .upArrow), (.bottom, .downArrow),
+    ].map { edge, key in
+        AppCommand(id: "pane.resize.\(edge.rawValue)",
+                   title: "Grow \(edge.actionName)",
+                   menuPath: ["Pane", "Resize"],
+                   binding: KeyBinding(key, [.command, .control])) { $0.resizeFocused(edge, by: 16) }
+    }
+
+    /// Visual order, not tree order — the number the user counts on screen is the number
+    /// they press.
+    static let numbered: [AppCommand] = (1...9).map { number in
+        AppCommand(id: "pane.focus.index.\(number)",
+                   title: "Focus Pane \(number)",
+                   menuPath: ["Pane", "Focus"],
+                   binding: KeyBinding(KeyEquivalent(Character("\(number)")), [.command]),
+                   isEnabled: { $0.layoutResult.visualOrder.count >= number }) {
+            $0.focusPane(atVisualIndex: number - 1)
+        }
+    }
+
+    static let others: [AppCommand] = [
+        AppCommand(id: "pane.close", title: "Close Pane", menuPath: ["Pane"],
+                   binding: KeyBinding("w", [.command]),
+                   isEnabled: { $0.tree.paneCount > 1 }) { $0.closeFocused() },
+        AppCommand(id: "pane.zoom", title: "Toggle Zoom", menuPath: ["Pane"],
+                   binding: KeyBinding(.return, [.command, .shift]),
+                   isEnabled: { $0.tree.paneCount > 1 }) { $0.toggleZoom() },
+        AppCommand(id: "pane.equalize", title: "Equalize Panes", menuPath: ["Pane"],
+                   binding: KeyBinding("=", [.command]),
+                   isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeFocusedContainer() },
+        AppCommand(id: "pane.equalizeAll", title: "Equalize All Panes", menuPath: ["Pane"],
+                   binding: KeyBinding("=", [.command, .option]),
+                   isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeAll() },
+    ]
+
+    /// No default binding may shadow a key the shell owns. Checked at launch in debug
+    /// builds rather than trusted to review.
+    static func assertNoTerminalConflicts() {
+        for command in all {
+            guard let binding = command.defaultBinding else {
+                assertionFailure("\(command.id) has no binding and no palette-only marker")
+                continue
+            }
+            assert(!ReservedTerminalKeys.conflicts(binding),
+                   "\(command.id) binds \(binding.display), which a terminal owns")
+        }
+    }
+}
+
+/// Builds the Pane menu from the registry. A command that cannot run is DIMMED, never
+/// hidden — a disappearing command is unlearnable.
+struct PaneMenuCommands: Commands {
+    /// The focused TAB's store. Captured per-event rather than at launch, because with tabs
+    /// there is no single store the Pane menu could belong to.
+    @FocusedValue(\.layoutStore) private var store
+
+    private func item(_ command: AppCommand) -> some View {
+        Button(command.title) { if let store { command.run(store) } }
+            .disabled(store.map { !command.isEnabled($0) } ?? true)
+            .modifier(BindingModifier(binding: command.defaultBinding))
+    }
+
+    var body: some Commands {
+        CommandMenu("Pane") {
+            ForEach(PaneCommands.splits) { item($0) }
+            Divider()
+            ForEach(PaneCommands.others) { item($0) }
+            Divider()
+            Menu("Focus") {
+                ForEach(PaneCommands.focusMoves) { item($0) }
+                Divider()
+                ForEach(PaneCommands.numbered) { item($0) }
+            }
+            Menu("Resize") {
+                ForEach(PaneCommands.resizes) { item($0) }
+            }
+        }
+    }
+}
+
+private struct BindingModifier: ViewModifier {
+    let binding: KeyBinding?
+
+    func body(content: Content) -> some View {
+        if let binding {
+            content.keyboardShortcut(binding.key, modifiers: binding.modifiers)
+        } else {
+            content
+        }
+    }
+}
