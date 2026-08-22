@@ -159,6 +159,13 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("g", modifiers: [.command, .option])
             .disabled(store == nil)
 
+            Button("New Context Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.context, for: store)
+                store.split(edge: .right)
+            }
+            .disabled(store == nil)
+
             Menu("New Agent Pane") {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {

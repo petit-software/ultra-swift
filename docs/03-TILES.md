@@ -49,6 +49,20 @@ The primary tile. A login shell, usually with an agent CLI running in it.
 - **Injection API**: `inject(_ text: String, submit: Bool)` writes to the PTY master. `submit:
   false` leaves the text at the prompt so the user can add to it. Used by Context and Todo.
 
+## 1b. File tree
+
+The project's files, lazily expanded.
+
+- **Reads one directory at a time** and caches it. A root with a 40,000-file `node_modules`
+  costs nothing until someone opens that folder.
+- **Flat row array, not a recursive `OutlineGroup`** — the list only ever holds what is
+  visible, and expansion is testable without a view.
+- **Collapsing forgets descendants' open state**, so reopening a folder does not explode back
+  to a tree the user just closed.
+- **Clicking a file sends its shell-quoted path** to the focused shell without submitting.
+  A file tree that opened an editor would be a worse editor than the user's own; one that
+  types a path for you is the thing a terminal actually lacks.
+
 ## 2. Todo — per-project markdown
 
 Todos are files, not app state. They must be readable, diffable, committable, and editable by

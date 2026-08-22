@@ -79,6 +79,11 @@ This is the executable form of the product's core promise — automate it and ke
 
 ## M3 — Projects, tabs, sessions
 
+> **Status: tabs landed.** Native macOS window tabs (⌘T), each tab owning its own
+> `LayoutStore` so panes never leak between them, with the Pane menu resolving the focused
+> tab through `@FocusedValue`. **Outstanding:** the project switcher, recent projects, and
+> per-project window-frame restore.
+
 - Project = directory + config. Session = pane + PTY + optional agent CLI.
 - In-window tab strip; per-project layout saved and restored.
 - Project switcher; recent projects; window frame restore per project.
@@ -89,6 +94,13 @@ killed by a tab switch.
 
 ## M4 — Todo, Ports, Resources
 
+> **Status: all three landed**, plus a **file tree** tile that was not originally on this
+> list. Todo round-trips markdown byte-for-byte (a toggle changes exactly one byte on disk,
+> asserted by test, plus a 200-case property test over arbitrary markdown); Ports attributes
+> listeners to this workspace's shells; Resources attributes by process ancestry.
+> **Outstanding:** Todo reorder-by-drag, and pausing Resources on window occlusion.
+
+- File tree: lazily-expanded project tree; click a file to send its quoted path to the shell.
 - Todo: lossless markdown round-trip, file watching, conflict handling, send-to-shell.
 - Ports: `lsof` polling, pane attribution, open/copy/kill.
 - Resources: `ps` polling with ppid attribution, sparklines, occlusion-paused.
@@ -98,6 +110,11 @@ and toggling a checkbox in the tile leaves surrounding prose byte-identical.
 
 ## M5 — Git worktree tile
 
+> **Status: landed.** Branch, upstream divergence, worktrees, per-file index/worktree state,
+> stage/unstage/discard, and in-flight rebase/merge detection — parsed from
+> `--porcelain=v2`, verified in test against a real repository. **Outstanding:** creating a
+> worktree from the tile, and opening a diff.
+
 - Worktree list, branch, ahead/behind, status v2, per-file changes.
 - Create worktree, point a pane at one, stage/unstage/discard, open diff.
 - FSEvents-driven refresh.
@@ -106,6 +123,10 @@ and toggling a checkbox in the tile leaves surrounding prose byte-identical.
 including during a rebase, and no destructive git operation happens without an explicit click.
 
 ## M6 — Context tile
+
+> **Status: landed.** Drop targets, bookmark-backed persistence (a file renamed between
+> launches still resolves — asserted by test), token estimates, pin/unpin, and `@path`
+> injection. **Outstanding:** dropping from other panes rather than only Finder.
 
 - Drop files, folders, links from anywhere; security-scoped bookmarks.
 - Token estimates; pin/unpin; per-project persistence.
