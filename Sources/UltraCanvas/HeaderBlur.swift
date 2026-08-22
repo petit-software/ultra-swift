@@ -64,23 +64,6 @@ final class HeaderBlurView: NSView {
         CATransaction.commit()
     }
 
-    /// Both the filter radius and the tint are set once at construction, so a settings
-    /// change has to rebuild them. Reduce Transparency still wins: it drops the blur and
-    /// leaves the tint doing the work on its own.
-    func refreshAppearance() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        if Token.Environment_.reduceTransparency {
-            layer?.backgroundFilters = []
-        } else if let blur = CIFilter(name: "CIGaussianBlur",
-                                      parameters: [kCIInputRadiusKey: Token.Space.headerBlurRadius]) {
-            layer?.backgroundFilters = [blur]
-        }
-        tint.colors = [NSColor.black.withAlphaComponent(0).cgColor,
-                       NSColor.black.withAlphaComponent(Token.Space.headerTintOpacity).cgColor]
-        CATransaction.commit()
-    }
-
     /// Decorative. The header above it takes every click, including the drag to rearrange.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

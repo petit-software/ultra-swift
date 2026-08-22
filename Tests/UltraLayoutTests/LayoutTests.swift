@@ -77,14 +77,40 @@ struct LayoutGeometryTests {
     @Test("golden frames — sidebar + main at 1200×800")
     func golden() {
         let result = layout(.fixture(.sidebarMain), in: bounds)
-        // padded content: padding 8 all round, edgeInset 4 on left/right/bottom ->
-        // x 12…1188 (1176 wide), y 8…788 (780 tall); row gutter 12 -> 1164 usable
-        #expect(result.frames[pane(1)]!.width == 291)             // 0.25 * 1164
-        #expect(result.frames[pane(2)]!.minX == 315)              // 12 + 291 + 12
-        #expect(result.frames[pane(2)]!.maxX == 1188)
-        // column: 780 tall, one gutter -> 768 usable, split 0.7 / 0.3
-        #expect(result.frames[pane(2)]!.height == 537.5)          // 0.7 * 768, pixel-snapped
-        #expect(result.frames[pane(3)]!.maxY == 788)
+        // padded content: padding 12 + edgeInset 4 on left/right/bottom, and NOTHING on
+        // top — the toolbar's layout rect already holds the panes off that edge, so padding
+        // there reads as a second gap. x 16…1184 (1168 wide), y 0…784 (784 tall);
+        // row gutter 12 -> 1156 usable.
+        #expect(result.frames[pane(1)]!.width == 289)             // 0.25 * 1156
+        #expect(result.frames[pane(2)]!.minX == 317)              // 16 + 289 + 12
+        #expect(result.frames[pane(2)]!.maxX == 1184)
+        // The top pane starts flush against the top of the canvas.
+        #expect(result.frames[pane(1)]!.minY == 0)
+        // column: 784 tall, one gutter -> 772 usable, split 0.7 / 0.3
+        #expect(result.frames[pane(2)]!.height == 540.5)          // 0.7 * 772, pixel-snapped
+        #expect(result.frames[pane(3)]!.maxY == 784)
+    }
+
+    /// The toolbar's content layout rect already holds the panes off the window's top
+    /// edge. Padding there as well reads as a double gap under the toolbar, so the top
+    /// inset is deliberately zero while the other three edges keep theirs.
+    @Test("panes sit flush against the top of the canvas")
+    func topEdgeIsFlush() {
+        let metrics = LayoutMetrics.default
+        #expect(metrics.topPadding == 0)
+
+        let content = metrics.contentRect(in: bounds)
+        #expect(content.minY == bounds.minY)
+        // The other three edges are unaffected.
+        #expect(content.minX == bounds.minX + metrics.padding + metrics.edgeInset)
+        #expect(content.maxX == bounds.maxX - metrics.padding - metrics.edgeInset)
+        #expect(content.maxY == bounds.maxY - metrics.padding - metrics.edgeInset)
+
+        for fixture in LayoutTree.Fixture.allCases {
+            let frames = layout(.fixture(fixture), in: bounds, metrics: metrics).frames
+            #expect(frames.values.map(\.minY).min() == bounds.minY,
+                    "\(fixture) leaves a gap above the topmost pane")
+        }
     }
 
     @Test("dividers sit in the gutter with a generous hit area")

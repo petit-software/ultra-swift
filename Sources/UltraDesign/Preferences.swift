@@ -23,7 +23,8 @@ public enum Preferences {
     public static let didChange = Notification.Name("com.ultra.preferences.didChange")
     private static let prefix = "preference."
 
-    /// See `Appearance.store` — same reasoning.
+    /// Injectable so tests can use an isolated suite; two suites mutating the same keys
+    /// in `.standard` is a genuine flake, not a theoretical one.
     public nonisolated(unsafe) static var store: UserDefaults = .standard
 
     // MARK: - Values

@@ -275,23 +275,6 @@ public final class PaneContainerView: NSView {
             : Token.Space.paneShadowOpacity
     }
 
-    /// The corner radius the pane's clip layer is actually using. Test seam: the whole
-    /// failure mode here is a setting that changes the number but not the pixels.
-    public var appliedCornerRadius: CGFloat { clip.layer?.cornerRadius ?? 0 }
-
-    /// Re-apply every appearance token this view caches in layer state.
-    public func refreshAppearance() {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer?.shadowRadius = Token.Space.paneShadowRadius
-        glass.cornerRadius = Token.Space.paneRadius
-        clip.layer?.cornerRadius = Token.Space.paneRadius
-        CATransaction.commit()
-        headerBlur.refreshAppearance()
-        refresh()
-        needsLayout = true
-    }
-
     /// A shell renames its own pane as it runs — a new cwd, a new foreground process.
     public func update(descriptor: PaneDescriptor) {
         guard descriptor != self.descriptor else { return }

@@ -20,7 +20,6 @@ public final class SplitCanvasView: NSView {
 
     private var displayTree: LayoutTree { dragTree ?? store.tree }
     private(set) var currentResult = LayoutResult()
-    private var appearanceObserver: NSObjectProtocol?
 
     /// Watches the window's content layout rect.
     ///
@@ -38,10 +37,6 @@ public final class SplitCanvasView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         overlay.canvas = self
-        appearanceObserver = NotificationCenter.default.addObserver(
-            forName: Appearance.didChange, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.appearanceChanged() }
-            }
         overlay.autoresizingMask = [.width, .height]
         addSubview(overlay)
         setAccessibilityElement(true)
@@ -57,23 +52,6 @@ public final class SplitCanvasView: NSView {
 
     /// Pull the current tree in and re-lay out. Called by the representable when the
     /// observed store changes, and by the drag handler on every mouse event.
-    /// Re-read every appearance token and repaint. Layer properties — corner radii, shadow,
-    /// blur filters — are set once when a view is built, so a settings change has to reach
-    /// them explicitly; only the layout pass re-reads on its own.
-    public func appearanceChanged() {
-        // The STORE's metrics are updated, not a local copy used only for this pass.
-        // `canSplit` and keyboard resize read the store too, and overriding at layout time
-        // left those two answering with the old gutter.
-        store.syncMetricsWithAppearance()
-        for paneID in displayTree.paneIDs {
-            store.surfaces.existingSurface(for: paneID)?.refreshAppearance()
-        }
-        window?.contentView?.subviews.forEach { $0.needsLayout = true }
-        needsLayout = true
-        needsDisplay = true
-        window?.invalidateShadow()
-    }
-
     public func sync() {
         reconcile()
         needsLayout = true

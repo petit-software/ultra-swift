@@ -273,31 +273,18 @@ Both settings stores read and write through an injectable `UserDefaults`, becaus
 suites in different targets mutating the same keys in `.standard` is a real flake — it
 failed once before the runs went green, which is precisely how that bug presents.
 
-**Appearance — live sliders over existing tokens. LANDED.**
+**Appearance — removed.**
 
-Ten knobs: `windowRadius`, `windowBorderWidth`, `windowTintOpacity`, `paneRadius`,
-`paneShadowRadius`, `paneShadowOpacity`, `gutter`, `canvasPadding`, `headerBlurRadius`,
-`headerTintOpacity`. `windowRadius` has a hard floor at `systemWindowRadius`, since going
-under it is what produces the doubled-corner glitch.
+Ten live sliders over the design tokens were built and then taken out. The values they
+exposed are constants again, at exactly the numbers the sliders defaulted to, so the app
+looks unchanged. The tab was not earning its surface area: the defaults were the answer,
+and every knob was one more thing to explain, migrate and keep honest.
 
-Three things the build settled, worth keeping:
-
-- **Clamping happens on the way out as well as in.** A value written by an older build, a
-  synced defaults domain, or `defaults write` from a shell never passed through a slider.
-  Clamping only on write leaves the floor unenforced for exactly the values nobody checked.
-- **The store is the source of truth, not the layout pass.** Substituting the gutter while
-  laying out looked equivalent and was not: `canSplit` and keyboard resize read
-  `LayoutStore.metrics` too, so a split could be refused on a gutter the canvas was not
-  using. `syncMetricsWithAppearance()` writes it in one place, and the initialiser applies
-  it before the first layout so a window never opens on the defaults and jumps.
-- **Layer state needs an explicit push.** Corner radii, shadows and the header's blur filter
-  are set once when a view is built; only layout re-reads on its own. Without
-  `refreshAppearance()` the slider moves, the number changes, and the window does not —
-  a silent failure, so it is covered by tests that assert on the layer's applied radius
-  rather than on the token.
-
-The knobs are data (`Appearance.Knob`), so the tab is a `ForEach` rather than ten
-hand-written sliders that drift out of step with the values behind them.
+One change was kept from the exercise: **the top inset is zero.** The toolbar's content
+layout rect already holds the panes off the window's top edge, so padding there reads as a
+second gap under the toolbar. `LayoutMetrics.topPadding` is the single place that says so,
+`contentRect` is the single definition of the padded canvas, and a test asserts the topmost
+pane in every fixture sits flush.
 
 **Later, and not one-liners.**
 

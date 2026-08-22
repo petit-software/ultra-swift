@@ -11,9 +11,8 @@ public enum Token {
     public enum Space {
         /// Wide enough that the frosted material between panes is actually visible.
         /// At 6pt the glass was there and invisible, which is the worst of both.
-        /// Adjustable — see `Appearance`; the constant above is the default.
-        public static var canvasPadding: CGFloat { Appearance.value(.canvasPadding) }
-        public static var gutter: CGFloat { Appearance.value(.gutter) }
+        public static let canvasPadding: CGFloat = 12
+        public static let gutter: CGFloat = 12
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
         public static let tileHeaderHeight: CGFloat = 36
@@ -41,7 +40,7 @@ public enum Token {
 
         /// The window's own surface: a dark tint laid over the backdrop material at 30%,
         /// so the glass reads as smoked rather than as clear frost.
-        public static var windowTintOpacity: CGFloat { Appearance.value(.windowTintOpacity) }
+        public static let windowTintOpacity: CGFloat = 0.30
         public static let windowTint = NSColor.black
 
         /// The window's edge. Light in dark appearance, dark in light — it separates the

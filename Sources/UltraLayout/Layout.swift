@@ -4,8 +4,12 @@ import Foundation
 public struct LayoutMetrics: Equatable, Sendable {
     /// Space between siblings. The divider hairline is drawn centered in it.
     public var gutter: CGFloat
-    /// Inset around the whole canvas.
+    /// Inset around the whole canvas, on the leading, trailing and bottom edges.
     public var padding: CGFloat
+    /// Inset above the topmost panes. Zero: the toolbar's content layout rect already holds
+    /// the panes off the window's top edge, so any padding here reads as a second gap under
+    /// the toolbar rather than as breathing room.
+    public var topPadding: CGFloat
     /// Extra inset on the LEADING, TRAILING and BOTTOM edges only. The top is left alone:
     /// the toolbar's content layout rect already holds the panes off that edge, so adding
     /// it there too would read as a double gap under the toolbar.
@@ -19,7 +23,8 @@ public struct LayoutMetrics: Equatable, Sendable {
     public var scale: CGFloat
 
     public init(gutter: CGFloat = 12,
-                padding: CGFloat = 8,
+                padding: CGFloat = 12,
+                topPadding: CGFloat = 0,
                 edgeInset: CGFloat = 4,
                 minPaneSize: CGSize = CGSize(width: 160, height: 80),
                 dividerHitWidth: CGFloat = 16,
@@ -27,6 +32,7 @@ public struct LayoutMetrics: Equatable, Sendable {
                 scale: CGFloat = 2) {
         self.gutter = gutter
         self.padding = padding
+        self.topPadding = topPadding
         self.edgeInset = edgeInset
         self.minPaneSize = minPaneSize
         self.dividerHitWidth = dividerHitWidth
@@ -36,14 +42,15 @@ public struct LayoutMetrics: Equatable, Sendable {
 
     public static let `default` = LayoutMetrics()
 
-    /// The rect the panes actually tile: `padding` on every edge, plus `edgeInset` on the
+    /// The rect the panes actually tile: `topPadding` above, `padding + edgeInset` on the
     /// leading, trailing and bottom edges. The single definition of "the padded canvas" —
-    /// the layout engine lays out into it and the coverage invariants assert against it.
+    /// the layout engine lays out into it and the coverage invariants assert against it, so
+    /// changing the insets here moves the tests with it rather than against it.
     public func contentRect(in bounds: CGRect) -> CGRect {
         CGRect(x: bounds.minX + padding + edgeInset,
-               y: bounds.minY + padding,
+               y: bounds.minY + topPadding,
                width: max(0, bounds.width - 2 * (padding + edgeInset)),
-               height: max(0, bounds.height - 2 * padding - edgeInset))
+               height: max(0, bounds.height - topPadding - padding - edgeInset))
     }
 }
 

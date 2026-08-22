@@ -6,7 +6,6 @@ struct UltraSettings: View {
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
-            Tab("Appearance", systemImage: "paintbrush") { AppearanceSettings() }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
         .frame(width: 460)
@@ -147,89 +146,6 @@ private struct GeneralSettings: View {
                     .frame(width: 40, alignment: .trailing)
             }
         }
-    }
-}
-
-/// Live sliders over the appearance tokens.
-///
-/// Every value here was a constant until now, and tuning one meant editing a number,
-/// rebuilding, looking, and guessing again. Dragging finds it in a second — which is the
-/// entire justification for this tab.
-private struct AppearanceSettings: View {
-    @State private var model = AppearanceModel.shared
-    @State private var expanded: Appearance.Key?
-
-    var body: some View {
-        Form {
-            Section {
-                ForEach(Appearance.allKnobs) { knob in
-                    knobRow(knob)
-                }
-            } header: {
-                Text("Window and panes")
-            } footer: {
-                Text("Changes apply to every window as you drag.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Section {
-                HStack {
-                    Button("Reset to Defaults") { model.reset() }
-                        .disabled(!Appearance.isModified)
-                    Spacer()
-                    if Appearance.isModified {
-                        Text("Customised")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .padding(.vertical, 6)
-        .frame(height: 470)
-    }
-
-    @ViewBuilder
-    private func knobRow(_ knob: Appearance.Knob) -> some View {
-        let binding = model.binding(knob.key)
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(knob.title)
-                Spacer()
-                Text(knob.format(binding.wrappedValue))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                if knob.footnote != nil {
-                    Button {
-                        expanded = expanded == knob.key ? nil : knob.key
-                    } label: {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(expanded == knob.key ? Color.accentColor : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Why this matters")
-                }
-            }
-            Slider(value: binding,
-                   in: knob.range,
-                   step: knob.step)
-                .labelsHidden()
-                .accessibilityLabel(knob.title)
-                .accessibilityValue(knob.format(binding.wrappedValue))
-
-            // Kept behind a disclosure rather than printed under every row: ten permanent
-            // paragraphs is a wall, and most of these need no explanation at all.
-            if expanded == knob.key, let footnote = knob.footnote {
-                Text(footnote)
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
-            }
-        }
-        .padding(.vertical, 2)
     }
 }
 
