@@ -20,7 +20,10 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resour
 echo "Building Ultra $VERSION ($BUILD_NUMBER) — release…"
 swift build -c release --product Ultra
 
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS"
+# Rebuilt from scratch so a renamed or dropped icon cannot linger and be picked up.
+rm -rf "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/Resources"
 
 # Copied to a temp name and moved into place: replacing the binary of a RUNNING app in
 # place fails, and a half-written executable is worse than an old one.
@@ -32,22 +35,7 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 
 # --- Icon -------------------------------------------------------------------------------
-# Built from the single 1024pt master rather than checking in eleven PNGs that can drift
-# apart. macOS does NOT round an app icon for you — the squircle is part of the artwork —
-# and it expects the body INSET on the 824/1024 grid, which is what make-icon-master does.
-WORK="$(mktemp -d)"
-ICONSET="$WORK/Ultra.iconset"
-mkdir -p "$ICONSET"
-# The export is iOS-shaped (full-bleed); macOS wants it inset on the 824/1024 grid.
-swift scripts/make-icon-master.swift Resources/AppIcon.png "$WORK/master.png"
-for spec in "16 16x16" "32 16x16@2x" "32 32x32" "64 32x32@2x" \
-            "128 128x128" "256 128x128@2x" "256 256x256" "512 256x256@2x" \
-            "512 512x512" "1024 512x512@2x"; do
-  set -- $spec
-  sips -z "$1" "$1" "$WORK/master.png" --out "$ICONSET/icon_$2.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Ultra.icns"
-rm -rf "$WORK"
+scripts/make-iconset.sh "$APP/Contents/Resources"
 
 # Re-sign after every change; a stale signature makes the bundle refuse to launch.
 codesign --force --sign - --timestamp=none "$APP"
