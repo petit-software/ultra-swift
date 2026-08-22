@@ -123,6 +123,13 @@ extension Token.Space {
     /// track it or the window bar and the buttons disagree.
     public static let titleBarHeight: CGFloat = 52
 
+    /// Gaussian radius behind a pane's title. Large enough that text passing under the
+    /// header genuinely dissolves rather than looking merely soft.
+    public static let headerBlurRadius: CGFloat = 14
+    /// How much the header darkens at its top edge. Blur separates a title from a busy
+    /// backdrop; over a near-uniform one this is what does the work.
+    public static let headerTintOpacity: CGFloat = 0.28
+
     /// How far a pane lifts off the material behind it. Depth, not borders, is what makes
     /// a grid of panes read as separate surfaces rather than as drawn rectangles.
     public static let paneShadowRadius: CGFloat = 10
