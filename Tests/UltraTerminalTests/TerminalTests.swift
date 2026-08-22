@@ -161,3 +161,68 @@ struct TerminalPaletteTests {
         #expect(ratio >= 4.5, "\(theme.name) foreground contrast is \(ratio), below WCAG AA")
     }
 }
+
+@Suite("OSC 7 working directory")
+struct HostDirectoryTests {
+
+    /// The exact string that caused every restored pane to announce "Working directory is
+    /// gone" and fall back. The directory was fine; the value was a URL, not a path.
+    @Test("a file URL from this machine becomes a path")
+    func fileURLBecomesPath() {
+        #expect(ShellLauncher.localPath(
+            fromHostDirectory: "file://BakBook.local/Users/bigb/Repo/ultra-swift",
+            hostName: "BakBook.local") == "/Users/bigb/Repo/ultra-swift")
+    }
+
+    @Test("host forms that all mean this machine")
+    func hostVariants() {
+        let path = "/Users/bigb/Repo"
+        for raw in ["file:///Users/bigb/Repo",
+                    "file://localhost/Users/bigb/Repo",
+                    "file://BakBook/Users/bigb/Repo",
+                    "file://bakbook.local/Users/bigb/Repo"] {
+            #expect(ShellLauncher.localPath(fromHostDirectory: raw, hostName: "BakBook.local")
+                    == path, "\(raw) should resolve to \(path)")
+        }
+    }
+
+    /// The host says WHICH MACHINE the path is on. A shell ssh'd elsewhere reports a
+    /// directory that does not exist here, and stripping it to a path would silently point
+    /// at whatever happens to sit at that path locally.
+    @Test("a directory on another machine is refused, not stripped")
+    func remoteHostRefused() {
+        #expect(ShellLauncher.localPath(fromHostDirectory: "file://build-server/var/www",
+                                        hostName: "BakBook.local") == nil)
+        #expect(ShellLauncher.localPath(fromHostDirectory: "file://192.168.1.20/srv",
+                                        hostName: "BakBook.local") == nil)
+    }
+
+    @Test("a bare path is taken as-is, since some shells report one")
+    func barePath() {
+        #expect(ShellLauncher.localPath(fromHostDirectory: "/tmp/work") == "/tmp/work")
+    }
+
+    @Test("percent-encoding is decoded, so spaces survive")
+    func percentEncoding() {
+        #expect(ShellLauncher.localPath(
+            fromHostDirectory: "file://BakBook/Users/bigb/My%20Projects/app",
+            hostName: "BakBook") == "/Users/bigb/My Projects/app")
+    }
+
+    @Test("nothing usable yields nothing, rather than a bad path")
+    func rejectsJunk() {
+        for raw in [nil, "", "http://example.com/x", "not a url at all"] {
+            #expect(ShellLauncher.localPath(fromHostDirectory: raw, hostName: "BakBook") == nil,
+                    "\(raw ?? "nil") should be refused")
+        }
+    }
+
+    @Test("the parsed path is one a shell could actually be started in")
+    func resultIsAUsableDirectory() {
+        let parsed = ShellLauncher.localPath(fromHostDirectory: "file://BakBook/tmp",
+                                             hostName: "BakBook")
+        #expect(parsed == "/tmp")
+        // The whole point: the value now survives the check that was rejecting it.
+        #expect(ShellLauncher.validatedDirectory(parsed) == "/tmp")
+    }
+}

@@ -68,6 +68,36 @@ public enum ShellLauncher {
         }
     }
 
+    /// Turn an OSC 7 report into a filesystem path.
+    ///
+    /// A shell reports its working directory as a URL, not a path: zsh on macOS emits
+    /// `file://HOSTNAME/Users/you/project`. Storing that string where a path is expected is
+    /// how every restored pane ended up announcing "Working directory is gone" and falling
+    /// back — the directory was fine, the string was a URL.
+    ///
+    /// The host is not decoration. OSC 7 uses it to say WHICH MACHINE the path is on, so a
+    /// shell ssh'd elsewhere reports a directory that does not exist here. Those are refused
+    /// rather than stripped to a path that would silently resolve to the wrong thing locally.
+    public static func localPath(fromHostDirectory raw: String?,
+                                 hostName: String = ProcessInfo.processInfo.hostName) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        // Some shells report a bare path. Take it as-is.
+        if raw.hasPrefix("/") { return raw }
+        guard let url = URL(string: raw), url.isFileURL else { return nil }
+
+        let host = url.host?.lowercased() ?? ""
+        let local = hostName.lowercased()
+        // "BakBook.local" and "BakBook" are the same machine; compare on the first label too.
+        let shortLocal = local.split(separator: ".").first.map(String.init) ?? local
+        let shortHost = host.split(separator: ".").first.map(String.init) ?? host
+        let isThisMachine = host.isEmpty || host == "localhost" || host == local
+            || (!shortHost.isEmpty && shortHost == shortLocal)
+        guard isThisMachine else { return nil }
+
+        let path = url.path
+        return path.isEmpty ? nil : path
+    }
+
     /// A working directory that actually exists. Returns nil rather than silently falling
     /// back to `$HOME` — a pane whose cwd is gone must say so, not open somewhere else.
     public static func validatedDirectory(_ path: String?) -> String? {

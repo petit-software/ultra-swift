@@ -160,9 +160,15 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         shellDelegate?.shellTitleChanged(self, title: title)
     }
 
+    /// OSC 7. The shell reports a `file://host/path` URL, not a path — see
+    /// `ShellLauncher.localPath(fromHostDirectory:)`. A report we cannot turn into a local
+    /// path (a shell ssh'd to another machine, say) leaves the last known directory alone
+    /// rather than overwriting it with something that does not exist here.
     public func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
-        spec.cwd = directory ?? spec.cwd
-        shellDelegate?.shellDirectoryChanged(self, directory: directory)
+        guard let path = ShellLauncher.localPath(fromHostDirectory: directory) else { return }
+        guard path != spec.cwd else { return }
+        spec.cwd = path
+        shellDelegate?.shellDirectoryChanged(self, directory: path)
     }
 
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
