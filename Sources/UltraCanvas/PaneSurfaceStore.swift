@@ -35,7 +35,9 @@ public final class PaneSurfaceStore {
     private let make: (PaneID) -> PaneContent
     /// Set by `LayoutStore` once it exists, so header controls drive the same commands the
     /// menu does rather than a parallel code path.
-    public var actions: PaneActions = .inert
+    /// Shared by reference with every container, so a callback set after some panes exist
+    /// still reaches them.
+    public let actions: PaneActions = .inert
     /// Called when a pane's surface is destroyed, so whoever owns the underlying resource
     /// — from M2, a PTY — can tear it down. This is the ONLY place a pane dies.
     public var onRelease: ((PaneID) -> Void)?

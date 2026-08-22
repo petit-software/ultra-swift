@@ -201,13 +201,11 @@ struct RootView: View {
     }
 
     var body: some View {
+        // Splitting and zoom belong to a PANE, and every pane header already carries them.
+        // Duplicating them at window level meant two controls for one verb, and the window
+        // copy silently acted on whichever pane happened to be focused. The palette stays:
+        // it is the one control here that is about the window rather than a pane.
         CanvasSurface(store: store, barActions: [
-            WindowBarAction(id: "pane.split.right", symbol: "square.split.2x1",
-                            help: "Split Right (⌘D)") { store.split(edge: .right) },
-            WindowBarAction(id: "pane.split.down", symbol: "square.split.1x2",
-                            help: "Split Down (⇧⌘D)") { store.split(edge: .bottom) },
-            WindowBarAction(id: "pane.zoom", symbol: "arrow.down.right.and.arrow.up.left",
-                            help: "Toggle Zoom (⇧⌘↩)") { store.toggleZoom() },
             WindowBarAction(id: "app.palette", symbol: "command",
                             help: "Command Palette (⇧⌘P)") { ui.isPaletteShown = true },
         ])
@@ -257,25 +255,12 @@ struct RootView: View {
                 // what pushes it there, leaving the leading side to the traffic lights.
                 ToolbarSpacer(.flexible)
 
+                // Split and zoom are PANE verbs, and every pane header already carries
+                // them next to the pane they act on. Up here they acted on whichever pane
+                // happened to be focused, which is a different control wearing the same
+                // icon. The palette stays: it is the one item here about the window.
+                // Both remain on their keyboard shortcuts and in the menu bar.
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button { store.split(edge: .right) } label: {
-                        Label("Split Right", systemImage: "square.split.2x1")
-                    }
-                    .help("Split Right (⌘D)")
-
-                    Button { store.split(edge: .bottom) } label: {
-                        Label("Split Down", systemImage: "square.split.1x2")
-                    }
-                    .help("Split Down (⇧⌘D)")
-
-                    Button { store.toggleZoom() } label: {
-                        Label("Toggle Zoom", systemImage: store.tree.zoomed != nil
-                              ? "arrow.up.left.and.arrow.down.right"
-                              : "arrow.down.right.and.arrow.up.left")
-                    }
-                    .help("Toggle Zoom (⇧⌘↩)")
-                    .disabled(store.tree.paneCount <= 1)
-
                     Button { ui.isPaletteShown = true } label: {
                         Label("Commands", systemImage: "command")
                     }

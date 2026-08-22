@@ -83,6 +83,13 @@ enum ShellWorkspace {
             factory?.release(paneID)
             tiles?.release(paneID)
         }
+        // What a pane can become, offered from the pane's own icon. The canvas has no
+        // idea what a "Todo" is — it lays out rectangles — so the list and the verb both
+        // come from here.
+        store.setPaneKinds({ PaneKind.choices }) { [weak store] paneID, kind in
+            guard let store else { return }
+            convert(paneID, to: kind, in: store)
+        }
         // Once geometry stops moving, every shell gets its authoritative size.
         store.onGeometrySettled = { [weak factory] in factory?.commitResize() }
         // A shell renames its own pane as it runs; the header follows.

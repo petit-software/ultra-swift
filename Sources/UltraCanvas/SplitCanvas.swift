@@ -60,19 +60,6 @@ public struct CanvasSurface: View {
                                  title: store.workspaceTitle) { store.noteWindowFrame($0) })
     }
 
-    /// Split and zoom are worth a top-level control; everything else lives in the menu and
-    /// the palette rather than accumulating in the bar.
-    @MainActor
-    private static func defaultActions(_ store: LayoutStore) -> [WindowBarAction] {
-        [
-            WindowBarAction(id: "pane.split.right", symbol: "square.split.2x1",
-                            help: "Split Right (⌘D)") { store.split(edge: .right) },
-            WindowBarAction(id: "pane.split.down", symbol: "square.split.1x2",
-                            help: "Split Down (⇧⌘D)") { store.split(edge: .bottom) },
-            WindowBarAction(id: "pane.zoom", symbol: "arrow.down.right.and.arrow.up.left",
-                            help: "Toggle Zoom (⇧⌘↩)") { store.toggleZoom() },
-        ]
-    }
 }
 
 /// Configures the host window once it exists: a transparent, full-size-content titlebar so

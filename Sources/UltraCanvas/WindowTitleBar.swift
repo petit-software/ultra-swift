@@ -91,14 +91,13 @@ public struct WindowTitleBar: View {
 #Preview("Window bar", traits: .fixedLayout(width: 700, height: 40)) {
     WindowTitleBar(title: "ultra-swift", subtitle: "~/Repo/ultra-swift", isZoomed: false,
                    actions: [
-                    WindowBarAction(id: "a", symbol: "square.split.2x1", help: "Split Right") {},
-                    WindowBarAction(id: "b", symbol: "magnifyingglass", help: "Commands") {},
+                    WindowBarAction(id: "b", symbol: "command", help: "Command Palette") {},
                    ])
     .background(Token.Colour.tileBackground)
 }
 
 #Preview("Window bar — zoomed", traits: .fixedLayout(width: 700, height: 40)) {
     WindowTitleBar(title: "ultra-swift", subtitle: "~/Repo/ultra-swift", isZoomed: true,
-                   actions: [WindowBarAction(id: "b", symbol: "magnifyingglass", help: "Commands") {}])
+                   actions: [WindowBarAction(id: "b", symbol: "command", help: "Command Palette") {}])
     .background(Token.Colour.tileBackground)
 }

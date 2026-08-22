@@ -22,19 +22,19 @@ public struct PaneKindChoice: Identifiable, Sendable, Equatable {
 }
 
 @MainActor
-public struct PaneActions {
+public final class PaneActions {
     public var split: (PaneID, UltraLayout.Edge) -> Void
     public var close: (PaneID) -> Void
     public var focus: (PaneID) -> Void
     /// What a pane can become. Supplied by the app, because the canvas knows nothing about
     /// tile kinds — it lays out rectangles.
-    public var kinds: [PaneKindChoice]
+    public var kinds: () -> [PaneKindChoice]
     public var changeKind: (PaneID, PaneRecord.Kind) -> Void
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
                 focus: @escaping (PaneID) -> Void,
-                kinds: [PaneKindChoice] = [],
+                kinds: @escaping () -> [PaneKindChoice] = { [] },
                 changeKind: @escaping (PaneID, PaneRecord.Kind) -> Void = { _, _ in }) {
         self.split = split
         self.close = close
@@ -43,7 +43,12 @@ public struct PaneActions {
         self.changeKind = changeKind
     }
 
-    public static let inert = PaneActions(split: { _, _ in }, close: { _ in }, focus: { _ in })
+    /// A fresh do-nothing set. Deliberately a factory rather than a shared instance: this
+    /// is a reference type now, and a singleton would let one store's wiring leak into
+    /// another's — including into previews.
+    public static var inert: PaneActions {
+        PaneActions(split: { _, _ in }, close: { _ in }, focus: { _ in })
+    }
 }
 
 /// A plain top-left-origin container.
@@ -86,9 +91,8 @@ public struct PaneHeader: View {
             .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
     }
 
-    private func identity(showSubtitle: Bool) -> some View {
+    private func labels(showSubtitle: Bool) -> some View {
         HStack(spacing: 6) {
-            icon
             Text(descriptor.title)
                 .font(Token.Type_.tileTitle)
                 .foregroundStyle(isFocused ? Token.Colour.label : Token.Colour.secondaryLabel)
@@ -106,15 +110,26 @@ public struct PaneHeader: View {
         HStack(spacing: 6) {
             // A head-truncated subtitle reading "…t" is worse than no subtitle, so drop
             // parts of the identity as the pane narrows rather than mangling them.
+            // The icon sits OUTSIDE `ViewThatFits`: that view renders its candidates in
+            // order to measure them, and an interactive control inside it does not reliably
+            // take clicks. Only the labels need to collapse as the pane narrows.
+            icon
             ViewThatFits(in: .horizontal) {
-                identity(showSubtitle: true)
-                identity(showSubtitle: false)
-                icon
+                labels(showSubtitle: true)
+                labels(showSubtitle: false)
+                EmptyView()
             }
 
             Spacer(minLength: 4)
 
             HStack(spacing: 1) {
+                // Hidden outright when the app supplied no kinds. An empty NSMenu declines
+                // to open, so the button would look identical to a working one and do
+                // nothing — the exact failure `PaneKindMenuTests` was written against.
+                if !actions.kinds().isEmpty {
+                    PaneKindMenuButton(paneID: paneID, currentKind: currentKind,
+                                       actions: actions)
+                }
                 PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                     actions.split(paneID, .right)
                 }
@@ -139,44 +154,62 @@ public struct PaneHeader: View {
         // No background at all. The header is not a bar and not a separate surface: it is
         // a label floating on the pane's own glass, in the same material as the terminal
         // beneath it. Anything drawn here re-introduces the seam.
-        .contentShape(.rect)
         .onHover { isHovering = $0 }
-        .onTapGesture { actions.focus(paneID) }
+        // Click-to-focus sits BEHIND the controls rather than on the whole header. On the
+        // header itself it consumed the tap before the icon's menu ever saw it: the pane
+        // took focus and the menu silently never opened.
+        .background {
+            Color.clear
+                .contentShape(.rect)
+                .onTapGesture { actions.focus(paneID) }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(descriptor.subtitle.map { "\(descriptor.title), \($0)" }
                             ?? descriptor.title)
     }
 }
 
+/// A control in a pane header. The chrome itself lives in `ChromeIconButton`, shared with
+/// tile footers so the two ends of a tile cannot drift apart again.
 struct PaneHeaderButton: View {
     let symbol: String
     let help: String
     var isDestructive = false
     let action: () -> Void
 
-    @State private var isHovering = false
+    var body: some View {
+        ChromeIconButton(symbol: symbol, help: help,
+                         isDestructive: isDestructive, action: action)
+    }
+}
+
+// MARK: - Kind menu
+
+/// The "turn this pane into…" control: a chevron sitting beside the split buttons.
+struct PaneKindMenuButton: View {
+    let paneID: PaneID
+    let currentKind: PaneRecord.Kind?
+    let actions: PaneActions
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .frame(width: 28, height: 26)
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(isHovering
-                         ? (isDestructive ? Color.red : Token.Colour.label)
-                         : Token.Colour.secondaryLabel)
-        .background {
-            if isHovering {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Token.Colour.label.opacity(0.10))
+        // A point smaller than its neighbours: a chevron carries more ink per point than the
+        // split glyphs, and matching their 15 makes it read as the loudest control in the
+        // row rather than the quietest.
+        //
+        // Every kind is also reachable from the palette; the tooltip teaches that rather
+        // than pretending this pointer affordance is the only way in.
+        ChromeMenuButton(symbol: "chevron.down", help: "Change Pane Type (⇧⌘P)", size: 13) {
+            actions.kinds().map { choice in
+                // The pane's current kind is ticked and cannot be re-chosen: converting a
+                // pane into what it already is would tear down a live tile to rebuild the
+                // same thing.
+                .item(title: choice.title, symbol: choice.symbol,
+                      isOn: choice.kind == currentKind,
+                      isEnabled: choice.kind != currentKind) {
+                    actions.changeKind(paneID, choice.kind)
+                }
             }
         }
-        .onHover { isHovering = $0 }
-        // The shortcut is in the tooltip so the control teaches its key, not replaces it.
-        .help(help)
-        .accessibilityLabel(help)
     }
 }
 
@@ -288,21 +321,48 @@ public final class PaneContainerView: NSView {
     /// otherwise collide with the text. A hard-edged material bar would be a background by
     /// another name; ramping the material's own opacity keeps the header reading as part of
     /// the pane's surface while still separating the words from whatever slides under them.
-    private let headerBlur = HeaderBlurView()
+    private let headerBlur = EdgeBlurView(edge: .top)
 
     private func refresh() {
+        rebuildHeader()
+        applyLayerState()
+    }
+
+    /// Replace the header's SwiftUI root.
+    ///
+    /// Deliberately NOT called from `updateLayer`. AppKit calls that on every redraw, and
+    /// assigning `rootView` makes SwiftUI lay out again, which can ask for another redraw —
+    /// a loop AppKit reports as "AttributeGraph: cycle detected" and which leaves controls
+    /// in the header unable to respond, the menu included.
+    private func rebuildHeader() {
         header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor, currentKind: kind,
                                      isFocused: isFocused, canClose: canClose, actions: actions)
-        // An unfocused pane wears no border at all — depth already separates it. Drawing a
-        // box around every pane is what made six panes read as six grey slabs.
-        clip.layer?.borderColor = isFocused
-            ? Token.Colour.focusBorder.nsColor.cgColor
-            : NSColor.clear.cgColor
+    }
+
+    /// Colours that live on layers. Cheap, idempotent, and safe to re-run on every redraw.
+    private func applyLayerState() {
+        // Resolved INSIDE the view's own appearance. `NSColor.cgColor` on a dynamic colour
+        // silently resolves against whatever appearance happens to be current, which outside
+        // a draw is the light one — and the focus ring is mixed from `paneBackground`, which
+        // is near-white in light and near-black in dark. The ring came out a washed neutral
+        // instead of the accent, and no amount of tuning the fraction could fix it, because
+        // the wrong ground was being mixed.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            // An unfocused pane wears no border at all — depth already separates it. Drawing
+            // a box around every pane is what made six panes read as six grey slabs.
+            clip.layer?.borderColor = isFocused
+                ? Token.Colour.focusBorder.nsColor.cgColor
+                : NSColor.clear.cgColor
+        }
         // Colour alone must never carry the signal, so the focused pane also lifts higher.
         layer?.shadowOpacity = isFocused
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
     }
+
+    /// What this pane's header was handed. Test seam: an empty kind list renders a menu
+    /// that simply never opens, with no error anywhere.
+    public var headerActionsForTesting: PaneActions { actions }
 
     /// Re-read the accent and repaint. See `PaneSurfaceStore.refreshChrome`.
     public func refreshChrome() { refresh() }
@@ -339,7 +399,7 @@ public final class PaneContainerView: NSView {
         CATransaction.commit()
     }
 
-    public override func updateLayer() { refresh() }
+    public override func updateLayer() { applyLayerState() }
 }
 
 #Preview("Pane header — focused", traits: .fixedLayout(width: 420, height: 40)) {

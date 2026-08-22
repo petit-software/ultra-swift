@@ -68,15 +68,14 @@ public final class LayoutStore {
         self.theme = theme
         self.surfaces = PaneSurfaceStore(make: makeSurface)
         // Header controls call exactly the same verbs as the menu and the palette.
-        surfaces.actions = PaneActions(
-            split: { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) },
-            close: { [weak self] paneID in self?.close(paneID) },
-            focus: { [weak self] paneID in self?.focus(paneID) })
+        surfaces.actions.split = { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) }
+        surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }
+        surfaces.actions.focus = { [weak self] paneID in self?.focus(paneID) }
     }
 
     /// Teach the pane headers what a pane can become. The canvas has no idea what a "Todo"
     /// is; it lays out rectangles, so the list and the verb both come from the app.
-    public func setPaneKinds(_ kinds: [PaneKindChoice],
+    public func setPaneKinds(_ kinds: @escaping () -> [PaneKindChoice],
                              change: @escaping (PaneID, PaneRecord.Kind) -> Void) {
         surfaces.actions.kinds = kinds
         surfaces.actions.changeKind = change
