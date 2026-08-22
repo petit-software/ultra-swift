@@ -155,8 +155,44 @@ can be sent into a fresh shell.
   purpose: an assertion that outlives what it was protecting is how a laptop ends up flat.
   Plain interactive shells sitting at a prompt do not count as work. Cannot override a lock
   the user triggers, a closed lid, or an MDM policy — and the settings pane says so.
-- Settings: appearance, terminal themes, fonts, agent registry, keymap editor with conflict
-  detection against the shell's own bindings.
+### Settings — the near-term list
+
+Everything here is already a constant in the code; a setting is a binding plus a re-apply.
+`Token` values are `static let` read from many call sites, so making them adjustable means
+turning them into computed properties over `UserDefaults` with today's constants as the
+defaults — about twenty lines, and no call site changes.
+
+**General — changes how the app works.**
+
+- **Terminal font size.** `ShellTerminalView.init(font:)` already takes one and nothing ever
+  sets it. The resize path it needs — coalescing and `SIGWINCH` — is already built. Probably
+  the single most-wanted setting in any terminal.
+- **Theme: dark / light / follow system.** `TerminalTheme.isDark` exists and `WindowChrome`
+  already pins the whole window's appearance to it; it is hardcoded `.dark` today.
+- **Terminal background opacity.** `TerminalTheme.backgroundOpacity` is 0, which is what
+  makes a shell's surface the pane's glass. Raising it makes shells opaque — and it is the
+  knob that decides whether a shell's header has anything behind it to blur.
+- **Show dotfiles in the file tree.** Shown by default now; the default belongs here, since
+  `FileTreeModel.showsHidden` is per-pane and resets each time a pane opens.
+- **Poll intervals** for Ports, Resources and Git (2s, 2s, 3s), and **pause polling while the
+  window is occluded** — the battery item already flagged under M4.
+
+**Appearance — live sliders over existing tokens.**
+
+`windowTintOpacity`, `headerBlurRadius`, `headerTintOpacity`, `paneRadius`, `gutter`,
+`paneShadowRadius`/`paneShadowOpacity`, and `windowRadius` — the last with a hard floor at
+`systemWindowRadius`, since going under it is what produces the doubled-corner glitch.
+
+This tab pays for itself immediately: tuning the header blur by shipping a guess and asking
+whether it looks right is a slow way to find a number the user could just drag to.
+
+**Later, and not one-liners.**
+
+- Agent registry: add and remove agent commands. The model exists; only the UI is missing.
+- Default pane kind for a new split.
+- A Reduce Transparency override, to preview the opaque appearance without changing System
+  Settings.
+- Keymap editor with conflict detection against the shell's own bindings.
 - Full accessibility audit against `02-DESIGN-LANGUAGE.md`, including Reduce Transparency as a
   first-class appearance.
 - Performance pass with Instruments: divider drag holds display rate with 8 live shells;

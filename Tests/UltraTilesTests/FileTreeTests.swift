@@ -29,7 +29,7 @@ struct FileTreeTests {
     func lazyReading() throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        let model = FileTreeModel(root: root)
+        let model = FileTreeModel(root: root, showsHidden: false)
         // The root's own listing is loaded; nothing below it is.
         #expect(model.children[root] != nil)
         #expect(model.children[root.appendingPathComponent("sub")] == nil)
@@ -46,25 +46,26 @@ struct FileTreeTests {
     func ordering() throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        let names = FileTreeModel(root: root).rows.map(\.node.name)
+        let names = FileTreeModel(root: root, showsHidden: false).rows.map(\.node.name)
         #expect(names == ["empty", "sub", "a.txt"])
     }
 
-    @Test("dotfiles appear only when asked for")
+    @Test("dotfiles are shown by default, and can be hidden")
     func hiddenFiles() throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
         let model = FileTreeModel(root: root)
-        #expect(!model.rows.contains { $0.node.name == ".hidden" })
-        model.showsHidden = true
+        #expect(model.showsHidden, "a project tree shows .env and .gitignore by default")
         #expect(model.rows.contains { $0.node.name == ".hidden" })
+        model.showsHidden = false
+        #expect(!model.rows.contains { $0.node.name == ".hidden" })
     }
 
     @Test("rows are exactly what is expanded, at the right depth")
     func visibleRows() throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
-        let model = FileTreeModel(root: root)
+        let model = FileTreeModel(root: root, showsHidden: false)
         let sub = try #require(model.rows.first { $0.node.name == "sub" }?.node)
         model.expand(sub)
         let deep = try #require(model.rows.first { $0.node.name == "deep" }?.node)

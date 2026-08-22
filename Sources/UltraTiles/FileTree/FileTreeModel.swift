@@ -32,11 +32,17 @@ public final class FileTreeModel {
     /// Directories that could not be read — permission denied, or deleted under us.
     public private(set) var unreadable: Set<URL> = []
 
-    public var showsHidden: Bool = false {
+    /// Dotfiles are shown by DEFAULT.
+    ///
+    /// This tree exists next to a shell in a developer's project, where the interesting
+    /// files are `.env`, `.gitignore`, `.github/`, `.ultra/`. Finder hides them because its
+    /// audience is not looking at repositories; hiding them here would mean the tree
+    /// disagrees with `ls -a` in the pane beside it.
+    public var showsHidden: Bool = true {
         didSet { guard showsHidden != oldValue else { return }; reload() }
     }
 
-    public init(root: URL, showsHidden: Bool = false) {
+    public init(root: URL, showsHidden: Bool = true) {
         self.root = root
         self.showsHidden = showsHidden
         load(root)
