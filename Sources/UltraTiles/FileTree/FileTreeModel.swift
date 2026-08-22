@@ -1,4 +1,5 @@
 import Foundation
+import UltraDesign
 
 /// The file tree's state: which directories are loaded, which are open.
 ///
@@ -38,7 +39,7 @@ public final class FileTreeModel {
     /// files are `.env`, `.gitignore`, `.github/`, `.ultra/`. Finder hides them because its
     /// audience is not looking at repositories; hiding them here would mean the tree
     /// disagrees with `ls -a` in the pane beside it.
-    public var showsHidden: Bool = true {
+    public var showsHidden: Bool = Preferences.showsHiddenFiles {
         didSet { guard showsHidden != oldValue else { return }; reload() }
     }
 

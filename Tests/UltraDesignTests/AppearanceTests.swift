@@ -5,9 +5,18 @@ import SwiftUI
 
 /// `Appearance` writes to the standard defaults, so each test clears its own keys rather
 /// than leaving the developer's real settings changed by running the suite.
+/// An isolated defaults domain per call. Two suites sharing `.standard` is a real flake:
+/// this one failed once before the runs went green, which is exactly how such a bug
+/// presents.
 private func withCleanDefaults(_ body: () -> Void) {
-    Appearance.reset()
-    defer { Appearance.reset() }
+    let name = "ultra.tests.appearance.\(UUID().uuidString)"
+    let suite = UserDefaults(suiteName: name)!
+    let previous = Appearance.store
+    Appearance.store = suite
+    defer {
+        Appearance.store = previous
+        suite.removePersistentDomain(forName: name)
+    }
     body()
 }
 
@@ -68,7 +77,7 @@ struct AppearanceTests {
 
             // A value written straight into defaults — an older build, a synced domain, or
             // `defaults write` — has never passed through the slider, so the read clamps too.
-            UserDefaults.standard.set(2.0, forKey: "appearance.windowRadius")
+            Appearance.store.set(2.0, forKey: "appearance.windowRadius")
             #expect(Appearance.value(.windowRadius) == Token.Space.systemWindowRadius)
         }
     }
@@ -81,7 +90,7 @@ struct AppearanceTests {
             Appearance.set(key, range.upperBound + 1000)
             #expect(Appearance.value(key) == range.upperBound)
 
-            UserDefaults.standard.set(-9999.0, forKey: "appearance." + key.rawValue)
+            Appearance.store.set(-9999.0, forKey: "appearance." + key.rawValue)
             #expect(Appearance.value(key) == range.lowerBound)
         }
     }

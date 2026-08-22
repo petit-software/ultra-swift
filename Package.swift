@@ -36,7 +36,7 @@ let package = Package(
         .testTarget(name: "UltraDesignTests", dependencies: ["UltraDesign"]),
         .testTarget(name: "UltraCanvasTests", dependencies: ["UltraCanvas", "UltraTerminal", "UltraLayout", "UltraDesign"]),
         .testTarget(name: "UltraCoreTests", dependencies: ["UltraCore", "UltraLayout"]),
-        .testTarget(name: "UltraTerminalTests", dependencies: ["UltraTerminal", "UltraLayout"]),
+        .testTarget(name: "UltraTerminalTests", dependencies: ["UltraTerminal", "UltraLayout", "UltraDesign"]),
         .testTarget(name: "UltraTilesTests", dependencies: ["UltraTiles", "UltraCore"]),
     ]
 )

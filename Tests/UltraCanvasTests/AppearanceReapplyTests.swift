@@ -9,6 +9,23 @@ import CoreGraphics
 /// once when a view is built. A settings change therefore has to be pushed to those layers;
 /// only the layout pass re-reads on its own. These lock that push in, because the failure
 /// mode is silent: the slider moves, the number changes, and the window does not.
+/// Each test runs against its own defaults domain: `UltraDesignTests` mutates the same
+/// keys, and the two targets share a process.
+@MainActor
+private func isolatedAppearanceStore() -> (UserDefaults, String, UserDefaults) {
+    let name = "ultra.tests.reapply.\(UUID().uuidString)"
+    let suite = UserDefaults(suiteName: name)!
+    let previous = Appearance.store
+    Appearance.store = suite
+    return (suite, name, previous)
+}
+
+@MainActor
+private func restoreAppearanceStore(_ saved: (UserDefaults, String, UserDefaults)) {
+    Appearance.store = saved.2
+    saved.0.removePersistentDomain(forName: saved.1)
+}
+
 @Suite("Appearance re-apply", .serialized)
 @MainActor
 struct AppearanceReapplyTests {
@@ -27,8 +44,8 @@ struct AppearanceReapplyTests {
 
     @Test("a pane's corner radius follows the setting")
     func paneRadiusReachesLayers() {
-        Appearance.reset()
-        defer { Appearance.reset() }
+        let suite = isolatedAppearanceStore()
+        defer { restoreAppearanceStore(suite) }
         let (view, store) = canvas()
         let pane = store.tree.paneIDs[0]
 
@@ -46,8 +63,8 @@ struct AppearanceReapplyTests {
 
     @Test("a value outside the knob's range is clamped, not applied")
     func outOfRangeIsClamped() {
-        Appearance.reset()
-        defer { Appearance.reset() }
+        let suite = isolatedAppearanceStore()
+        defer { restoreAppearanceStore(suite) }
         let (view, store) = canvas()
         Appearance.set(.gutter, 999)
         view.appearanceChanged()
@@ -56,8 +73,8 @@ struct AppearanceReapplyTests {
 
     @Test("the gutter reaches the layout metrics, not just the token")
     func gutterReachesMetrics() {
-        Appearance.reset()
-        defer { Appearance.reset() }
+        let suite = isolatedAppearanceStore()
+        defer { restoreAppearanceStore(suite) }
         let (view, store) = canvas()
         let before = store.layoutResult.frames[store.tree.paneIDs[0]]!.width
 
@@ -74,8 +91,8 @@ struct AppearanceReapplyTests {
 
     @Test("window padding reaches the metrics too")
     func paddingReachesMetrics() {
-        Appearance.reset()
-        defer { Appearance.reset() }
+        let suite = isolatedAppearanceStore()
+        defer { restoreAppearanceStore(suite) }
         let (view, store) = canvas()
 
         Appearance.set(.canvasPadding, 30)
@@ -86,8 +103,8 @@ struct AppearanceReapplyTests {
 
     @Test("a store built while a setting is customised starts with it applied")
     func newStoreStartsCustomised() {
-        Appearance.reset()
-        defer { Appearance.reset() }
+        let suite = isolatedAppearanceStore()
+        defer { restoreAppearanceStore(suite) }
         Appearance.set(.gutter, 26)
 
         let factory = PlaceholderPaneFactory()

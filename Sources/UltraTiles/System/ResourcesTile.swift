@@ -55,7 +55,7 @@ public struct ResourcesTile: View {
         while !Task.isCancelled {
             model.rootPIDs = context.shellPIDs()
             await model.refresh()
-            try? await Task.sleep(for: .seconds(2))
+            await TilePolling.tick(Preferences.resourcesInterval)
         }
     }
 }

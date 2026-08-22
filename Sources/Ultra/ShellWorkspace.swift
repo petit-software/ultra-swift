@@ -18,7 +18,7 @@ enum ShellWorkspace {
     ///   is new work — restoring into it would clone the panes already on screen.
     static func make(storage: WorkspaceStorage,
                      directory: String,
-                     theme: TerminalTheme = .dark,
+                     theme: TerminalTheme? = nil,
                      restore: Bool = true) -> LayoutStore {
         let document = restore ? storage.loadAll().first : nil
         let records: [PaneID: PaneRecord] = document.map { document in
@@ -30,6 +30,7 @@ enum ShellWorkspace {
         // One id for the workspace, its store, and its agent socket — they must agree.
         let workspaceID = document?.id ?? UUID()
 
+        let theme = theme ?? Preferences.resolvedTheme()
         let factory = ShellPaneFactory(theme: theme, defaultDirectory: directory,
                                        restoring: records)
 

@@ -144,7 +144,7 @@ public struct GitTile: View {
     private func poll() async {
         while !Task.isCancelled {
             await model.refresh()
-            try? await Task.sleep(for: .seconds(3))
+            await TilePolling.tick(Preferences.gitInterval)
         }
     }
 }

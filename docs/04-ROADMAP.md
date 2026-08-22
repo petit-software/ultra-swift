@@ -225,7 +225,7 @@ Everything here is already a constant in the code; a setting is a binding plus a
 turning them into computed properties over `UserDefaults` with today's constants as the
 defaults — about twenty lines, and no call site changes.
 
-**General — changes how the app works.**
+**General — changes how the app works. LANDED.**
 
 - **Terminal font size.** `ShellTerminalView.init(font:)` already takes one and nothing ever
   sets it. The resize path it needs — coalescing and `SIGWINCH` — is already built. Probably
@@ -240,7 +240,24 @@ defaults — about twenty lines, and no call site changes.
 - **Where the Todo and Context lists live.** Choosable per project today, remembered in
   defaults; a global default (`.ultra/todo.md` vs `docs/TODO.md`) belongs here.
 - **Poll intervals** for Ports, Resources and Git (2s, 2s, 3s), and **pause polling while the
-  window is occluded** — the battery item already flagged under M4.
+  window is occluded** — the battery item already flagged under M4. `TilePolling.tick()`
+  checks occlusion AFTER the interval, not before: a tile that has just become visible
+  should refresh promptly rather than sit out a wait it started while hidden.
+
+Two things the build settled:
+
+- **"Follow System" must not pin the window's appearance.** The theme is derived FROM the
+  system appearance, so pinning it back is a loop that never notices the system changing.
+  `Preferences.pinsWindowAppearance` is false in that mode and the window is left alone.
+- **A NaN sentinel silently disabled every write.** The no-op guard compared the new value
+  against the stored one, using `.nan` to mean "nothing stored yet" — and every comparison
+  against NaN is false, so the guard rejected the write instead of allowing it. Nothing
+  could be set at all. Each setter now passes its own current value. Caught by tests within
+  a minute of writing them; it would have looked like the settings window simply not working.
+
+Both settings stores read and write through an injectable `UserDefaults`, because two test
+suites in different targets mutating the same keys in `.standard` is a real flake — it
+failed once before the runs went green, which is precisely how that bug presents.
 
 **Appearance — live sliders over existing tokens. LANDED.**
 

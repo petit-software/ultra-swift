@@ -42,9 +42,13 @@ public enum Appearance {
 
     private static let prefix = "appearance."
 
+    /// Where the values live. Injectable so tests can use an isolated suite; two test
+    /// suites mutating the same keys in `.standard` is a genuine flake.
+    public nonisolated(unsafe) static var store: UserDefaults = .standard
+
     public static func value(_ key: Key) -> CGFloat {
         let fallback = fallbacks[key] ?? 0
-        guard let stored = UserDefaults.standard.object(forKey: prefix + key.rawValue) as? Double
+        guard let stored = store.object(forKey: prefix + key.rawValue) as? Double
         else { return fallback }
         return clamp(CGFloat(stored), to: key)
     }
@@ -52,13 +56,13 @@ public enum Appearance {
     public static func set(_ key: Key, _ newValue: CGFloat) {
         let clamped = clamp(newValue, to: key)
         guard abs(clamped - value(key)) > 0.0001 else { return }
-        UserDefaults.standard.set(Double(clamped), forKey: prefix + key.rawValue)
+        store.set(Double(clamped), forKey: prefix + key.rawValue)
         NotificationCenter.default.post(name: didChange, object: nil)
     }
 
     public static func reset() {
         for key in Key.allCases {
-            UserDefaults.standard.removeObject(forKey: prefix + key.rawValue)
+            store.removeObject(forKey: prefix + key.rawValue)
         }
         NotificationCenter.default.post(name: didChange, object: nil)
     }

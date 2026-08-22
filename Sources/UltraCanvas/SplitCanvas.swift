@@ -139,7 +139,12 @@ public struct WindowChrome: NSViewRepresentable {
         // Titlebar, backdrop material, glass headers, menus and the palette all resolve
         // from the appearance — pinning it to the terminal theme is what makes the window
         // one continuous surface instead of light chrome around a dark terminal.
-        let appearance = NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
+        // In "Follow System" the appearance is deliberately NOT pinned: the theme is
+        // derived FROM the system appearance, so pinning it back is a loop that never
+        // notices the system changing.
+        let appearance = Preferences.pinsWindowAppearance
+            ? NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
+            : nil
         window.appearance = appearance
         NSApp.appearance = appearance
         window.styleMask.insert(.fullSizeContentView)

@@ -56,7 +56,7 @@ public final class ShellPaneFactory {
         // A restored pane reopens where it was; a new one opens in the workspace directory.
         let cwd = record?.cwd ?? defaultDirectory
         let spec = ShellSpec(cwd: cwd, agentCommand: agent, theme: theme)
-        let view = ShellTerminalView(spec: spec)
+        let view = ShellTerminalView(spec: spec, font: Preferences.terminalFont)
         if let agentSocketPath { view.extraEnvironment["ULTRA_AGENT_SOCK"] = agentSocketPath }
         view.shellDelegate = self
         shells[paneID] = view
@@ -86,6 +86,18 @@ public final class ShellPaneFactory {
     /// Called when a divider drag or window resize commits.
     public func commitResize() {
         for shell in shells.values { shell.commitPendingResize() }
+    }
+
+    /// Push the current font to every live shell and re-tell each PTY its size.
+    ///
+    /// The grid is measured from the font, so a size change moves every cell boundary —
+    /// without the authoritative resize the shell keeps drawing to the old rows and columns.
+    public func applyFont() {
+        let font = Preferences.terminalFont
+        for shell in shells.values where shell.font != font {
+            shell.font = font
+            shell.commitPendingResize()
+        }
     }
 
     public func apply(theme: TerminalTheme) {

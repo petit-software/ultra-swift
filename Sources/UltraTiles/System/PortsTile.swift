@@ -38,7 +38,7 @@ public struct PortsTile: View {
         while !Task.isCancelled {
             model.ownedPIDs = context.shellPIDs()
             await model.refresh()
-            try? await Task.sleep(for: .seconds(2))
+            await TilePolling.tick(Preferences.portsInterval)
         }
     }
 }

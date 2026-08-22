@@ -15,9 +15,90 @@ struct UltraSettings: View {
 
 private struct GeneralSettings: View {
     @State private var guardState = SleepGuard.shared
+    @State private var prefs = PreferencesModel.shared
 
     var body: some View {
         Form {
+            Section("Terminal") {
+                LabeledContent("Font size") {
+                    HStack {
+                        Slider(value: prefs.number({ Preferences.terminalFontSize },
+                                                   { Preferences.terminalFontSize = $0 }),
+                               in: 8...32, step: 1)
+                            .frame(width: 180)
+                        Text("\(Int(Preferences.terminalFontSize)) pt")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 46, alignment: .trailing)
+                    }
+                }
+
+                Picker("Theme", selection: prefs.theme()) {
+                    ForEach(Preferences.ThemeMode.allCases) { Text($0.title).tag($0) }
+                }
+
+                LabeledContent("Background opacity") {
+                    HStack {
+                        Slider(value: prefs.number({ Preferences.terminalBackgroundOpacity },
+                                                   { Preferences.terminalBackgroundOpacity = $0 }),
+                               in: 0...1, step: 0.01)
+                            .frame(width: 180)
+                        Text("\(Int(Preferences.terminalBackgroundOpacity * 100))%")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 46, alignment: .trailing)
+                    }
+                }
+                Text("""
+                     At 0% a shell has no surface of its own and the pane's glass shows \
+                     through the cells. Raising it makes shells opaque — and gives a \
+                     shell's header something to blur.
+                     """)
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+            }
+
+            Section("Files") {
+                Toggle("Show dotfiles in the file tree",
+                       isOn: prefs.flag({ Preferences.showsHiddenFiles },
+                                        { Preferences.showsHiddenFiles = $0 }))
+                Text("The starting state for new file-tree panes. Each pane can still be "
+                     + "toggled on its own.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+
+                LabeledContent("Todo file") {
+                    TextField("", text: prefs.text({ Preferences.defaultTodoPath },
+                                                   { Preferences.defaultTodoPath = $0 }))
+                        .frame(width: 200)
+                }
+                LabeledContent("Context file") {
+                    TextField("", text: prefs.text({ Preferences.defaultContextPath },
+                                                   { Preferences.defaultContextPath = $0 }))
+                        .frame(width: 200)
+                }
+                Text("Where these live in a project that has not chosen for itself. A "
+                     + "project's own choice always wins.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Section("Updating") {
+                intervalRow("Ports", { Preferences.portsInterval },
+                            { Preferences.portsInterval = $0 }, 1...30)
+                intervalRow("Resources", { Preferences.resourcesInterval },
+                            { Preferences.resourcesInterval = $0 }, 1...30)
+                intervalRow("Git", { Preferences.gitInterval },
+                            { Preferences.gitInterval = $0 }, 1...60)
+                Toggle("Pause while the window is hidden",
+                       isOn: prefs.flag({ Preferences.pausePollingWhenOccluded },
+                                        { Preferences.pausePollingWhenOccluded = $0 }))
+                Text("Each of these runs a real command — lsof, ps, git. Behind a hidden "
+                     + "window that is battery spent updating pixels nobody can see.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            }
+
             Section {
                 Toggle("Keep this Mac awake while an agent is running",
                        isOn: Binding(get: { guardState.isEnabled },
@@ -42,9 +123,30 @@ private struct GeneralSettings: View {
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
             }
+
+            Section {
+                Button("Reset to Defaults") { Preferences.reset() }
+            }
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
+        .frame(height: 560)
+    }
+
+    private func intervalRow(_ title: String,
+                             _ get: @escaping () -> CGFloat,
+                             _ set: @escaping (CGFloat) -> Void,
+                             _ range: ClosedRange<CGFloat>) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Slider(value: prefs.number(get, set), in: range, step: 1)
+                    .frame(width: 160)
+                Text("\(Int(get())) s")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 40, alignment: .trailing)
+            }
+        }
     }
 }
 
