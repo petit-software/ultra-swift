@@ -215,25 +215,12 @@ struct RootView: View {
             // a toolbar item gets the standard Liquid Glass treatment automatically, which
             // is the same glass Finder's toolbar buttons wear. Nothing to style by hand.
             .toolbar {
-                // `.principal` is the toolbar's centre slot — the same one Mail and Notes
-                // use for a title, so it stays centred as the window resizes.
-                ToolbarItem(placement: .principal) {
-                    Text("Ultra")
-                        .font(.system(size: 17, weight: .bold, design: .default))
-                        .foregroundStyle(Token.Colour.label)
-                }
-                // A name is a label, not a control — the shared glass capsule macOS 26 puts
-                // behind toolbar items made it read as a button you could press.
-                .sharedBackgroundVisibility(.hidden)
-
-                // Everything else the toolbar owns sits hard right; the flexible spacer is
-                // what pushes it there, leaving the leading side to the traffic lights.
-                ToolbarSpacer(.flexible)
-
                 // Every pane kind, one click from the window itself. Buried in a menu bar
                 // submenu they may as well not exist — this is where someone looks for
                 // "another pane", and it is the only place the full list is discoverable.
-                ToolbarItem(placement: .primaryAction) {
+                // `.navigation` is the toolbar's LEADING slot, so it sits with the traffic
+                // lights rather than among the pane verbs on the right.
+                ToolbarItem(placement: .navigation) {
                     Menu {
                         Section("New Pane") {
                             Button("Shell") { ShellWorkspace.openShell(in: store) }
@@ -260,6 +247,21 @@ struct RootView: View {
                     }
                     .help("New pane, or change this one")
                 }
+
+                // `.principal` is the toolbar's centre slot — the same one Mail and Notes
+                // use for a title, so it stays centred as the window resizes.
+                ToolbarItem(placement: .principal) {
+                    Text("Ultra")
+                        .font(.system(size: 17, weight: .bold, design: .default))
+                        .foregroundStyle(Token.Colour.label)
+                }
+                // A name is a label, not a control — the shared glass capsule macOS 26 puts
+                // behind toolbar items made it read as a button you could press.
+                .sharedBackgroundVisibility(.hidden)
+
+                // Everything else the toolbar owns sits hard right; the flexible spacer is
+                // what pushes it there, leaving the leading side to the traffic lights.
+                ToolbarSpacer(.flexible)
 
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.split(edge: .right) } label: {
