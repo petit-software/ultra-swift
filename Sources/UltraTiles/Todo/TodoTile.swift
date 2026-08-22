@@ -80,10 +80,33 @@ public struct TodoTile: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(Token.Colour.accent)
             }
+
+            Menu {
+                Text(TileFactory.abbreviate(store.url.path))
+                Divider()
+                Button("Choose Location…") { chooseLocation() }
+                Button("Use Project Default") { store.resetLocation() }
+            } label: {
+                Image(systemName: "folder")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .foregroundStyle(Token.Colour.tertiaryLabel)
+            .help("Where this list is stored")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.thinMaterial)
+    }
+
+    private func chooseLocation() {
+        guard let url = chooseTileFile(title: "Todo List Location",
+                                       suggestedName: store.url.lastPathComponent,
+                                       directory: context.root,
+                                       allowedExtensions: ["md", "markdown", "txt"])
+        else { return }
+        store.relocate(to: url)
     }
 
     private func add() {

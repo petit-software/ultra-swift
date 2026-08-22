@@ -129,3 +129,75 @@ struct TodoStoreTests {
         #expect(store.exists == false)
     }
 }
+
+/// A todo list is a file in a project, so where it lives is the user's call — one repo keeps
+/// it at docs/TODO.md, another outside the tree entirely.
+@Suite("Todo location")
+@MainActor
+struct TodoLocationTests {
+
+    private func makeProject() throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-loc-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    @Test("a chosen location is used, and survives reopening the tile")
+    func relocatePersists() throws {
+        let root = try makeProject()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: TodoStore.defaultsKey(for: root))
+        }
+        let chosen = root.appendingPathComponent("docs/PLAN.md")
+        try FileManager.default.createDirectory(at: chosen.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try "- [ ] from the chosen file\n".write(to: chosen, atomically: true, encoding: .utf8)
+
+        let store = TodoStore(root: root)
+        #expect(store.url.path.hasSuffix(".ultra/todo.md"))
+        store.relocate(to: chosen)
+        #expect(store.url == chosen)
+        #expect(store.document.items.map(\.text) == ["from the chosen file"])
+
+        // Closing and reopening the pane must not forget the choice.
+        let reopened = TodoStore(root: root)
+        #expect(reopened.url == chosen)
+        #expect(reopened.document.items.count == 1)
+    }
+
+    @Test("edits after relocating write to the NEW file, not the old one")
+    func writesToTheChosenFile() throws {
+        let root = try makeProject()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: TodoStore.defaultsKey(for: root))
+        }
+        let chosen = root.appendingPathComponent("NOTES.md")
+        try "- [ ] a\n".write(to: chosen, atomically: true, encoding: .utf8)
+
+        let store = TodoStore(root: root)
+        store.relocate(to: chosen)
+        store.addItem("b")
+
+        #expect(try String(contentsOf: chosen, encoding: .utf8).contains("- [ ] b"))
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent(".ultra/todo.md").path),
+                "the default location must not be written to once a choice is made")
+    }
+
+    @Test("resetting goes back to the project default")
+    func reset() throws {
+        let root = try makeProject()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: TodoStore.defaultsKey(for: root))
+        }
+        let chosen = root.appendingPathComponent("ELSEWHERE.md")
+        try "- [ ] x\n".write(to: chosen, atomically: true, encoding: .utf8)
+        let store = TodoStore(root: root)
+        store.relocate(to: chosen)
+        store.resetLocation()
+        #expect(store.url.path.hasSuffix(".ultra/todo.md"))
+    }
+}

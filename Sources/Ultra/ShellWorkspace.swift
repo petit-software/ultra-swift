@@ -107,11 +107,20 @@ enum ShellWorkspace {
         /// a shell reports its directory as it changes — so this follows `cd`.
         @MainActor static func workingDirectory(fallback: URL) -> URL {
             for store in stores.values {
-                if let cwd = store.surfaces.records[store.tree.focused]?.cwd {
+                // The focused pane when it is itself a shell — that is the one the user is
+                // working in. Otherwise the FIRST shell in the layout, which is the pane a
+                // project is usually opened into. A tile has no directory of its own to
+                // offer, so a focused tile falls through rather than answering.
+                let focused = store.tree.focused
+                if let record = store.surfaces.records[focused],
+                   record.kind == .shell, let cwd = record.cwd {
                     return URL(fileURLWithPath: cwd)
                 }
-                if let cwd = store.tree.paneIDs.compactMap({ store.surfaces.records[$0]?.cwd }).first {
-                    return URL(fileURLWithPath: cwd)
+                for paneID in store.tree.paneIDs {
+                    if let record = store.surfaces.records[paneID],
+                       record.kind == .shell, let cwd = record.cwd {
+                        return URL(fileURLWithPath: cwd)
+                    }
                 }
             }
             return fallback

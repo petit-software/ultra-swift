@@ -35,11 +35,45 @@ public final class ContextModel {
     public var totalTokens: Int { items.reduce(0) { $0 + $1.tokens } }
 
     private var bookmarks: [UUID: Data] = [:]
-    private let storeURL: URL
+    public private(set) var storeURL: URL
+    private let root: URL
 
     public init(root: URL) {
-        storeURL = root.appendingPathComponent(".ultra/context.json")
+        self.root = root
+        storeURL = Self.storedLocation(for: root) ?? Self.defaultLocation(in: root)
         load()
+    }
+
+    public static func defaultLocation(in root: URL) -> URL {
+        root.appendingPathComponent(".ultra/context.json")
+    }
+
+    /// Point this list at a different file, and remember it. Like the todo list, a context
+    /// list belongs to a project, so the project decides where it lives.
+    public func relocate(to newURL: URL) {
+        UserDefaults.standard.set(newURL.path, forKey: Self.defaultsKey(for: root))
+        storeURL = newURL
+        items.removeAll()
+        bookmarks.removeAll()
+        load()
+    }
+
+    public func resetLocation() {
+        UserDefaults.standard.removeObject(forKey: Self.defaultsKey(for: root))
+        storeURL = Self.defaultLocation(in: root)
+        items.removeAll()
+        bookmarks.removeAll()
+        load()
+    }
+
+    static func defaultsKey(for root: URL) -> String {
+        "ultra.contextLocation." + root.standardizedFileURL.path
+    }
+
+    static func storedLocation(for root: URL) -> URL? {
+        (UserDefaults.standard.string(forKey: defaultsKey(for: root))).map {
+            URL(fileURLWithPath: $0)
+        }
     }
 
     // MARK: Mutation

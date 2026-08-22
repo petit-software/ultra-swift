@@ -33,9 +33,42 @@ public final class TodoStore {
 
     public init(root: URL) {
         self.root = root
-        self.url = Self.preferredLocation(in: root)
+        self.url = Self.storedLocation(for: root) ?? Self.preferredLocation(in: root)
         load()
         beginWatching()
+    }
+
+    /// Point this tile at a different file, and remember it.
+    ///
+    /// A todo list is a file in a project, so WHERE it lives is the user's call — one repo
+    /// keeps it at `docs/TODO.md`, another in a notes folder outside the tree entirely.
+    public func relocate(to newURL: URL) {
+        UserDefaults.standard.set(newURL.path, forKey: Self.defaultsKey(for: root))
+        url = newURL
+        notice = nil
+        lastWrittenText = nil
+        load()
+        beginWatching()
+    }
+
+    /// Back to `.ultra/todo.md`, or whatever the project already had.
+    public func resetLocation() {
+        UserDefaults.standard.removeObject(forKey: Self.defaultsKey(for: root))
+        url = Self.preferredLocation(in: root)
+        notice = nil
+        lastWrittenText = nil
+        load()
+        beginWatching()
+    }
+
+    static func defaultsKey(for root: URL) -> String {
+        "ultra.todoLocation." + root.standardizedFileURL.path
+    }
+
+    static func storedLocation(for root: URL) -> URL? {
+        (UserDefaults.standard.string(forKey: defaultsKey(for: root))).map {
+            URL(fileURLWithPath: $0)
+        }
     }
 
     // MARK: Location

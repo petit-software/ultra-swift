@@ -119,12 +119,52 @@ autocomplete, split views and a tab bar are all deliberately absent: each one is
 use the editor the user already has, and this tile exists so a one-line config fix does not
 need a context switch. Full spec: `03-TILES.md` § 1c.
 
+## M4c — Agent control channel ← *the one with real design risk*
+
+Today the flow is one-way: Ultra injects text into an agent's prompt. The agent cannot ask
+Ultra for anything. It should be able to say **"open this file"**, **"select these lines"**,
+**"reveal this in the file tree"**, or **"here is a form, fill it in and send it back"** — so
+a review turns into a click rather than a copy-paste of a path.
+
+- **Transport.** A line-oriented protocol on a socket at `.ultra/agent.sock`, with the path in
+  the pane's environment. NOT a terminal escape sequence: an escape sequence in scrollback
+  replays when the buffer is redrawn, and any process that can write to the tty — including
+  `cat`ing a hostile file — could drive the app. A socket is addressed by the process that
+  was handed it.
+- **Verbs, small and closed.** `open(path, line?, selection?)`, `reveal(path)`,
+  `highlight(path, ranges)`, `ask(fields) -> values`. No eval, no arbitrary AppleScript, no
+  "run this command" — the agent already has a shell for that, and a verb list that can grow
+  without review is an injection surface.
+- **Trust.** The socket is per-workspace, mode 0600, and only panes this app spawned get its
+  path. Every verb is scoped to the workspace root: a path outside it is refused, not
+  clamped, so a traversal attempt is visible rather than silently corrected.
+- **`ask` needs a UI.** A small form in the pane that requested it, with the answer returned
+  as a JSON line. This is the piece that makes "open something for me to fill" work, and the
+  piece most likely to need iteration.
+
+**Accept when** an agent can open a file at a line in the Editor pane, highlight a range the
+user can see, and receive a filled-in form back — and when a `cat` of a file containing the
+protocol's own bytes changes nothing.
+
+## M4d — Editor: more than one file
+
+The Editor pane holds exactly one file today. Multiple files need: a file list or tab strip,
+per-file dirty state, "close" that asks about unsaved work, and reopening the whole set on
+restore rather than just the front one. Deliberately after M4c, because the agent channel is
+what makes opening files common enough for this to matter.
+
 ## M5 — Git worktree tile
 
 > **Status: landed.** Branch, upstream divergence, worktrees, per-file index/worktree state,
 > stage/unstage/discard, and in-flight rebase/merge detection — parsed from
-> `--porcelain=v2`, verified in test against a real repository. **Outstanding:** creating a
-> worktree from the tile, and opening a diff.
+> `--porcelain=v2`, verified in test against a real repository.
+>
+> **Outstanding — diffs.** Clicking a changed file should show its diff. `git diff` for
+> unstaged and `git diff --cached` for staged, since a file can be both at once and one
+> button cannot mean two things. Rendered in the pane, not shelled out to a pager: word-level
+> highlighting within a changed line is most of the value, and a pager gives none of it.
+> Hunk-level stage/unstage is the natural follow-on and is where this stops being small.
+> Also outstanding: creating a worktree from the tile.
 
 - Worktree list, branch, ahead/behind, status v2, per-file changes.
 - Create worktree, point a pane at one, stage/unstage/discard, open diff.
@@ -185,6 +225,8 @@ defaults — about twenty lines, and no call site changes.
   knob that decides whether a shell's header has anything behind it to blur.
 - **Show dotfiles in the file tree.** Shown by default now; the default belongs here, since
   `FileTreeModel.showsHidden` is per-pane and resets each time a pane opens.
+- **Where the Todo and Context lists live.** Choosable per project today, remembered in
+  defaults; a global default (`.ultra/todo.md` vs `docs/TODO.md`) belongs here.
 - **Poll intervals** for Ports, Resources and Git (2s, 2s, 3s), and **pause polling while the
   window is occluded** — the battery item already flagged under M4.
 

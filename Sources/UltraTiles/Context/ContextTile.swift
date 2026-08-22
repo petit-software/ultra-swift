@@ -69,6 +69,19 @@ public struct ContextTile: View {
                 .help("Clear everything except pinned items")
                 .disabled(model.items.allSatisfy(\.isPinned))
 
+            Menu {
+                Text(TileFactory.abbreviate(model.storeURL.path))
+                Divider()
+                Button("Choose Location…") { chooseLocation() }
+                Button("Use Project Default") { model.resetLocation() }
+            } label: {
+                Image(systemName: "folder")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Where this list is stored")
+
             Spacer()
 
             // Deliberately approximate, and labelled so: an exact-looking number here would
@@ -84,6 +97,15 @@ public struct ContextTile: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+
+    private func chooseLocation() {
+        guard let url = chooseTileFile(title: "Context List Location",
+                                       suggestedName: model.storeURL.lastPathComponent,
+                                       directory: context.root,
+                                       allowedExtensions: ["json"])
+        else { return }
+        model.relocate(to: url)
     }
 
     private func formatted(_ value: Int) -> String {
