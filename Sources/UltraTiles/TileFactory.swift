@@ -61,6 +61,14 @@ public final class TileFactory {
 
     public func release(_ paneID: PaneID) { hosts.removeValue(forKey: paneID) }
 
+    /// Forget everything remembered about a pane, including what kind it was RESTORED as.
+    /// Without this, converting a restored tile into a shell would see the old kind on the
+    /// next build and quietly rebuild the tile instead.
+    public func forget(_ paneID: PaneID) {
+        hosts.removeValue(forKey: paneID)
+        restored.removeValue(forKey: paneID)
+    }
+
     public static func record(for kind: PaneRecord.Kind, root: URL) -> PaneRecord {
         PaneRecord(kind: kind,
                    title: title(for: kind, root: root),

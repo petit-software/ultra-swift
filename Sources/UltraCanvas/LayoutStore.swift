@@ -22,6 +22,22 @@ public final class LayoutStore {
     /// Last laid-out canvas bounds, so commands can reason about geometry.
     public internal(set) var canvasBounds: CGRect = .zero
 
+    /// Bumped when a pane's CONTENT is replaced while the tree stays the same.
+    ///
+    /// The canvas rebuilds surfaces only for panes it does not already have, which is what
+    /// keeps a split from touching its siblings. Converting a pane changes nothing about the
+    /// tree, so without this the canvas would correctly conclude there is nothing to do.
+    public private(set) var surfaceRevision = 0
+
+    /// Replace what a pane holds, keeping its id, its position and its size.
+    ///
+    /// The old surface is released — which is what stops a converted shell's PTY — and the
+    /// next layout pass builds the replacement through the same factory chain as a new pane.
+    public func replaceContent(of paneID: PaneID) {
+        surfaces.release(paneID)
+        surfaceRevision += 1
+    }
+
     @ObservationIgnored public let surfaces: PaneSurfaceStore
     @ObservationIgnored public let undoManager = UndoManager()
     @ObservationIgnored private var navigation = NavigationMemory()

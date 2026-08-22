@@ -1,5 +1,6 @@
 import SwiftUI
 import UltraCanvas
+import UltraCore
 import UltraLayout
 
 /// Every pane verb, declared once.
@@ -11,6 +12,31 @@ import UltraLayout
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
+                                 + paneKinds
+
+    /// Opening and switching pane kinds. Palette-only: seven kinds times two verbs is
+    /// fourteen bindings nobody would remember, and the three that earn a shortcut declare
+    /// it on the menu item instead.
+    static let paneKinds: [AppCommand] =
+        PaneKind.all.filter { $0.kind != .shell }.map { entry in
+            AppCommand(id: "pane.new.\(entry.kind.rawValue)",
+                       title: "New \(entry.title) Pane",
+                       menuPath: ["File"],
+                       binding: nil) { store in
+                WorkspaceCommands.openTile(entry.kind, in: store)
+            }
+        }
+        + PaneKind.all.map { entry in
+            AppCommand(id: "pane.change.\(entry.kind.rawValue)",
+                       title: "Change Pane to \(entry.title)",
+                       menuPath: ["File"],
+                       binding: nil,
+                       isEnabled: { store in
+                           store.surfaces.records[store.tree.focused]?.kind != entry.kind
+                       }) { store in
+                ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
+            }
+        }
 
     static let splits: [AppCommand] = [
         AppCommand(id: "pane.split.right", title: "Split Right", menuPath: ["Pane", "Split"],
@@ -74,10 +100,8 @@ enum PaneCommands {
     /// builds rather than trusted to review.
     static func assertNoTerminalConflicts() {
         for command in all {
-            guard let binding = command.defaultBinding else {
-                assertionFailure("\(command.id) has no binding and no palette-only marker")
-                continue
-            }
+            // A palette-only command has no binding by design, so it cannot shadow anything.
+            guard let binding = command.defaultBinding else { continue }
             assert(!ReservedTerminalKeys.conflicts(binding),
                    "\(command.id) binds \(binding.display), which a terminal owns")
         }

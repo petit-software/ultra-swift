@@ -103,6 +103,12 @@ final class WorkspaceModel {
 /// Window- and tab-level verbs. Everything reaches the focused tab through `@FocusedValue`.
 struct WorkspaceCommands: Commands {
 
+    /// What the focused pane currently is, so "Change Pane To" can disable the no-op.
+    private var currentKind: PaneRecord.Kind? {
+        guard let store else { return nil }
+        return store.surfaces.records[store.tree.focused]?.kind
+    }
+
     /// Open a new pane holding a tile.
     ///
     /// The kind is staged BEFORE the split, because the factory is consulted during it. So a
@@ -136,42 +142,30 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(store == nil)
 
-            Button("New File Tree Pane") {
-                guard let store else { return }
-                Self.openTile(.fileTree, in: store)
-            }
-            .keyboardShortcut("e", modifiers: [.command, .option])
-            .disabled(store == nil)
-
-            Button("New Todo Pane") {
-                guard let store else { return }
-                Self.openTile(.todo, in: store)
-            }
-            .keyboardShortcut("y", modifiers: [.command, .option])
-            .disabled(store == nil)
-
-            Button("New Ports Pane") {
-                guard let store else { return }
-                Self.openTile(.ports, in: store)
+            // Every non-shell kind, from one list — a new kind must not need three
+            // separate edits to become openable.
+            Menu("New Tile Pane") {
+                ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
+                    Button(entry.title) {
+                        guard let store else { return }
+                        Self.openTile(entry.kind, in: store)
+                    }
+                    .modifier(TileShortcut(kind: entry.kind))
+                }
             }
             .disabled(store == nil)
 
-            Button("New Resources Pane") {
-                guard let store else { return }
-                Self.openTile(.resources, in: store)
-            }
-            .disabled(store == nil)
-
-            Button("New Git Pane") {
-                guard let store else { return }
-                Self.openTile(.git, in: store)
-            }
-            .keyboardShortcut("g", modifiers: [.command, .option])
-            .disabled(store == nil)
-
-            Button("New Context Pane") {
-                guard let store else { return }
-                Self.openTile(.context, in: store)
+            // Switching an EXISTING pane, rather than opening another one. Separate on
+            // purpose: converting a shell ends its process, which is not something to
+            // discover by picking the wrong menu item.
+            Menu("Change Pane To") {
+                ForEach(PaneKind.all) { entry in
+                    Button(entry.title) {
+                        guard let store else { return }
+                        ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
+                    }
+                    .disabled(currentKind == entry.kind)
+                }
             }
             .disabled(store == nil)
 
@@ -277,4 +271,20 @@ struct RootView: View {
 
 #Preview("Root — three across", traits: .fixedLayout(width: 1100, height: 700)) {
     RootView(store: .placeholders(.threeAcross), ui: UIState())
+}
+
+
+/// Default shortcuts for the tile kinds that earn one. Kinds without a binding are still
+/// reachable from the menu and the palette — a shortcut nobody can remember is not a feature.
+private struct TileShortcut: ViewModifier {
+    let kind: PaneRecord.Kind
+
+    func body(content: Content) -> some View {
+        switch kind {
+        case .fileTree: content.keyboardShortcut("e", modifiers: [.command, .option])
+        case .todo: content.keyboardShortcut("y", modifiers: [.command, .option])
+        case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
+        default: content
+        }
+    }
 }

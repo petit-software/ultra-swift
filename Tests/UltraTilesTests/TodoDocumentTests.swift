@@ -173,3 +173,54 @@ private struct SeededGenerator: RandomNumberGenerator {
         return state
     }
 }
+
+/// The grouping the tile renders. Split out of the view because the bug it once had —
+/// indexing out[-1] — could only crash at render time, where no test was looking.
+@Suite("Todo grouping")
+struct TodoGroupingTests {
+
+    @Test("tasks above any heading form their own leading group")
+    func tasksBeforeAnyHeading() {
+        let document = TodoDocument(text: """
+        - [ ] loose one
+        - [ ] loose two
+
+        ## Doing
+
+        - [ ] under a heading
+        """)
+        let groups = document.grouped
+        #expect(groups.count == 2)
+        #expect(groups[0].section == nil)
+        #expect(groups[0].items.map(\.text) == ["loose one", "loose two"])
+        #expect(groups[1].section == "Doing")
+    }
+
+    @Test("a file that is nothing but unsectioned tasks groups without trapping")
+    func onlyUnsectioned() {
+        let groups = TodoDocument(text: "- [ ] a\n- [ ] b\n").grouped
+        #expect(groups.count == 1)
+        #expect(groups[0].section == nil)
+        #expect(groups[0].items.count == 2)
+    }
+
+    @Test("an empty document has no groups")
+    func empty() {
+        #expect(TodoDocument(text: "").grouped.isEmpty)
+        #expect(TodoDocument(text: "# Just a heading\n").grouped.isEmpty)
+    }
+
+    @Test("the same heading text reappearing starts a new group, in file order")
+    func repeatedHeading() {
+        let groups = TodoDocument(text: """
+        ## A
+        - [ ] one
+        ## B
+        - [ ] two
+        ## A
+        - [ ] three
+        """).grouped
+        #expect(groups.map(\.section) == ["A", "B", "A"])
+        #expect(groups.map { $0.items.count } == [1, 1, 1])
+    }
+}

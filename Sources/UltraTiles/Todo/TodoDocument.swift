@@ -121,6 +121,33 @@ public struct TodoDocument: Equatable, Sendable {
         return out
     }
 
+    /// One heading's worth of tasks.
+    public struct Group: Identifiable, Equatable, Sendable {
+        public let section: String?
+        public var items: [Item]
+        /// Stable across reloads; the empty string is the run of tasks above any heading.
+        public var id: String { section ?? "" }
+    }
+
+    /// Tasks grouped by the heading they sit under, in file order.
+    ///
+    /// The obvious spelling of the "same section as the previous group?" test is
+    /// `out.last?.section == item.section`, and it is wrong: `out.last?.section` is a
+    /// DOUBLE optional, so on an empty array it flattens to nil and compares equal to a task
+    /// that has no section — then the append indexes `out[-1]` and traps. A file whose first
+    /// tasks sit above any heading is the common case, not an edge one.
+    public var grouped: [Group] {
+        var out: [Group] = []
+        for item in items {
+            if let last = out.last, last.section == item.section {
+                out[out.count - 1].items.append(item)
+            } else {
+                out.append(Group(section: item.section, items: [item]))
+            }
+        }
+        return out
+    }
+
     /// Section titles in file order, including a nil entry when tasks precede any heading.
     public var sections: [String] {
         var out: [String] = []

@@ -21,6 +21,8 @@ public struct SplitCanvas: NSViewRepresentable {
         // so a split or close from anywhere re-drives layout.
         _ = store.tree
         _ = store.metrics
+        // Registers the dependency that makes a pane conversion redraw.
+        _ = store.surfaceRevision
         view.sync()
     }
 }

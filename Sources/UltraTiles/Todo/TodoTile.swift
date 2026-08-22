@@ -41,8 +41,8 @@ public struct TodoTile: View {
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(groupedItems, id: \.0) { section, items in
-                        if let section {
+                    ForEach(store.document.grouped) { group in
+                        if let section = group.section {
                             Text(section)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Token.Colour.tertiaryLabel)
@@ -51,7 +51,7 @@ public struct TodoTile: View {
                                 .padding(.top, 10)
                                 .padding(.bottom, 3)
                         }
-                        ForEach(items) { item in
+                        ForEach(group.items) { item in
                             TodoRow(item: item,
                                     toggle: { store.toggle(item.id) },
                                     send: { context.injectIntoShell(item.text) },
@@ -62,19 +62,6 @@ public struct TodoTile: View {
                 .padding(.bottom, 6)
             }
         }
-    }
-
-    /// Items grouped by their heading, in file order.
-    private var groupedItems: [(String?, [TodoDocument.Item])] {
-        var out: [(String?, [TodoDocument.Item])] = []
-        for item in store.document.items {
-            if out.last?.0 == item.section {
-                out[out.count - 1].1.append(item)
-            } else {
-                out.append((item.section, [item]))
-            }
-        }
-        return out
     }
 
     private var composer: some View {

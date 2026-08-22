@@ -116,6 +116,21 @@ enum ShellWorkspace {
         Registry.factories[store.workspaceID]?.stageAgent(agent)
     }
 
+    /// Turn an existing pane into a different kind, in place.
+    ///
+    /// The pane keeps its id, its position and its size; only its contents change. A shell
+    /// being converted away loses its PTY, which is why the menu says "Change" rather than
+    /// offering it as a view toggle.
+    static func convert(_ paneID: PaneID, to kind: PaneRecord.Kind, in store: LayoutStore) {
+        guard store.surfaces.surfaceRecord(for: paneID).kind != kind else { return }
+        Registry.tiles[store.workspaceID]?.forget(paneID)
+        Registry.tiles[store.workspaceID]?.stage(TileFactory.supported.contains(kind) ? kind : nil)
+        store.replaceContent(of: paneID)
+    }
+
+    /// Every kind a pane can be, in menu order.
+    static var paneKinds: [PaneKind] { PaneKind.all }
+
     /// Make the next new pane a tile of this kind rather than a shell. Pass nil to clear a
     /// staging that never got used — a refused split must not leave one armed.
     static func stageTile(_ kind: PaneRecord.Kind?, for store: LayoutStore) {
@@ -126,4 +141,25 @@ enum ShellWorkspace {
     static func availableAgents() -> [AgentDefinition] {
         AgentDefinition.builtIns.filter { ShellLauncher.isAvailable($0.binary) }
     }
+}
+
+
+/// Every kind a pane can be, in menu order.
+///
+/// Nonisolated on purpose: the command registry is built at file scope, outside the main
+/// actor, and a main-actor list cannot be read from there.
+struct PaneKind: Identifiable, Sendable {
+    let kind: PaneRecord.Kind
+    let title: String
+    var id: PaneRecord.Kind { kind }
+
+    static let all: [PaneKind] = [
+        PaneKind(kind: .shell, title: "Shell"),
+        PaneKind(kind: .fileTree, title: "File Tree"),
+        PaneKind(kind: .todo, title: "Todo"),
+        PaneKind(kind: .git, title: "Git"),
+        PaneKind(kind: .ports, title: "Ports"),
+        PaneKind(kind: .resources, title: "Resources"),
+        PaneKind(kind: .context, title: "Context"),
+    ]
 }
