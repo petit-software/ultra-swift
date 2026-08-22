@@ -52,6 +52,7 @@ public final class PaneSurfaceStore {
         let content = make(paneID)
         records[paneID] = content.record
         let container = PaneContainerView(paneID: paneID, descriptor: content.descriptor,
+                                          kind: content.record.kind,
                                           content: content.view, actions: actions)
         containers[paneID] = container
         return container
@@ -98,6 +99,12 @@ public final class PaneSurfaceStore {
         for (paneID, container) in containers {
             container.isFocused = paneID == focused
         }
+    }
+
+    /// Re-apply colours the panes cached in layer state. The focus border is a CGColor on
+    /// a layer, set once — a changed accent reaches it only if it is pushed.
+    public func refreshChrome() {
+        for container in containers.values { container.refreshChrome() }
     }
 
     /// The last remaining pane hides its close control — there is nothing to close back to.

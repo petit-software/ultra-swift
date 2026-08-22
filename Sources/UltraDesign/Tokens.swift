@@ -36,7 +36,17 @@ public enum Token {
         public static let label = Color(nsColor: .labelColor)
         public static let secondaryLabel = Color(nsColor: .secondaryLabelColor)
         public static let tertiaryLabel = Color(nsColor: .tertiaryLabelColor)
-        public static let accent = Color(nsColor: .controlAccentColor)
+        /// The single tint. Every variation below is derived from it, so one setting moves
+        /// all of them — see `Preferences.AccentColour`.
+        public static var accent: Color { Preferences.accentColour.color }
+
+        /// A soft fill behind something tinted: a selected row, a notice bar, a highlight.
+        /// One value rather than the 0.10 / 0.12 / 0.18 / 0.20 that had accumulated across
+        /// the tiles, all of them meaning "a bit of the accent behind this".
+        public static var accentWash: Color { accent.opacity(0.14) }
+
+        /// The same idea, but for something the pointer is actively over — a drop target.
+        public static var accentWashStrong: Color { accent.opacity(0.24) }
 
         /// The window's own surface: a dark tint laid over the backdrop material at 30%,
         /// so the glass reads as smoked rather than as clear frost.
@@ -55,7 +65,9 @@ public enum Token {
 
         /// Border of the focused pane. The focused pane must be unmistakable without
         /// relying on colour alone — pair this with the header brightness difference.
-        public static let focusBorder = Color(nsColor: .controlAccentColor)
+        /// Derived, not a second accent: a focus ring that disagreed with the app's tint
+        /// would be the clearest possible sign the colours are not coming from one place.
+        public static var focusBorder: Color { accent }
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 
         /// Divider hairline. Under Increase Contrast this becomes an opaque separator.

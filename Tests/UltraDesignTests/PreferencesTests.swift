@@ -1,5 +1,6 @@
 import Testing
 import AppKit
+import SwiftUI
 import Foundation
 @testable import UltraDesign
 
@@ -141,6 +142,79 @@ struct PreferencesTests {
             #expect(count == 2)
             Preferences.showsHiddenFiles = false
             #expect(count == 2)
+        }
+    }
+
+
+    @Test("the default is white")
+    func defaultIsWhite() {
+        clean { #expect(Preferences.accentColour == .white) }
+    }
+
+    @Test("the accent choice round-trips and resets")
+    func accentRoundTrip() {
+        clean {
+            Preferences.accentColour = .purple
+            #expect(Preferences.accentColour == .purple)
+            Preferences.reset()
+            #expect(Preferences.accentColour == .white)
+        }
+    }
+
+    /// The point of the setting: ONE value drives every tinted thing. If a variation stops
+    /// deriving from `accent`, this is what catches it.
+    @Test("every derived tint follows the accent")
+    func derivationsFollow() {
+        clean {
+            func components(_ colour: Color) -> (Double, Double, Double, Double) {
+                let ns = NSColor(colour).usingColorSpace(.sRGB)!
+                return (ns.redComponent, ns.greenComponent, ns.blueComponent, ns.alphaComponent)
+            }
+            Preferences.accentColour = .red
+            let red = components(Token.Colour.accent)
+            #expect(red.0 > 0.5 && red.2 < 0.5)
+            #expect(components(Token.Colour.focusBorder).0 == red.0,
+                    "the focus ring must be the accent, not a second colour")
+            // The washes are the accent at a lower alpha, not a different hue.
+            func dominantChannel(_ c: (Double, Double, Double, Double)) -> Int {
+                c.0 >= c.1 && c.0 >= c.2 ? 0 : (c.1 >= c.2 ? 1 : 2)
+            }
+            for wash in [Token.Colour.accentWash, Token.Colour.accentWashStrong] {
+                let c = components(wash)
+                #expect(dominantChannel(c) == dominantChannel(red),
+                        "a wash must be the accent's hue, not a different colour")
+                #expect(c.3 < 0.5, "a wash is a background, so it stays translucent")
+            }
+            #expect(components(Token.Colour.accentWashStrong).3
+                    > components(Token.Colour.accentWash).3,
+                    "the active target must read stronger than a resting one")
+
+            Preferences.accentColour = .green
+            let green = components(Token.Colour.accent)
+            #expect(green.1 > red.1, "changing the accent changed the derived value too")
+            #expect(dominantChannel(components(Token.Colour.accentWash)) == dominantChannel(green))
+        }
+    }
+
+    @Test("changing the accent notifies once")
+    func accentNotifies() {
+        clean {
+            var count = 0
+            let token = NotificationCenter.default.addObserver(
+                forName: Preferences.didChange, object: nil, queue: nil) { _ in count += 1 }
+            defer { NotificationCenter.default.removeObserver(token) }
+            Preferences.accentColour = .teal
+            Preferences.accentColour = .teal
+            #expect(count == 1)
+        }
+    }
+
+    @Test("every choice offers a title and a colour")
+    func allChoicesAreUsable() {
+        for choice in Preferences.AccentColour.allCases {
+            #expect(!choice.title.isEmpty)
+            #expect(NSColor(choice.color).usingColorSpace(.sRGB) != nil,
+                    "\(choice.rawValue) has no renderable colour")
         }
     }
 }

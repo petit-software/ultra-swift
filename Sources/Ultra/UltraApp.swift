@@ -194,7 +194,7 @@ struct RootView: View {
     let store: LayoutStore
     @Bindable var ui: UIState
 
-    /// What the focused pane is right now, so "Change This Pane To" can dim the entry the
+    /// What the focused pane is right now, so File ▸ Change Pane To can dim the entry the
     /// user is already looking at.
     private var currentKind: PaneRecord.Kind? {
         store.surfaces.records[store.tree.focused]?.kind
@@ -236,19 +236,10 @@ struct RootView: View {
                         // Dimmed rather than silent: with the canvas full, every one of
                         // these can only beep.
                         .disabled(!ShellWorkspace.canOpenNewPane(in: store))
-                        Section("Change This Pane To") {
-                            ForEach(PaneKind.all) { entry in
-                                Button(entry.title) {
-                                    ShellWorkspace.convert(store.tree.focused,
-                                                           to: entry.kind, in: store)
-                                }
-                                .disabled(currentKind == entry.kind)
-                            }
-                        }
                     } label: {
                         Label("Add Pane", systemImage: "plus")
                     }
-                    .help("New pane, or change this one")
+                    .help("New pane")
                 }
 
                 // `.principal` is the toolbar's centre slot — the same one Mail and Notes

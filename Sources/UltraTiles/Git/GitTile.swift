@@ -113,7 +113,7 @@ public struct GitTile: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(worktree.isCurrent
-                                            ? Token.Colour.accent.opacity(0.18)
+                                            ? Token.Colour.accentWash
                                             : Token.Colour.label.opacity(0.06),
                                             in: .capsule)
                                 .foregroundStyle(worktree.isCurrent

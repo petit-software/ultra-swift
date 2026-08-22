@@ -74,6 +74,14 @@ public final class LayoutStore {
             focus: { [weak self] paneID in self?.focus(paneID) })
     }
 
+    /// Teach the pane headers what a pane can become. The canvas has no idea what a "Todo"
+    /// is; it lays out rectangles, so the list and the verb both come from the app.
+    public func setPaneKinds(_ kinds: [PaneKindChoice],
+                             change: @escaping (PaneID, PaneRecord.Kind) -> Void) {
+        surfaces.actions.kinds = kinds
+        surfaces.actions.changeKind = change
+    }
+
     public var layoutResult: LayoutResult {
         layout(tree, in: canvasBounds, metrics: metrics)
     }

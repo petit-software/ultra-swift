@@ -20,6 +20,51 @@ public enum Preferences {
         }
     }
 
+    /// The one colour the app is tinted with.
+    ///
+    /// Everything tinted derives from this single value — focus borders, checkboxes, drop
+    /// targets, the washes behind selected rows — so changing it here changes all of them.
+    /// There is no second accent anywhere to fall out of step.
+    public enum AccentColour: String, CaseIterable, Sendable, Identifiable {
+        case white, system, blue, teal, green, yellow, orange, red, pink, purple
+        public var id: String { rawValue }
+
+        public var title: String {
+            switch self {
+            case .white: "White"
+            case .system: "System Accent"
+            default: rawValue.capitalized
+            }
+        }
+
+        public var color: Color {
+            switch self {
+            case .white: .white
+            case .system: Color(nsColor: .controlAccentColor)
+            case .blue: Color(nsColor: .systemBlue)
+            case .teal: Color(nsColor: .systemTeal)
+            case .green: Color(nsColor: .systemGreen)
+            case .yellow: Color(nsColor: .systemYellow)
+            case .orange: Color(nsColor: .systemOrange)
+            case .red: Color(nsColor: .systemRed)
+            case .pink: Color(nsColor: .systemPink)
+            case .purple: Color(nsColor: .systemPurple)
+            }
+        }
+    }
+
+    public static var accentColour: AccentColour {
+        get {
+            store.string(forKey: prefix + "accentColour")
+                .flatMap(AccentColour.init(rawValue:)) ?? .white
+        }
+        set {
+            guard newValue != accentColour else { return }
+            store.set(newValue.rawValue, forKey: prefix + "accentColour")
+            post()
+        }
+    }
+
     public static let didChange = Notification.Name("com.ultra.preferences.didChange")
     private static let prefix = "preference."
 
@@ -127,7 +172,7 @@ public enum Preferences {
     // MARK: - Storage
 
     public static func reset() {
-        for key in ["terminalFontSize", "terminalBackgroundOpacity", "themeMode",
+        for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath"] {
             store.removeObject(forKey: prefix + key)
@@ -205,6 +250,11 @@ public final class PreferencesModel {
     public func flag(_ get: @escaping () -> Bool,
                      _ set: @escaping (Bool) -> Void) -> Binding<Bool> {
         Binding(get: { _ = self.revision; return get() }, set: set)
+    }
+
+    public func accent() -> Binding<Preferences.AccentColour> {
+        Binding(get: { _ = self.revision; return Preferences.accentColour },
+                set: { Preferences.accentColour = $0 })
     }
 
     public func theme() -> Binding<Preferences.ThemeMode> {

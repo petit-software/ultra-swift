@@ -146,7 +146,7 @@ private struct FileTreeRow: View {
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(Token.Colour.accent.opacity(0.20))
+                    .fill(Token.Colour.accentWashStrong)
                     .padding(.horizontal, 4)
             }
         }

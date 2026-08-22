@@ -18,6 +18,27 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
+            Section {
+                Picker("Accent", selection: prefs.accent()) {
+                    ForEach(Preferences.AccentColour.allCases) { choice in
+                        Label {
+                            Text(choice.title)
+                        } icon: {
+                            Circle().fill(choice.color).frame(width: 12, height: 12)
+                        }
+                        .tag(choice)
+                    }
+                }
+            } header: {
+                Text("Colour")
+            } footer: {
+                Text("One colour, used everywhere the app tints something — focus rings, "
+                     + "checkboxes, drop targets, selected rows. Changing it changes all of "
+                     + "them; there is no second accent to fall out of step.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            }
+
             Section("Terminal") {
                 LabeledContent("Font size") {
                     HStack {

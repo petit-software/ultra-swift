@@ -1,23 +1,46 @@
 import AppKit
 import SwiftUI
+import UltraCore
 import UltraDesign
 import UltraLayout
 
 /// What a pane's chrome can do. Every one of these is also a menu command with a key
 /// equivalent — a pointer affordance without a keyboard equivalent is a bug, see the
 /// `keyboard-first` skill.
+/// One entry in the "turn this pane into…" menu.
+public struct PaneKindChoice: Identifiable, Sendable, Equatable {
+    public let kind: PaneRecord.Kind
+    public let title: String
+    public let symbol: String
+    public var id: PaneRecord.Kind { kind }
+
+    public init(kind: PaneRecord.Kind, title: String, symbol: String) {
+        self.kind = kind
+        self.title = title
+        self.symbol = symbol
+    }
+}
+
 @MainActor
 public struct PaneActions {
     public var split: (PaneID, UltraLayout.Edge) -> Void
     public var close: (PaneID) -> Void
     public var focus: (PaneID) -> Void
+    /// What a pane can become. Supplied by the app, because the canvas knows nothing about
+    /// tile kinds — it lays out rectangles.
+    public var kinds: [PaneKindChoice]
+    public var changeKind: (PaneID, PaneRecord.Kind) -> Void
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
-                focus: @escaping (PaneID) -> Void) {
+                focus: @escaping (PaneID) -> Void,
+                kinds: [PaneKindChoice] = [],
+                changeKind: @escaping (PaneID, PaneRecord.Kind) -> Void = { _, _ in }) {
         self.split = split
         self.close = close
         self.focus = focus
+        self.kinds = kinds
+        self.changeKind = changeKind
     }
 
     public static let inert = PaneActions(split: { _, _ in }, close: { _ in }, focus: { _ in })
@@ -50,6 +73,7 @@ public struct PaneDescriptor: Sendable, Equatable {
 public struct PaneHeader: View {
     let paneID: PaneID
     let descriptor: PaneDescriptor
+    let currentKind: PaneRecord.Kind?
     let isFocused: Bool
     let canClose: Bool
     let actions: PaneActions
@@ -172,6 +196,8 @@ public final class PaneContainerView: NSView {
     private let clip = FlippedView()
     private let header: NSHostingView<PaneHeader>
     private var descriptor: PaneDescriptor
+    /// What this pane currently is, so its own kind is not offered as a change.
+    private var kind: PaneRecord.Kind?
     private let actions: PaneActions
 
     public var isFocused: Bool = false {
@@ -185,12 +211,15 @@ public final class PaneContainerView: NSView {
         didSet { guard canClose != oldValue else { return }; refresh() }
     }
 
-    public init(paneID: PaneID, descriptor: PaneDescriptor, content: NSView, actions: PaneActions) {
+    public init(paneID: PaneID, descriptor: PaneDescriptor, kind: PaneRecord.Kind?,
+                content: NSView, actions: PaneActions) {
+        self.kind = kind
         self.paneID = paneID
         self.descriptor = descriptor
         self.content = content
         self.actions = actions
         self.header = NSHostingView(rootView: PaneHeader(paneID: paneID, descriptor: descriptor,
+                                                         currentKind: kind,
                                                          isFocused: false, canClose: true,
                                                          actions: actions))
         super.init(frame: .zero)
@@ -262,7 +291,7 @@ public final class PaneContainerView: NSView {
     private let headerBlur = HeaderBlurView()
 
     private func refresh() {
-        header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor,
+        header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor, currentKind: kind,
                                      isFocused: isFocused, canClose: canClose, actions: actions)
         // An unfocused pane wears no border at all — depth already separates it. Drawing a
         // box around every pane is what made six panes read as six grey slabs.
@@ -274,6 +303,9 @@ public final class PaneContainerView: NSView {
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
     }
+
+    /// Re-read the accent and repaint. See `PaneSurfaceStore.refreshChrome`.
+    public func refreshChrome() { refresh() }
 
     /// A shell renames its own pane as it runs — a new cwd, a new foreground process.
     public func update(descriptor: PaneDescriptor) {
@@ -313,23 +345,23 @@ public final class PaneContainerView: NSView {
 #Preview("Pane header — focused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
-               isFocused: true, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
 }
 
 #Preview("Pane header — unfocused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
-               isFocused: false, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: false, canClose: true, actions: .inert)
 }
 
 #Preview("Pane header — last pane, no close", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(icon: "sparkles", title: "claude", subtitle: "agent"),
-               isFocused: true, canClose: false, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: false, actions: .inert)
 }
 
 #Preview("Pane header — narrow", traits: .fixedLayout(width: 190, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
-               isFocused: true, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
 }

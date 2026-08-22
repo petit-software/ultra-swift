@@ -285,16 +285,23 @@ enum ShellWorkspace {
 struct PaneKind: Identifiable, Sendable {
     let kind: PaneRecord.Kind
     let title: String
+    /// The same symbol the pane wears in its header, so the menu and the icon agree.
+    let symbol: String
     var id: PaneRecord.Kind { kind }
 
     static let all: [PaneKind] = [
-        PaneKind(kind: .shell, title: "Shell"),
-        PaneKind(kind: .fileTree, title: "File Tree"),
-        PaneKind(kind: .editor, title: "Editor"),
-        PaneKind(kind: .todo, title: "Todo"),
-        PaneKind(kind: .git, title: "Git"),
-        PaneKind(kind: .ports, title: "Ports"),
-        PaneKind(kind: .resources, title: "Resources"),
-        PaneKind(kind: .context, title: "Context"),
+        PaneKind(kind: .shell, title: "Shell", symbol: "apple.terminal"),
+        PaneKind(kind: .fileTree, title: "File Tree", symbol: "folder"),
+        PaneKind(kind: .editor, title: "Editor", symbol: "doc.text"),
+        PaneKind(kind: .todo, title: "Todo", symbol: "checklist"),
+        PaneKind(kind: .git, title: "Git", symbol: "arrow.trianglehead.branch"),
+        PaneKind(kind: .ports, title: "Ports", symbol: "network"),
+        PaneKind(kind: .resources, title: "Resources", symbol: "gauge.with.needle"),
+        PaneKind(kind: .context, title: "Context", symbol: "paperclip"),
     ]
+
+    /// Handed to the canvas so a pane's own icon can offer the list.
+    static var choices: [PaneKindChoice] {
+        all.map { PaneKindChoice(kind: $0.kind, title: $0.title, symbol: $0.symbol) }
+    }
 }

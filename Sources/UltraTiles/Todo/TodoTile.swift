@@ -136,7 +136,7 @@ public struct TodoTile: View {
         .foregroundStyle(Token.Colour.secondaryLabel)
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(Token.Colour.accent.opacity(0.12))
+        .background(Token.Colour.accentWash)
     }
 
     private func message(for notice: TodoStore.Notice) -> String {

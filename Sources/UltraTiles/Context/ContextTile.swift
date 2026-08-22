@@ -48,7 +48,7 @@ public struct ContextTile: View {
             if isTargeted {
                 RoundedRectangle(cornerRadius: Token.Space.paneRadius, style: .continuous)
                     .strokeBorder(Token.Colour.accent, lineWidth: 2)
-                    .background(Token.Colour.accent.opacity(0.10))
+                    .background(Token.Colour.accentWash)
                     .allowsHitTesting(false)
             }
         }
