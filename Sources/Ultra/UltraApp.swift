@@ -151,6 +151,14 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store == nil)
 
+            Button("New Git Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.git, for: store)
+                store.split(edge: .right)
+            }
+            .keyboardShortcut("g", modifiers: [.command, .option])
+            .disabled(store == nil)
+
             Menu("New Agent Pane") {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {
