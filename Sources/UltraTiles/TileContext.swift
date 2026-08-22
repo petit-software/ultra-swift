@@ -13,13 +13,19 @@ public struct TileContext {
     public var injectIntoShell: (String) -> Void
     /// Reveal a path in Finder.
     public var revealInFinder: (URL) -> Void
+    /// The pids of this workspace's shells. Ports and Resources attribute by ancestry from
+    /// these, which is what separates "this project's dev server" from every other listener
+    /// on the machine. Read fresh on each poll, because panes open and close.
+    public var shellPIDs: () -> Set<Int32>
 
     public init(root: URL,
                 injectIntoShell: @escaping (String) -> Void = { _ in },
-                revealInFinder: @escaping (URL) -> Void = { _ in }) {
+                revealInFinder: @escaping (URL) -> Void = { _ in },
+                shellPIDs: @escaping () -> Set<Int32> = { [] }) {
         self.root = root
         self.injectIntoShell = injectIntoShell
         self.revealInFinder = revealInFinder
+        self.shellPIDs = shellPIDs
     }
 
     /// A context that does nothing, for previews and tests.

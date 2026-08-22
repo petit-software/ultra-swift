@@ -137,6 +137,20 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("y", modifiers: [.command, .option])
             .disabled(store == nil)
 
+            Button("New Ports Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.ports, for: store)
+                store.split(edge: .right)
+            }
+            .disabled(store == nil)
+
+            Button("New Resources Pane") {
+                guard let store else { return }
+                ShellWorkspace.stageTile(.resources, for: store)
+                store.split(edge: .right)
+            }
+            .disabled(store == nil)
+
             Menu("New Agent Pane") {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {

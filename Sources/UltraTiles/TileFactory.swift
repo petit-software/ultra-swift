@@ -25,7 +25,7 @@ public final class TileFactory {
     public func stage(_ kind: PaneRecord.Kind?) { pendingKind = kind }
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .todo]
+    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .todo, .ports, .resources]
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? restored[paneID]?.kind
@@ -43,6 +43,10 @@ public final class TileFactory {
             view = NSHostingView(rootView: FileTreeTile(context: paneContext))
         case .todo:
             view = NSHostingView(rootView: TodoTile(context: paneContext))
+        case .ports:
+            view = NSHostingView(rootView: PortsTile(context: paneContext))
+        case .resources:
+            view = NSHostingView(rootView: ResourcesTile(context: paneContext))
         default:
             return nil
         }
@@ -65,6 +69,8 @@ public final class TileFactory {
     public static func title(for kind: PaneRecord.Kind, root: URL) -> String {
         switch kind {
         case .todo: "Todo"
+        case .ports: "Ports"
+        case .resources: "Resources"
         default: abbreviate(root.path)
         }
     }

@@ -42,6 +42,9 @@ enum ShellWorkspace {
             },
             revealInFinder: { url in
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            },
+            shellPIDs: { [weak factory] in
+                Set(factory?.shells.values.compactMap(\.processID) ?? [])
             }), restoring: records)
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
