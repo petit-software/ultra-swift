@@ -242,14 +242,31 @@ defaults — about twenty lines, and no call site changes.
 - **Poll intervals** for Ports, Resources and Git (2s, 2s, 3s), and **pause polling while the
   window is occluded** — the battery item already flagged under M4.
 
-**Appearance — live sliders over existing tokens.**
+**Appearance — live sliders over existing tokens. LANDED.**
 
-`windowTintOpacity`, `headerBlurRadius`, `headerTintOpacity`, `paneRadius`, `gutter`,
-`paneShadowRadius`/`paneShadowOpacity`, and `windowRadius` — the last with a hard floor at
-`systemWindowRadius`, since going under it is what produces the doubled-corner glitch.
+Ten knobs: `windowRadius`, `windowBorderWidth`, `windowTintOpacity`, `paneRadius`,
+`paneShadowRadius`, `paneShadowOpacity`, `gutter`, `canvasPadding`, `headerBlurRadius`,
+`headerTintOpacity`. `windowRadius` has a hard floor at `systemWindowRadius`, since going
+under it is what produces the doubled-corner glitch.
 
-This tab pays for itself immediately: tuning the header blur by shipping a guess and asking
-whether it looks right is a slow way to find a number the user could just drag to.
+Three things the build settled, worth keeping:
+
+- **Clamping happens on the way out as well as in.** A value written by an older build, a
+  synced defaults domain, or `defaults write` from a shell never passed through a slider.
+  Clamping only on write leaves the floor unenforced for exactly the values nobody checked.
+- **The store is the source of truth, not the layout pass.** Substituting the gutter while
+  laying out looked equivalent and was not: `canSplit` and keyboard resize read
+  `LayoutStore.metrics` too, so a split could be refused on a gutter the canvas was not
+  using. `syncMetricsWithAppearance()` writes it in one place, and the initialiser applies
+  it before the first layout so a window never opens on the defaults and jumps.
+- **Layer state needs an explicit push.** Corner radii, shadows and the header's blur filter
+  are set once when a view is built; only layout re-reads on its own. Without
+  `refreshAppearance()` the slider moves, the number changes, and the window does not —
+  a silent failure, so it is covered by tests that assert on the layer's applied radius
+  rather than on the token.
+
+The knobs are data (`Appearance.Knob`), so the tab is a `ForEach` rather than ten
+hand-written sliders that drift out of step with the values behind them.
 
 **Later, and not one-liners.**
 

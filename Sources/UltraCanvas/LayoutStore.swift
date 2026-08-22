@@ -64,6 +64,11 @@ public final class LayoutStore {
         self.workspaceID = workspaceID
         self.storage = storage
         self.tree = tree
+        var metrics = metrics
+        // Applied here rather than after init so the very first layout already uses the
+        // user's spacing — otherwise the window opens on the defaults and jumps.
+        metrics.gutter = Token.Space.gutter
+        metrics.padding = Token.Space.canvasPadding
         self.metrics = metrics
         self.theme = theme
         self.surfaces = PaneSurfaceStore(make: makeSurface)
@@ -72,6 +77,16 @@ public final class LayoutStore {
             split: { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) },
             close: { [weak self] paneID in self?.close(paneID) },
             focus: { [weak self] paneID in self?.focus(paneID) })
+    }
+
+    /// Pull the user-adjustable spacing into the layout metrics.
+    ///
+    /// One source of truth on purpose: `layout`, `canSplit` and keyboard resize all read
+    /// `metrics`, so the gutter has to live there rather than being substituted during the
+    /// layout pass — otherwise a split can be refused on a gutter the canvas is not using.
+    public func syncMetricsWithAppearance() {
+        metrics.gutter = Token.Space.gutter
+        metrics.padding = Token.Space.canvasPadding
     }
 
     public var layoutResult: LayoutResult {
