@@ -32,8 +32,10 @@ public final class TileFactory {
         guard let kind, Self.supported.contains(kind) else { return nil }
         pendingKind = nil
 
-        // A restored tile reopens on its own directory; a new one takes the project root.
-        let root = restored[paneID]?.cwd.map { URL(fileURLWithPath: $0) } ?? context.root
+        // A restored tile reopens on its own directory; a new one follows the work — see
+        // `TileContext.currentDirectory`.
+        let root = restored[paneID]?.cwd.map { URL(fileURLWithPath: $0) }
+            ?? context.currentDirectory()
         var paneContext = context
         paneContext.root = root
 

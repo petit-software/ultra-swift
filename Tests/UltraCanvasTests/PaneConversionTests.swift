@@ -91,3 +91,47 @@ struct PaneConversionTests {
         #expect(view.currentResult.frames == framesBefore)
     }
 }
+
+/// "New pane" must not be a command that can only beep. Splitting the longer axis is what
+/// keeps room available; when nothing fits, callers need to know before offering the verb.
+@Suite("New pane placement")
+@MainActor
+struct NewPanePlacementTests {
+
+    private func store(_ fixture: LayoutTree.Fixture, size: CGSize) -> LayoutStore {
+        let factory = PlaceholderPaneFactory()
+        let store = LayoutStore(tree: .fixture(fixture)) { factory.makeContent(for: $0) }
+        store.canvasBounds = CGRect(origin: .zero, size: size)
+        return store
+    }
+
+    @Test("a wide pane splits sideways, a tall one splits downwards")
+    func splitsTheLongerAxis() {
+        let wide = store(.single, size: CGSize(width: 1200, height: 400))
+        #expect(firstViableEdge(in: wide) == .right)
+
+        let tall = store(.single, size: CGSize(width: 400, height: 1200))
+        #expect(firstViableEdge(in: tall) == .bottom)
+    }
+
+    @Test("a canvas with no room reports none rather than offering a doomed split")
+    func noRoom() {
+        let cramped = store(.single, size: CGSize(width: 180, height: 90))
+        #expect(firstViableEdge(in: cramped) == nil)
+    }
+
+    /// Mirrors ShellWorkspace.newPaneEdge, which lives in the app target and cannot be
+    /// imported here — the RULE is what matters and it is asserted against the same
+    /// `canSplit` the app calls.
+    private func firstViableEdge(in store: LayoutStore) -> Edge? {
+        let focused = store.tree.focused
+        let frame = store.layoutResult.frames[focused]
+        let widerThanTall = frame.map { $0.width >= $0.height } ?? true
+        let order: [Edge] = widerThanTall ? [.right, .bottom, .left, .top]
+                                          : [.bottom, .right, .top, .left]
+        return order.first {
+            canSplit(store.tree, pane: focused, edge: $0,
+                     in: store.canvasBounds, metrics: store.metrics)
+        }
+    }
+}

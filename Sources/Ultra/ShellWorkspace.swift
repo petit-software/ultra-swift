@@ -48,7 +48,9 @@ enum ShellWorkspace {
             },
             shellPIDs: { [weak factory] in
                 Set(factory?.shells.values.compactMap(\.processID) ?? [])
-            }), restoring: records)
+            },
+            currentDirectory: { Registry.workingDirectory(fallback: root) }),
+            restoring: records)
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
                                 theme: theme,
@@ -95,6 +97,21 @@ enum ShellWorkspace {
         @MainActor static var tiles: [UUID: TileFactory] = [:]
         @MainActor static var stores: [UUID: LayoutStore] = [:]
 
+        /// Where a new tile should point: the focused pane's directory when it has one,
+        /// else any pane's, else the workspace's own. Pane records carry the LIVE cwd —
+        /// a shell reports its directory as it changes — so this follows `cd`.
+        @MainActor static func workingDirectory(fallback: URL) -> URL {
+            for store in stores.values {
+                if let cwd = store.surfaces.records[store.tree.focused]?.cwd {
+                    return URL(fileURLWithPath: cwd)
+                }
+                if let cwd = store.tree.paneIDs.compactMap({ store.surfaces.records[$0]?.cwd }).first {
+                    return URL(fileURLWithPath: cwd)
+                }
+            }
+            return fallback
+        }
+
         /// The pane a tile's "send to shell" should type into: the focused pane when it is
         /// itself a shell, otherwise the first shell in the layout. Nil when the workspace
         /// holds no shell at all, in which case the verb is a no-op rather than a guess.
@@ -114,6 +131,48 @@ enum ShellWorkspace {
     /// Launch the next new pane as an agent rather than a plain shell.
     static func stageAgent(_ agent: AgentDefinition?, for store: LayoutStore) {
         Registry.factories[store.workspaceID]?.stageAgent(agent)
+    }
+
+    /// Which way a new pane should open, or nil when there is no room for one.
+    ///
+    /// Always splitting right means "New Pane" stops working as soon as the focused pane is
+    /// narrow — the split is refused for leaving an unusable half, and a beep is all the user
+    /// gets. Splitting the LONGER axis keeps panes closer to square and keeps room available
+    /// for longer; the remaining edges are tried before giving up.
+    static func newPaneEdge(in store: LayoutStore) -> Edge? {
+        let focused = store.tree.focused
+        let frame = store.layoutResult.frames[focused]
+        let widerThanTall = frame.map { $0.width >= $0.height } ?? true
+        let order: [Edge] = widerThanTall ? [.right, .bottom, .left, .top]
+                                          : [.bottom, .right, .top, .left]
+        return order.first {
+            canSplit(store.tree, pane: focused, edge: $0,
+                     in: store.canvasBounds, metrics: store.metrics)
+        }
+    }
+
+    /// Whether a new pane would fit at all. Menus dim their "New …" entries on this rather
+    /// than offering a command that can only beep.
+    static func canOpenNewPane(in store: LayoutStore) -> Bool {
+        newPaneEdge(in: store) != nil
+    }
+
+    /// Open a new pane holding a tile.
+    ///
+    /// The kind is staged BEFORE the split, because the factory is consulted during it. So a
+    /// refused split has to clear the staging again, or the next successful split silently
+    /// becomes a tile the user asked for minutes ago and had already given up on.
+    static func openTile(_ kind: PaneRecord.Kind, in store: LayoutStore) {
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        stageTile(kind, for: store)
+        if !store.split(edge: edge) { stageTile(nil, for: store) }
+    }
+
+    /// Open a new shell pane, optionally running an agent.
+    static func openShell(agent: AgentDefinition? = nil, in store: LayoutStore) {
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        stageAgent(agent, for: store)
+        if !store.split(edge: edge) { stageAgent(nil, for: store) }
     }
 
     /// Turn an existing pane into a different kind, in place.

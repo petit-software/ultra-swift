@@ -102,30 +102,15 @@ final class WorkspaceModel {
 
 /// Window- and tab-level verbs. Everything reaches the focused tab through `@FocusedValue`.
 struct WorkspaceCommands: Commands {
+    @FocusedValue(\.layoutStore) private var store
+    @FocusedValue(\.uiState) private var ui
+    @Environment(\.openWindow) private var openWindow
 
     /// What the focused pane currently is, so "Change Pane To" can disable the no-op.
     private var currentKind: PaneRecord.Kind? {
         guard let store else { return nil }
         return store.surfaces.records[store.tree.focused]?.kind
     }
-
-    /// Open a new pane holding a tile.
-    ///
-    /// The kind is staged BEFORE the split, because the factory is consulted during it. So a
-    /// refused split — the layout is full, and `split` beeps and returns false — has to clear
-    /// the staging again, or the next successful split silently becomes a tile the user asked
-    /// for minutes ago and had already given up on.
-    @MainActor
-    static func openTile(_ kind: PaneRecord.Kind, in store: LayoutStore) {
-        ShellWorkspace.stageTile(kind, for: store)
-        if !store.split(edge: .right) {
-            ShellWorkspace.stageTile(nil, for: store)
-        }
-    }
-
-    @FocusedValue(\.layoutStore) private var store
-    @FocusedValue(\.uiState) private var ui
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -136,8 +121,7 @@ struct WorkspaceCommands: Commands {
 
             Button("New Shell Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageAgent(nil, for: store)
-                if !store.split(edge: .right) { ShellWorkspace.stageAgent(nil, for: store) }
+                ShellWorkspace.openShell(in: store)
             }
             .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(store == nil)
@@ -148,12 +132,12 @@ struct WorkspaceCommands: Commands {
                 ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
                     Button(entry.title) {
                         guard let store else { return }
-                        Self.openTile(entry.kind, in: store)
+                        ShellWorkspace.openTile(entry.kind, in: store)
                     }
                     .modifier(TileShortcut(kind: entry.kind))
                 }
             }
-            .disabled(store == nil)
+            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
 
             // Switching an EXISTING pane, rather than opening another one. Separate on
             // purpose: converting a shell ends its process, which is not something to
@@ -173,8 +157,7 @@ struct WorkspaceCommands: Commands {
                 ForEach(ShellWorkspace.availableAgents()) { agent in
                     Button(agent.name) {
                         guard let store else { return }
-                        ShellWorkspace.stageAgent(agent, for: store)
-                        if !store.split(edge: .right) { ShellWorkspace.stageAgent(nil, for: store) }
+                        ShellWorkspace.openShell(agent: agent, in: store)
                     }
                 }
             }
@@ -208,6 +191,12 @@ struct RootView: View {
     let store: LayoutStore
     @Bindable var ui: UIState
 
+    /// What the focused pane is right now, so "Change This Pane To" can dim the entry the
+    /// user is already looking at.
+    private var currentKind: PaneRecord.Kind? {
+        store.surfaces.records[store.tree.focused]?.kind
+    }
+
     var body: some View {
         CanvasSurface(store: store, barActions: [
             WindowBarAction(id: "pane.split.right", symbol: "square.split.2x1",
@@ -240,6 +229,37 @@ struct RootView: View {
                 // Everything else the toolbar owns sits hard right; the flexible spacer is
                 // what pushes it there, leaving the leading side to the traffic lights.
                 ToolbarSpacer(.flexible)
+
+                // Every pane kind, one click from the window itself. Buried in a menu bar
+                // submenu they may as well not exist — this is where someone looks for
+                // "another pane", and it is the only place the full list is discoverable.
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Section("New Pane") {
+                            Button("Shell") { ShellWorkspace.openShell(in: store) }
+                            ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
+                                Button(entry.title) {
+                                    ShellWorkspace.openTile(entry.kind, in: store)
+                                }
+                            }
+                        }
+                        // Dimmed rather than silent: with the canvas full, every one of
+                        // these can only beep.
+                        .disabled(!ShellWorkspace.canOpenNewPane(in: store))
+                        Section("Change This Pane To") {
+                            ForEach(PaneKind.all) { entry in
+                                Button(entry.title) {
+                                    ShellWorkspace.convert(store.tree.focused,
+                                                           to: entry.kind, in: store)
+                                }
+                                .disabled(currentKind == entry.kind)
+                            }
+                        }
+                    } label: {
+                        Label("Add Pane", systemImage: "plus")
+                    }
+                    .help("New pane, or change this one")
+                }
 
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button { store.split(edge: .right) } label: {

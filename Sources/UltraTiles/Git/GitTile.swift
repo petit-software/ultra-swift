@@ -23,8 +23,11 @@ public struct GitTile: View {
                 Divider().overlay(Token.Colour.divider)
                 changeList
             } else {
+                // Say WHICH directory was checked. "Not a git repository" on its own reads
+                // as the tile being broken; naming the path shows it is pointed somewhere
+                // the user did not expect, which is the actual problem.
                 EmptyTileState(icon: "arrow.trianglehead.branch",
-                               title: "Not a git repository",
+                               title: "No repository here",
                                detail: TileFactory.abbreviate(context.root.path))
             }
             TileFooter(isBusy: model.isRefreshing, summary: summary) { await model.refresh() }

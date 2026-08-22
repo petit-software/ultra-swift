@@ -22,8 +22,9 @@ enum PaneCommands {
             AppCommand(id: "pane.new.\(entry.kind.rawValue)",
                        title: "New \(entry.title) Pane",
                        menuPath: ["File"],
-                       binding: nil) { store in
-                WorkspaceCommands.openTile(entry.kind, in: store)
+                       binding: nil,
+                       isEnabled: { ShellWorkspace.canOpenNewPane(in: $0) }) { store in
+                ShellWorkspace.openTile(entry.kind, in: store)
             }
         }
         + PaneKind.all.map { entry in
