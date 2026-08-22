@@ -49,7 +49,11 @@ enum ShellWorkspace {
             shellPIDs: { [weak factory] in
                 Set(factory?.shells.values.compactMap(\.processID) ?? [])
             },
-            currentDirectory: { Registry.workingDirectory(fallback: root) }),
+            currentDirectory: { Registry.workingDirectory(fallback: root) },
+            openInEditor: { url in
+                guard let store = Registry.stores.values.first else { return }
+                openEditor(on: url, in: store)
+            }),
             restoring: records)
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
@@ -169,6 +173,17 @@ enum ShellWorkspace {
         if !store.split(edge: edge) { stageTile(nil, for: store) }
     }
 
+    /// Open a new editor pane on a specific file.
+    static func openEditor(on file: URL, in store: LayoutStore) {
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        Registry.tiles[store.workspaceID]?.stage(file: file)
+        stageTile(.editor, for: store)
+        if !store.split(edge: edge) {
+            stageTile(nil, for: store)
+            Registry.tiles[store.workspaceID]?.stage(file: nil)
+        }
+    }
+
     /// Open a new shell pane, optionally running an agent.
     static func openShell(agent: AgentDefinition? = nil, in store: LayoutStore) {
         guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
@@ -223,6 +238,7 @@ struct PaneKind: Identifiable, Sendable {
     static let all: [PaneKind] = [
         PaneKind(kind: .shell, title: "Shell"),
         PaneKind(kind: .fileTree, title: "File Tree"),
+        PaneKind(kind: .editor, title: "Editor"),
         PaneKind(kind: .todo, title: "Todo"),
         PaneKind(kind: .git, title: "Git"),
         PaneKind(kind: .ports, title: "Ports"),

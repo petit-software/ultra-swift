@@ -66,6 +66,9 @@ public struct FileTreeTile: View {
 
     @ViewBuilder
     private func menu(for node: FileTreeModel.Node) -> some View {
+        if !node.isDirectory {
+            Button("Open in Editor") { context.openInEditor(node.url) }
+        }
         Button("Send Path to Shell") { send(node) }
         Button("Copy Path") {
             NSPasteboard.general.clearContents()

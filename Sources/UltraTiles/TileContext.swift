@@ -24,17 +24,21 @@ public struct TileContext {
     /// the workspace root is $HOME — and a Git tile opened beside a repo would sit there
     /// truthfully reporting "not a repository", which reads as the tile being broken.
     public var currentDirectory: () -> URL
+    /// Open a file in a new editor pane. The file tree's reason to exist beyond `ls`.
+    public var openInEditor: (URL) -> Void
 
     public init(root: URL,
                 injectIntoShell: @escaping (String) -> Void = { _ in },
                 revealInFinder: @escaping (URL) -> Void = { _ in },
                 shellPIDs: @escaping () -> Set<Int32> = { [] },
-                currentDirectory: (() -> URL)? = nil) {
+                currentDirectory: (() -> URL)? = nil,
+                openInEditor: @escaping (URL) -> Void = { _ in }) {
         self.root = root
         self.injectIntoShell = injectIntoShell
         self.revealInFinder = revealInFinder
         self.shellPIDs = shellPIDs
         self.currentDirectory = currentDirectory ?? { root }
+        self.openInEditor = openInEditor
     }
 
     /// A context that does nothing, for previews and tests.

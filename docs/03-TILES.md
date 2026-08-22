@@ -63,6 +63,29 @@ The project's files, lazily expanded.
   A file tree that opened an editor would be a worse editor than the user's own; one that
   types a path for you is the thing a terminal actually lacks.
 
+## 1c. Editor — the small one
+
+Essential only. This is the editor for fixing a typo in a config file without leaving the
+terminal, not a replacement for the one the user already has. Everything past this list is
+something another editor does better.
+
+- **Open, edit, save.** ⌘S is taken by the text view itself, because the app's ⌘S saves the
+  LAYOUT and while you are typing in a file that is not what the keystroke means.
+- **Line numbers**, drawn per VISIBLE line — a 50,000-line file costs the same to scroll as
+  a 50-line one.
+- **Smart substitutions off.** Curly quotes and em dashes silently replacing what you typed
+  is a bug generator in a config file. This is why it is `NSTextView` and not SwiftUI's
+  `TextEditor`, which inherits them and cannot carry a ruler either.
+- **Binary files are refused**, not shown as garbage that looks editable and corrupts on
+  save. A NUL byte in the first 8KB is the test.
+- **External changes**: reloaded when there are no local edits, and when there ARE, neither
+  side is touched and the user is told. Nothing here overwrites work without being asked.
+- **The open file is persisted** in the pane record, so a restored workspace reopens it.
+- Reachable from a File Tree pane's context menu — "Open in Editor".
+
+Deliberately absent: syntax highlighting, find and replace, multiple cursors, autocomplete,
+split views, and a tab bar. Each is a reason to use the editor the user already has.
+
 ## 2. Todo — per-project markdown
 
 Todos are files, not app state. They must be readable, diffable, committable, and editable by

@@ -24,8 +24,12 @@ public final class TileFactory {
     /// "New File Tree" must not turn every later split into a file tree.
     public func stage(_ kind: PaneRecord.Kind?) { pendingKind = kind }
 
+    /// The file the next editor pane should open. Consumed once, like the kind.
+    private var pendingFile: URL?
+    public func stage(file: URL?) { pendingFile = file }
+
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .todo, .ports, .resources, .git, .context]
+    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context]
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? restored[paneID]?.kind
@@ -43,6 +47,12 @@ public final class TileFactory {
         switch kind {
         case .fileTree:
             view = NSHostingView(rootView: FileTreeTile(context: paneContext))
+        case .editor:
+            // A staged file wins; a restored pane reopens whatever it had.
+            let file = pendingFile ?? restored[paneID]?.command.map { URL(fileURLWithPath: $0) }
+            pendingFile = nil
+            view = NSHostingView(rootView: EditorTile(context: paneContext, file: file))
+            if let file { return (view, Self.record(for: kind, root: root, file: file)) }
         case .todo:
             view = NSHostingView(rootView: TodoTile(context: paneContext))
         case .ports:
@@ -71,12 +81,17 @@ public final class TileFactory {
         restored.removeValue(forKey: paneID)
     }
 
-    public static func record(for kind: PaneRecord.Kind, root: URL) -> PaneRecord {
+    public static func record(for kind: PaneRecord.Kind,
+                              root: URL,
+                              file: URL? = nil) -> PaneRecord {
         PaneRecord(kind: kind,
-                   title: title(for: kind, root: root),
+                   title: file?.lastPathComponent ?? title(for: kind, root: root),
                    subtitle: nil,
                    icon: icon(for: kind),
-                   cwd: root.path)
+                   cwd: root.path,
+                   // `command` carries the open file for an editor pane, so a restored
+                   // workspace reopens what was being edited.
+                   command: file?.path)
     }
 
     /// A tile's header carries the same thing a shell's does — where it is pointed.
@@ -86,6 +101,7 @@ public final class TileFactory {
         case .ports: "Ports"
         case .resources: "Resources"
         case .git: "Git"
+        case .editor: "Editor"
         case .context: "Context"
         default: abbreviate(root.path)
         }
@@ -94,6 +110,7 @@ public final class TileFactory {
     public static func icon(for kind: PaneRecord.Kind) -> String {
         switch kind {
         case .fileTree: "folder"
+        case .editor: "doc.text"
         case .todo: "checklist"
         case .ports: "network"
         case .resources: "gauge.with.dots.needle.33percent"

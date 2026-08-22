@@ -108,6 +108,17 @@ killed by a tab switch.
 **Accept when** editing `.ultra/todo.md` in an external editor updates the tile within a second
 and toggling a checkbox in the tile leaves surrounding prose byte-identical.
 
+## M4b — Editor tile
+
+> **Status: landed.** Open, edit, save with ⌘S, line numbers, external-change and conflict
+> handling, binary refusal, and the open file persisted in the pane record. Reachable from a
+> File Tree pane. **Outstanding:** nothing planned — see below.
+
+Essential only, on purpose. Syntax highlighting, find and replace, multiple cursors,
+autocomplete, split views and a tab bar are all deliberately absent: each one is a reason to
+use the editor the user already has, and this tile exists so a one-line config fix does not
+need a context switch. Full spec: `03-TILES.md` § 1c.
+
 ## M5 — Git worktree tile
 
 > **Status: landed.** Branch, upstream divergence, worktrees, per-file index/worktree state,

@@ -7,7 +7,7 @@ import UltraLayout
 /// From M2 a shell pane restores by spawning a fresh PTY with the recorded cwd and command.
 public struct PaneRecord: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case shell, fileTree, todo, ports, resources, git, context, placeholder
+        case shell, fileTree, editor, todo, ports, resources, git, context, placeholder
     }
 
     public var kind: Kind
