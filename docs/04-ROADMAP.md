@@ -171,12 +171,26 @@ what makes opening files common enough for this to matter.
 > stage/unstage/discard, and in-flight rebase/merge detection — parsed from
 > `--porcelain=v2`, verified in test against a real repository.
 >
-> **Outstanding — diffs.** Clicking a changed file should show its diff. `git diff` for
-> unstaged and `git diff --cached` for staged, since a file can be both at once and one
-> button cannot mean two things. Rendered in the pane, not shelled out to a pager: word-level
-> highlighting within a changed line is most of the value, and a pager gives none of it.
-> Hunk-level stage/unstage is the natural follow-on and is where this stops being small.
-> Also outstanding: creating a worktree from the tile.
+> **Diffs — LANDED.** Clicking a changed file opens its diff in the pane. `git diff` and
+> `git diff --cached` are separate sides, because a file can be staged AND modified and one
+> button cannot mean two things; the picker only appears when a file genuinely has both.
+> Rendered in the pane with word-level highlighting inside a changed line, which is the
+> reason not to shell out to a pager.
+>
+> Three things the build settled:
+>
+> - **An untracked file has no diff at all** — git has never seen it — so it is compared
+>   against `/dev/null`. Otherwise clicking a new file shows an empty pane, which reads as
+>   the tile being broken.
+> - **A genuinely blank context line arrives as an EMPTY string**, because git drops the
+>   single leading space. Treating it as a header desynchronises every line number after it,
+>   silently, which is the one thing line numbers must not do.
+> - **Unequal runs of deletions and additions are not paired** for intra-line highlighting.
+>   Pairing by position across runs of different length highlights unrelated text; and when
+>   two lines share too little, no highlight at all, since marking the whole of both says
+>   nothing the colour did not already say.
+>
+> Outstanding: hunk-level stage/unstage, which is where this stops being small.
 
 - Worktree list, branch, ahead/behind, status v2, per-file changes.
 - Create worktree, point a pane at one, stage/unstage/discard, open diff.

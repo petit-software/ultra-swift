@@ -9,6 +9,8 @@ import UltraDesign
 public struct GitTile: View {
     @State private var model: GitModel
     @State private var confirming: GitModel.Change?
+    /// The file whose diff is on screen, if any.
+    @State private var viewing: GitModel.Change?
     private let context: TileContext
 
     public init(context: TileContext) {
@@ -19,9 +21,19 @@ public struct GitTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             if model.isRepository {
-                header
-                Divider().overlay(Token.Colour.divider)
-                changeList
+                // The diff REPLACES the list rather than sitting beside it. A pane is
+                // already as narrow as the user made it, and splitting it again would leave
+                // neither half readable; going back is one click.
+                if let viewing {
+                    DiffView(change: viewing,
+                             sides: model.availableSides(for: viewing),
+                             load: { await model.diff(for: viewing, side: $0) },
+                             close: { self.viewing = nil })
+                } else {
+                    header
+                    Divider().overlay(Token.Colour.divider)
+                    changeList
+                }
             } else {
                 // Say WHICH directory was checked. "Not a git repository" on its own reads
                 // as the tile being broken; naming the path shows it is pointed somewhere
@@ -128,6 +140,7 @@ public struct GitTile: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.changes) { change in
                         ChangeRow(change: change,
+                                  open: { viewing = change },
                                   stage: { Task { await model.stage(change) } },
                                   unstage: { Task { await model.unstage(change) } },
                                   discard: { confirming = change },
@@ -151,6 +164,7 @@ public struct GitTile: View {
 
 private struct ChangeRow: View {
     let change: GitModel.Change
+    let open: () -> Void
     let stage: () -> Void
     let unstage: () -> Void
     let discard: () -> Void
@@ -209,6 +223,12 @@ private struct ChangeRow: View {
         .padding(.vertical, 3)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
+        // The row opens the diff; the buttons on it keep their own actions because a
+        // `.plain` button inside a tapped row still wins the hit.
+        .onTapGesture(perform: open)
+        .help("Show diff")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Shows this file's diff")
     }
 }
 

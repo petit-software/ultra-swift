@@ -162,3 +162,112 @@ struct GitTests {
         #expect(model.branch == nil)
     }
 }
+
+@Suite("Git diffs", .serialized)
+@MainActor
+struct GitDiffTests {
+
+    /// A throwaway repository, so the assertions are against real git output rather than a
+    /// fixture that drifts from what git actually prints.
+    private func makeRepo() throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-diff-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        func git(_ args: [String]) {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            p.arguments = ["-C", root.path] + args
+            p.standardOutput = Pipe(); p.standardError = Pipe()
+            try? p.run(); p.waitUntilExit()
+        }
+        git(["init", "-q"])
+        git(["config", "user.email", "t@example.com"])
+        git(["config", "user.name", "Test"])
+        try "let timeout = 30\nrun()\n".write(to: root.appendingPathComponent("app.swift"),
+                                              atomically: true, encoding: .utf8)
+        git(["add", "-A"])
+        git(["commit", "-qm", "first"])
+        return root
+    }
+
+    @Test("an unstaged edit produces a diff with the change marked")
+    func unstagedDiff() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "let timeout = 45\nrun()\n".write(to: root.appendingPathComponent("app.swift"),
+                                              atomically: true, encoding: .utf8)
+
+        let model = GitModel(root: root)
+        await model.refresh()
+        let change = try #require(model.changes.first { $0.path == "app.swift" })
+
+        let diff = await model.diff(for: change, side: .unstaged)
+        #expect(diff.additions == 1)
+        #expect(diff.deletions == 1)
+        let addition = try #require(diff.hunks.first?.lines.first { $0.kind == .addition })
+        #expect(addition.text == "let timeout = 45")
+        #expect(!addition.emphasis.isEmpty, "the changed digits should be marked")
+    }
+
+    /// A file can be staged AND modified. Each side has to answer for itself, or one button
+    /// would be claiming to mean two different things.
+    @Test("staged and unstaged are different diffs for the same file")
+    func bothSides() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = root.appendingPathComponent("app.swift")
+
+        try "let timeout = 45\nrun()\n".write(to: file, atomically: true, encoding: .utf8)
+        let stage = Process()
+        stage.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        stage.arguments = ["-C", root.path, "add", "-A"]
+        stage.standardOutput = Pipe(); try stage.run(); stage.waitUntilExit()
+        try "let timeout = 60\nrun()\n".write(to: file, atomically: true, encoding: .utf8)
+
+        let model = GitModel(root: root)
+        await model.refresh()
+        let change = try #require(model.changes.first { $0.path == "app.swift" })
+        #expect(model.availableSides(for: change).count == 2)
+
+        let staged = await model.diff(for: change, side: .staged)
+        let unstaged = await model.diff(for: change, side: .unstaged)
+        #expect(staged.hunks.first?.lines.contains { $0.text == "let timeout = 45" } == true)
+        #expect(unstaged.hunks.first?.lines.contains { $0.text == "let timeout = 60" } == true)
+        #expect(staged != unstaged)
+    }
+
+    /// git has never seen an untracked file, so `git diff` says nothing about it. Clicking a
+    /// new file should still show its contents rather than an empty pane.
+    @Test("an untracked file shows its contents as additions")
+    func untrackedFile() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "brand new\nsecond line\n".write(to: root.appendingPathComponent("new.txt"),
+                                             atomically: true, encoding: .utf8)
+
+        let model = GitModel(root: root)
+        await model.refresh()
+        let change = try #require(model.changes.first { $0.path == "new.txt" })
+        #expect(change.staged == .untracked)
+        #expect(model.availableSides(for: change) == [.unstaged])
+
+        let diff = await model.diff(for: change, side: .unstaged)
+        #expect(diff.additions == 2)
+        #expect(diff.deletions == 0)
+    }
+
+    @Test("a file with nothing on the requested side reports empty, not an error")
+    func emptySide() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "let timeout = 45\nrun()\n".write(to: root.appendingPathComponent("app.swift"),
+                                              atomically: true, encoding: .utf8)
+        let model = GitModel(root: root)
+        await model.refresh()
+        let change = try #require(model.changes.first)
+
+        let staged = await model.diff(for: change, side: .staged)
+        #expect(staged.isEmpty)
+        #expect(!staged.isBinary)
+    }
+}

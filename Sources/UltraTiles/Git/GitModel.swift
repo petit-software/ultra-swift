@@ -219,6 +219,36 @@ public final class GitModel {
 
     // MARK: Actions — every one explicit, none automatic
 
+    // MARK: Diffs
+
+    /// The diff for one file on one side.
+    ///
+    /// `-U3` and `--no-color`: git colours its output for a terminal, and those escape
+    /// sequences would be rendered as literal text here. An untracked file has no diff at
+    /// all — git has never seen it — so it is compared against /dev/null, which is what
+    /// makes clicking a new file show its contents rather than nothing.
+    public func diff(for change: Change, side: DiffSide) async -> FileDiff {
+        let raw: String
+        if change.staged == .untracked {
+            guard side == .unstaged else { return .empty(path: change.path, side: side) }
+            raw = await git(["diff", "--no-color", "--no-index", "-U3",
+                             "--", "/dev/null", change.path])
+        } else {
+            raw = await git(["diff", "--no-color", "-U3"] + side.gitArguments
+                            + ["--", change.path])
+        }
+        return DiffParser.parse(raw, path: change.path, side: side)
+    }
+
+    /// Which sides actually have something to show, so the picker never offers an empty tab.
+    public func availableSides(for change: Change) -> [DiffSide] {
+        if change.staged == .untracked { return [.unstaged] }
+        var sides: [DiffSide] = []
+        if change.unstaged != .unmodified { sides.append(.unstaged) }
+        if change.isStaged { sides.append(.staged) }
+        return sides.isEmpty ? [.unstaged] : sides
+    }
+
     public func stage(_ change: Change) async { _ = await git(["add", "--", change.path]) ; await refresh() }
     public func unstage(_ change: Change) async { _ = await git(["restore", "--staged", "--", change.path]); await refresh() }
     public func stageAll() async { _ = await git(["add", "-A"]); await refresh() }
