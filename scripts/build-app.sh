@@ -33,18 +33,21 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 # --- Icon -------------------------------------------------------------------------------
 # Built from the single 1024pt master rather than checking in eleven PNGs that can drift
-# apart. macOS does NOT round an app icon for you: the squircle is part of the artwork, so
-# the master is used as-is.
-ICONSET="$(mktemp -d)/Ultra.iconset"
+# apart. macOS does NOT round an app icon for you — the squircle is part of the artwork —
+# and it expects the body INSET on the 824/1024 grid, which is what make-icon-master does.
+WORK="$(mktemp -d)"
+ICONSET="$WORK/Ultra.iconset"
 mkdir -p "$ICONSET"
+# The export is iOS-shaped (full-bleed); macOS wants it inset on the 824/1024 grid.
+swift scripts/make-icon-master.swift Resources/AppIcon.png "$WORK/master.png"
 for spec in "16 16x16" "32 16x16@2x" "32 32x32" "64 32x32@2x" \
             "128 128x128" "256 128x128@2x" "256 256x256" "512 256x256@2x" \
             "512 512x512" "1024 512x512@2x"; do
   set -- $spec
-  sips -z "$1" "$1" Resources/AppIcon.png --out "$ICONSET/icon_$2.png" >/dev/null
+  sips -z "$1" "$1" "$WORK/master.png" --out "$ICONSET/icon_$2.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Ultra.icns"
-rm -rf "$(dirname "$ICONSET")"
+rm -rf "$WORK"
 
 # Re-sign after every change; a stale signature makes the bundle refuse to launch.
 codesign --force --sign - --timestamp=none "$APP"
