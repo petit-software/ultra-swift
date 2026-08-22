@@ -219,6 +219,7 @@ public final class PaneContainerView: NSView {
         header.focusRingType = .none
         addSubview(glass)
         clip.addSubview(content)
+        clip.addSubview(headerBlur)
         clip.addSubview(header)
         refresh()
 
@@ -251,6 +252,14 @@ public final class PaneContainerView: NSView {
         }
         return hit
     }
+
+    /// A blur that ramps in from nothing at its bottom edge to full at the top.
+    ///
+    /// The pane title has no background of its own, so content scrolling up behind it would
+    /// otherwise collide with the text. A hard-edged material bar would be a background by
+    /// another name; ramping the material's own opacity keeps the header reading as part of
+    /// the pane's surface while still separating the words from whatever slides under them.
+    private let headerBlur = HeaderBlurView()
 
     private func refresh() {
         header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor,
@@ -287,10 +296,14 @@ public final class PaneContainerView: NSView {
                                    cornerHeight: Token.Space.paneRadius,
                                    transform: nil)
         let headerHeight = Token.Space.tileHeaderHeight
+        // The content fills the WHOLE pane, header included, and the header floats on top of
+        // it. Previously the content began below the header, which left that band showing the
+        // pane's glass — a second surface behind the title, exactly what a shell pane does
+        // not have. Content is what the header's blur has to blur, so it has to be under it.
+        content.frame = bounds
+        headerBlur.frame = CGRect(x: 0, y: 0, width: bounds.width,
+                                  height: min(headerHeight, bounds.height))
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: min(headerHeight, bounds.height))
-        content.frame = CGRect(x: 0, y: headerHeight,
-                               width: bounds.width,
-                               height: max(0, bounds.height - headerHeight))
         CATransaction.commit()
     }
 

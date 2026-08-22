@@ -36,6 +36,7 @@ public struct ContextTile: View {
             footer
         }
         .background(Token.Colour.paneBackground)
+        .tileHeaderInset()
         // The whole tile is the drop target, not a small well inside it — a drop zone you
         // have to aim at is a drop zone people miss.
         .dropDestination(for: URL.self) { urls, _ in

@@ -27,6 +27,7 @@ public struct PortsTile: View {
                        summary: "\(model.ports.count) listening") { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .tileHeaderInset()
         .task { await poll() }
     }
 

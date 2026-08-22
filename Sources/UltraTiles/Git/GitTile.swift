@@ -33,6 +33,7 @@ public struct GitTile: View {
             TileFooter(isBusy: model.isRefreshing, summary: summary) { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .tileHeaderInset()
         .task { await poll() }
         .confirmationDialog("Discard changes to \(confirming?.path ?? "")?",
                             isPresented: Binding(get: { confirming != nil },

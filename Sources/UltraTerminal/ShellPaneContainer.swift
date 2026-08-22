@@ -12,7 +12,11 @@ public final class ShellPaneContainer: NSView {
     public let terminal: ShellTerminalView
     /// Horizontal padding is larger than vertical: a column of text wants room from the
     /// edge, a row does not need as much from the header.
-    public var contentInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
+    ///
+    /// The top inset clears the pane header, which floats OVER the content rather than
+    /// sitting above it — without this the first row of the shell would run under the title.
+    public var contentInsets = NSEdgeInsets(top: Token.Space.tileHeaderHeight + 4,
+                                            left: 10, bottom: 6, right: 10)
 
     public init(terminal: ShellTerminalView) {
         self.terminal = terminal

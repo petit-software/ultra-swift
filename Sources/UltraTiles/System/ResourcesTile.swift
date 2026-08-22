@@ -27,6 +27,7 @@ public struct ResourcesTile: View {
                        summary: "\(model.processes.count) processes") { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .tileHeaderInset()
         .task { await poll() }
     }
 

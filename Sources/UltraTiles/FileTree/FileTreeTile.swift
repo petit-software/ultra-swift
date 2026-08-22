@@ -36,6 +36,7 @@ public struct FileTreeTile: View {
         }
         .background(Token.Colour.paneBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .tileHeaderInset()
     }
 
     private var footer: some View {

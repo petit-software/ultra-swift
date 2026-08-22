@@ -21,6 +21,7 @@ public struct TodoTile: View {
             composer
         }
         .background(Token.Colour.paneBackground)
+        .tileHeaderInset()
     }
 
     @ViewBuilder
