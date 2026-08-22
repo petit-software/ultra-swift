@@ -102,6 +102,21 @@ final class WorkspaceModel {
 
 /// Window- and tab-level verbs. Everything reaches the focused tab through `@FocusedValue`.
 struct WorkspaceCommands: Commands {
+
+    /// Open a new pane holding a tile.
+    ///
+    /// The kind is staged BEFORE the split, because the factory is consulted during it. So a
+    /// refused split — the layout is full, and `split` beeps and returns false — has to clear
+    /// the staging again, or the next successful split silently becomes a tile the user asked
+    /// for minutes ago and had already given up on.
+    @MainActor
+    static func openTile(_ kind: PaneRecord.Kind, in store: LayoutStore) {
+        ShellWorkspace.stageTile(kind, for: store)
+        if !store.split(edge: .right) {
+            ShellWorkspace.stageTile(nil, for: store)
+        }
+    }
+
     @FocusedValue(\.layoutStore) private var store
     @FocusedValue(\.uiState) private var ui
     @Environment(\.openWindow) private var openWindow
@@ -116,53 +131,47 @@ struct WorkspaceCommands: Commands {
             Button("New Shell Pane") {
                 guard let store else { return }
                 ShellWorkspace.stageAgent(nil, for: store)
-                store.split(edge: .right)
+                if !store.split(edge: .right) { ShellWorkspace.stageAgent(nil, for: store) }
             }
             .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(store == nil)
 
             Button("New File Tree Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.fileTree, for: store)
-                store.split(edge: .right)
+                Self.openTile(.fileTree, in: store)
             }
             .keyboardShortcut("e", modifiers: [.command, .option])
             .disabled(store == nil)
 
             Button("New Todo Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.todo, for: store)
-                store.split(edge: .right)
+                Self.openTile(.todo, in: store)
             }
             .keyboardShortcut("y", modifiers: [.command, .option])
             .disabled(store == nil)
 
             Button("New Ports Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.ports, for: store)
-                store.split(edge: .right)
+                Self.openTile(.ports, in: store)
             }
             .disabled(store == nil)
 
             Button("New Resources Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.resources, for: store)
-                store.split(edge: .right)
+                Self.openTile(.resources, in: store)
             }
             .disabled(store == nil)
 
             Button("New Git Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.git, for: store)
-                store.split(edge: .right)
+                Self.openTile(.git, in: store)
             }
             .keyboardShortcut("g", modifiers: [.command, .option])
             .disabled(store == nil)
 
             Button("New Context Pane") {
                 guard let store else { return }
-                ShellWorkspace.stageTile(.context, for: store)
-                store.split(edge: .right)
+                Self.openTile(.context, in: store)
             }
             .disabled(store == nil)
 
@@ -171,7 +180,7 @@ struct WorkspaceCommands: Commands {
                     Button(agent.name) {
                         guard let store else { return }
                         ShellWorkspace.stageAgent(agent, for: store)
-                        store.split(edge: .right)
+                        if !store.split(edge: .right) { ShellWorkspace.stageAgent(nil, for: store) }
                     }
                 }
             }

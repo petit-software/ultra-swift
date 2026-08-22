@@ -38,7 +38,10 @@ enum ShellWorkspace {
             root: root,
             injectIntoShell: { [weak factory] text in
                 guard let factory, let target = Registry.injectionTarget else { return }
-                factory.inject(text, into: target, submit: false)
+                // Trailing space: sends are meant to COMPOSE at the prompt — two paths in a
+                // row must not arrive as one glued-together argument.
+                let separated = text.hasSuffix(" ") ? text : text + " "
+                factory.inject(separated, into: target, submit: false)
             },
             revealInFinder: { url in
                 NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -113,8 +116,9 @@ enum ShellWorkspace {
         Registry.factories[store.workspaceID]?.stageAgent(agent)
     }
 
-    /// Make the next new pane a tile of this kind rather than a shell.
-    static func stageTile(_ kind: PaneRecord.Kind, for store: LayoutStore) {
+    /// Make the next new pane a tile of this kind rather than a shell. Pass nil to clear a
+    /// staging that never got used — a refused split must not leave one armed.
+    static func stageTile(_ kind: PaneRecord.Kind?, for store: LayoutStore) {
         Registry.tiles[store.workspaceID]?.stage(kind)
     }
 
