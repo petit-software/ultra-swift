@@ -121,6 +121,18 @@ need a context switch. Full spec: `03-TILES.md` § 1c.
 
 ## M4c — Agent control channel ← *the one with real design risk*
 
+> **Status: first slice landed.** A Unix socket per workspace, a closed two-verb protocol
+> (`open`, `reveal`), workspace-scoped path resolution that REFUSES escapes including through
+> symlinks, and `ULTRA_AGENT_SOCK` in every spawned shell's environment.
+> **Outstanding:** `highlight` (needs selection support in the Editor) and `ask` (needs a
+> form UI in the requesting pane).
+>
+> One thing the build taught us, recorded because it is invisible until it bites: the socket
+> is NOT at `.ultra/agent.sock` as originally planned. `sockaddr_un.sun_path` is 104 bytes,
+> and a checkout a few directories deep exceeds it — `bind` fails and the channel is silently
+> dead for exactly the users with the most organised source trees. It lives in the temp
+> directory under a short name instead, and the agent finds it in its environment.
+
 Today the flow is one-way: Ultra injects text into an agent's prompt. The agent cannot ask
 Ultra for anything. It should be able to say **"open this file"**, **"select these lines"**,
 **"reveal this in the file tree"**, or **"here is a form, fill it in and send it back"** — so

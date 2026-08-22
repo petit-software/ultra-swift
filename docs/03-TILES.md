@@ -86,6 +86,28 @@ something another editor does better.
 Deliberately absent: syntax highlighting, find and replace, multiple cursors, autocomplete,
 split views, and a tab bar. Each is a reason to use the editor the user already has.
 
+## 1d. The agent control channel
+
+An agent in a pane can ask the app to do a few things. `ULTRA_AGENT_SOCK` is in its
+environment; it writes one line of JSON and reads one line back.
+
+```
+$ printf '{"verb":"open","path":"Sources/Main.swift","line":42}\n' | nc -U "$ULTRA_AGENT_SOCK"
+{"ok":true}
+```
+
+- **Verbs are a closed set** — `open` and `reveal` today. No `eval`, no "run this command":
+  the agent already has a shell, and a verb list that grows without review is an injection
+  surface rather than a feature.
+- **A socket, not escape sequences.** An escape sequence lives in scrollback and replays
+  every time the buffer redraws, and anything able to write to the tty — `cat` of a hostile
+  file, a compiler echoing attacker-controlled bytes — could drive the app. A socket is
+  addressed by the process that was handed its path.
+- **Every path is resolved against the workspace root and REFUSED if it escapes**, including
+  via a symlink that lives inside the tree but points out of it. Refused, never clamped: a
+  silent correction hides the attempt.
+- **Mode 0600**, so another user on the machine cannot connect.
+
 ## 2. Todo — per-project markdown
 
 Todos are files, not app state. They must be readable, diffable, committable, and editable by

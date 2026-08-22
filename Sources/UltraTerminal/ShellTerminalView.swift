@@ -47,6 +47,9 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     private var coalescer = ResizeCoalescer()
     private var pendingFinalResize: DispatchWorkItem?
 
+    /// Extra environment for the spawned shell, on top of the login shell's own.
+    public var extraEnvironment: [String: String] = [:]
+
     public init(spec: ShellSpec, font: NSFont? = nil) {
         self.spec = spec
         super.init(frame: .zero, font: font)
@@ -77,7 +80,14 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
             feed(text: "\r\n\u{1b}[31mWorking directory is gone:\u{1b}[0m \(spec.cwd ?? "")\r\n")
         }
         isRunning = true
-        process.startProcess(executable: shell, args: arguments, currentDirectory: directory)
+        // `environment: nil` would inherit ours; passing an explicit list is the only way to
+        // add to it, so the current environment is rebuilt with our additions on top.
+        var environment = ProcessInfo.processInfo.environment
+        for (key, value) in extraEnvironment { environment[key] = value }
+        environment["TERM"] = environment["TERM"] ?? "xterm-256color"
+        let encoded = environment.map { "\($0.key)=\($0.value)" }
+        process.startProcess(executable: shell, args: arguments,
+                             environment: encoded, currentDirectory: directory)
         processID = process.shellPid
     }
 

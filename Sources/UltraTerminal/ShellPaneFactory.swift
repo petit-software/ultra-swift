@@ -18,6 +18,10 @@ public final class ShellPaneFactory {
     private var pendingAgent: AgentDefinition?
     public var theme: TerminalTheme
     public var defaultDirectory: String?
+    /// Handed to every shell this factory starts, as `ULTRA_AGENT_SOCK`. An agent finds the
+    /// control socket in its environment and nowhere else — that is what makes "only
+    /// processes this app spawned can drive it" true rather than aspirational.
+    public var agentSocketPath: String?
     /// Called when a pane's title or directory changes, so its header can follow.
     public var onDescriptorChange: ((PaneID, PaneRecord) -> Void)?
     /// Called when a shell starts or exits, with the number of AGENT panes still running.
@@ -53,6 +57,7 @@ public final class ShellPaneFactory {
         let cwd = record?.cwd ?? defaultDirectory
         let spec = ShellSpec(cwd: cwd, agentCommand: agent, theme: theme)
         let view = ShellTerminalView(spec: spec)
+        if let agentSocketPath { view.extraEnvironment["ULTRA_AGENT_SOCK"] = agentSocketPath }
         view.shellDelegate = self
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)

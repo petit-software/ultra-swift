@@ -27,6 +27,9 @@ enum ShellWorkspace {
             })
         } ?? [:]
 
+        // One id for the workspace, its store, and its agent socket — they must agree.
+        let workspaceID = document?.id ?? UUID()
+
         let factory = ShellPaneFactory(theme: theme, defaultDirectory: directory,
                                        restoring: records)
 
@@ -58,7 +61,7 @@ enum ShellWorkspace {
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
                                 theme: theme,
-                                workspaceID: document?.id ?? UUID(),
+                                workspaceID: workspaceID,
                                 storage: storage) { paneID in
             // Tiles first: the factory returns nil for anything it does not own, and the
             // shell factory picks up everything else. The canvas never learns the difference.
@@ -90,6 +93,21 @@ enum ShellWorkspace {
         // Keyed by workspace, not a singleton: with tabs there are several live factories
         // at once and a menu command must reach the one belonging to the focused tab.
         factory.onAgentActivityChange = { _ in updateSleepGuard() }
+
+        // The agent control channel. Scoped to this workspace: its socket lives in the
+        // project, and every path an agent names is resolved against this root.
+        let channel = AgentChannel(socketURL: .init(fileURLWithPath: AgentChannel
+            .defaultSocketURL(for: workspaceID).path)) { request in
+            // The socket serves off its own queue; anything that touches panes has to be on
+            // the main actor, and the agent is told what happened either way.
+            MainActor.assumeIsolated {
+                perform(request, in: root)
+            }
+        }
+        if channel.start() {
+            factory.agentSocketPath = channel.socketURL.path
+        }
+        Registry.channels[store.workspaceID] = channel
         Registry.factories[store.workspaceID] = factory
         Registry.tiles[store.workspaceID] = tiles
         Registry.stores[store.workspaceID] = store
@@ -101,6 +119,7 @@ enum ShellWorkspace {
         @MainActor static var factories: [UUID: ShellPaneFactory] = [:]
         @MainActor static var tiles: [UUID: TileFactory] = [:]
         @MainActor static var stores: [UUID: LayoutStore] = [:]
+        @MainActor static var channels: [UUID: AgentChannel] = [:]
 
         /// Where a new tile should point: the focused pane's directory when it has one,
         /// else any pane's, else the workspace's own. Pane records carry the LIVE cwd —
@@ -198,6 +217,29 @@ enum ShellWorkspace {
         guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
         stageAgent(agent, for: store)
         if !store.split(edge: edge) { stageAgent(nil, for: store) }
+    }
+
+    /// Carry out one agent request, or say why not.
+    @MainActor
+    static func perform(_ request: AgentRequest, in root: URL) -> AgentResponse {
+        let resolved: ResolvedAgentRequest
+        do {
+            resolved = try request.resolve(in: root)
+        } catch let error as AgentRequestError {
+            return .failure(error.message)
+        } catch {
+            return .failure("\(error)")
+        }
+        guard let store = Registry.stores.values.first else {
+            return .failure("no window open")
+        }
+        switch resolved.verb {
+        case .open:
+            openEditor(on: resolved.url, in: store)
+        case .reveal:
+            NSWorkspace.shared.activateFileViewerSelecting([resolved.url])
+        }
+        return .success
     }
 
     /// Total agents running across every tab, not just one — the machine is kept awake for
