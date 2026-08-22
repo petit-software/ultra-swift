@@ -224,3 +224,110 @@ struct TodoGroupingTests {
         #expect(groups.map { $0.items.count } == [1, 1, 1])
     }
 }
+
+@Suite("Todo reordering")
+struct TodoMoveTests {
+
+    private let sample = """
+    # Plan
+
+    Some prose that is not a task.
+
+    - [ ] first
+    - [x] second
+    - [ ] third
+    """
+
+    @Test("a task moves and everything else stays byte-identical")
+    func movePreservesTheRestOfTheFile() {
+        var document = TodoDocument(text: sample)
+        let items = document.items
+        // third -> before first
+        let moved1 = document.move(items[2].id, before: items[0].id)
+        #expect(moved1)
+        #expect(document.items.map(\.text) == ["third", "first", "second"])
+        // The prose, the heading and the blank lines are untouched.
+        #expect(document.text.contains("# Plan"))
+        #expect(document.text.contains("Some prose that is not a task."))
+        #expect(document.text.hasSuffix("- [x] second"))
+    }
+
+    @Test("moving down lands where the row was dropped, not one short")
+    func moveDown() {
+        var document = TodoDocument(text: sample)
+        let items = document.items
+        // first -> to the end
+        let outOfRange = document.move(items[0].id, before: Int.max)
+        #expect(!outOfRange, "an out-of-range target is refused")
+        var again = TodoDocument(text: sample)
+        let ids = again.items.map(\.id)
+        let moved2 = again.move(ids[0], before: ids[2] + 1)
+        #expect(moved2)
+        #expect(again.items.map(\.text) == ["second", "third", "first"])
+    }
+
+    @Test("dropping a row on itself changes nothing")
+    func selfMoveIsANoOp() {
+        var document = TodoDocument(text: sample)
+        let before = document.text
+        let ids = document.items.map(\.id)
+        let moved3 = document.move(ids[1], before: ids[1])
+        #expect(!moved3)
+        let moved4 = document.move(ids[1], before: ids[1] + 1)
+        #expect(!moved4)
+        #expect(document.text == before)
+    }
+
+    /// A line with no terminator is the last line of a file that ends without a newline.
+    /// That belongs to the END OF THE FILE, not to the line — carrying it into the middle
+    /// silently joins the moved task to the one after it.
+    @Test("moving the last line of a file with no trailing newline does not join two tasks")
+    func noTrailingNewline() {
+        var document = TodoDocument(text: "- [ ] one\n- [ ] two\n- [ ] three")
+        let ids = document.items.map(\.id)
+        let moved5 = document.move(ids[2], before: ids[0])
+        #expect(moved5)
+        #expect(document.items.map(\.text) == ["three", "one", "two"])
+        #expect(!document.text.contains("threeone"), "the lines were joined")
+        #expect(document.text == "- [ ] three\n- [ ] one\n- [ ] two")
+        #expect(!document.text.hasSuffix("\n"), "the file must still end without a newline")
+    }
+
+    @Test("a moved line in a CRLF file stays CRLF")
+    func crlf() {
+        var document = TodoDocument(text: "- [ ] one\r\n- [ ] two\r\n")
+        let ids = document.items.map(\.id)
+        let moved6 = document.move(ids[1], before: ids[0])
+        #expect(moved6)
+        #expect(document.text == "- [ ] two\r\n- [ ] one\r\n")
+    }
+
+    @Test("indentation travels with the task rather than adopting the destination's")
+    func indentIsCarried() {
+        var document = TodoDocument(text: "- [ ] top\n    - [ ] nested\n- [ ] other\n")
+        let ids = document.items.map(\.id)
+        let moved7 = document.move(ids[1], before: ids[0])
+        #expect(moved7)
+        #expect(document.text.hasPrefix("    - [ ] nested\n"),
+                "the task keeps its own indent; re-indenting would be an edit nobody asked for")
+    }
+
+    @Test("moving across a heading puts the task in the other section")
+    func acrossSections() {
+        var document = TodoDocument(text: "# A\n- [ ] one\n# B\n- [ ] two\n")
+        let ids = document.items.map(\.id)
+        let moved8 = document.move(ids[1], before: ids[0])
+        #expect(moved8)
+        #expect(document.items.first?.section == "A")
+        #expect(document.items.count == 2)
+    }
+
+    @Test("only tasks can be moved")
+    func nonTaskLinesAreRefused() {
+        var document = TodoDocument(text: sample)
+        let before = document.text
+        let moved9 = document.move(0, before: 5)
+        #expect(!moved9, "the heading line is not a task")
+        #expect(document.text == before)
+    }
+}

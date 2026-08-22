@@ -210,6 +210,45 @@ public struct TodoDocument: Equatable, Sendable {
         lines.remove(at: id)
     }
 
+    /// Move a task so it sits immediately before `target` — another task's line, or
+    /// `lines.count` to put it at the end.
+    ///
+    /// The line's CONTENT is carried across untouched, indentation included. Adopting the
+    /// destination's indent would be a second edit the user did not ask for, and this file
+    /// is something they also edit by hand.
+    @discardableResult
+    public mutating func move(_ id: Int, before target: Int) -> Bool {
+        guard lines.indices.contains(id), Self.parseTask(lines[id].content) != nil else { return false }
+        guard target >= 0, target <= lines.count else { return false }
+        // Dropping a row on itself, or immediately below itself, changes nothing.
+        guard target != id, target != id + 1 else { return false }
+
+        // A line whose terminator is EMPTY is the last line of a file that ends without a
+        // newline. That property belongs to the END OF THE FILE, not to the line — carrying
+        // it into the middle would silently join the moved task to the one after it.
+        let fileEnding = lines.last?.terminator ?? "\n"
+        var moved = lines.remove(at: id)
+        if moved.terminator.isEmpty { moved.terminator = Self.dominantTerminator(lines) }
+
+        let insertion = target > id ? target - 1 : target
+        lines.insert(moved, at: min(insertion, lines.count))
+
+        // Whichever line is last now owns the file's ending.
+        if let last = lines.indices.last {
+            if lines[last].terminator != fileEnding { lines[last].terminator = fileEnding }
+            // And no line before it may be left without one.
+            for index in lines.indices where index != last && lines[index].terminator.isEmpty {
+                lines[index].terminator = Self.dominantTerminator(lines)
+            }
+        }
+        return true
+    }
+
+    /// The terminator this file actually uses, so a moved line in a CRLF file stays CRLF.
+    private static func dominantTerminator(_ lines: [Line]) -> String {
+        lines.first { !$0.terminator.isEmpty }?.terminator ?? "\n"
+    }
+
     /// Where a new task belongs: after the last task of the named section, else end of file.
     private func insertionPoint(for section: String?) -> Int {
         guard let section else {

@@ -98,7 +98,7 @@ killed by a tab switch.
 > list. Todo round-trips markdown byte-for-byte (a toggle changes exactly one byte on disk,
 > asserted by test, plus a 200-case property test over arbitrary markdown); Ports attributes
 > listeners to this workspace's shells; Resources attributes by process ancestry.
-> **Outstanding:** Todo reorder-by-drag, and pausing Resources on window occlusion.
+> **Outstanding:** nothing on this list — Todo reorder-by-drag and occlusion pausing both landed.
 
 - File tree: lazily-expanded project tree; click a file to send its quoted path to the shell.
 - Todo: lossless markdown round-trip, file watching, conflict handling, send-to-shell.

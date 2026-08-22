@@ -124,6 +124,7 @@ public final class TodoStore {
     public func toggle(_ id: Int) { edit { $0.toggle(id) } }
     public func setText(_ text: String, for id: Int) { edit { $0.setText(text, for: id) } }
     public func removeItem(_ id: Int) { edit { $0.removeItem(id) } }
+    public func move(_ id: Int, before target: Int) { edit { $0.move(id, before: target) } }
 
     public func addItem(_ text: String, to section: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)

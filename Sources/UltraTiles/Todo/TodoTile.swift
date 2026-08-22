@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UltraDesign
 
 /// The project's todo list, as a file.
@@ -7,6 +8,8 @@ public struct TodoTile: View {
     @State private var store: TodoStore
     @State private var draft: String = ""
     @FocusState private var draftFocused: Bool
+    /// The row a drag is currently over, so the insertion line follows the pointer.
+    @State private var dropTarget: Int?
     private let context: TileContext
 
     public init(context: TileContext) {
@@ -54,9 +57,15 @@ public struct TodoTile: View {
                         }
                         ForEach(group.items) { item in
                             TodoRow(item: item,
+                                    isDropTarget: dropTarget == item.id,
                                     toggle: { store.toggle(item.id) },
                                     send: { context.injectIntoShell(item.text) },
-                                    delete: { store.removeItem(item.id) })
+                                    delete: { store.removeItem(item.id) },
+                                    onDropBefore: { moved in
+                                        dropTarget = nil
+                                        store.move(moved, before: item.id)
+                                    },
+                                    onDragOver: { dropTarget = $0 ? item.id : nil })
                         }
                     }
                 }
@@ -140,19 +149,27 @@ public struct TodoTile: View {
 
 private struct TodoRow: View {
     let item: TodoDocument.Item
+    /// A line is drawn where the task would land. An insertion point, not a highlight on the
+    /// row: "before this one" is the thing being chosen, and a filled row cannot say that.
+    let isDropTarget: Bool
     let toggle: () -> Void
     let send: () -> Void
     let delete: () -> Void
+    let onDropBefore: (Int) -> Void
+    let onDragOver: (Bool) -> Void
     @State private var isHovering = false
+
+    @State private var dropTarget: Int?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             Button(action: toggle) {
-                Image(systemName: item.isDone ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12))
+                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 14))
                     .foregroundStyle(item.isDone ? Token.Colour.accent : Token.Colour.tertiaryLabel)
             }
             .buttonStyle(.plain)
+            .pointerStyle(.link)
 
             Text(item.text)
                 .font(Token.Type_.tileSubtitle)
@@ -165,8 +182,10 @@ private struct TodoRow: View {
             if isHovering {
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send to shell")
+                    .pointerStyle(.link)
                 Button(action: delete) { Image(systemName: "trash") }
                     .help("Delete task")
+                    .pointerStyle(.link)
             }
         }
         .buttonStyle(.plain)
@@ -176,7 +195,43 @@ private struct TodoRow: View {
         .padding(.vertical, 3)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
+        .overlay(alignment: .top) {
+            if isDropTarget {
+                Rectangle()
+                    .fill(Token.Colour.accent)
+                    .frame(height: 2)
+            }
+        }
+        // The whole row is the handle. A todo list is short and the rows are small; a
+        // separate grip would be a smaller target for no gain.
+        .draggable(TodoDragPayload(id: item.id)) {
+            Text(item.text)
+                .font(Token.Type_.tileSubtitle)
+                .padding(6)
+                .background(Token.Colour.tileBackground)
+        }
+        .dropDestination(for: TodoDragPayload.self) { payload, _ in
+            guard let moved = payload.first?.id else { return false }
+            onDropBefore(moved)
+            return true
+        } isTargeted: { onDragOver($0) }
     }
+}
+
+/// What a dragged task carries.
+///
+/// A typed payload rather than a plain string: the list must not reorder itself because
+/// someone dropped text from another app onto it.
+struct TodoDragPayload: Codable, Transferable, Sendable {
+    let id: Int
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .ultraTodoItem)
+    }
+}
+
+extension UTType {
+    static let ultraTodoItem = UTType(exportedAs: "com.ultra.todo-item")
 }
 
 #Preview("Todo", traits: .fixedLayout(width: 340, height: 420)) {
