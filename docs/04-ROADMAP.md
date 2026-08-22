@@ -144,6 +144,17 @@ can be sent into a fresh shell.
 
 ## M8 — Polish and release
 
+> **Status: started.** A Settings window (⌘,) exists with General and About, and General
+> carries the keep-awake setting below. The rest of the list is untouched.
+
+- **Keep the Mac awake while an agent is running.** An agent CLI runs for many minutes with
+  nobody touching the keyboard, so the machine hits its idle timeout, sleeps the display and
+  locks — and the user returns to a password prompt with no idea whether the work finished.
+  A `ProcessInfo` activity is held for exactly as long as an agent pane is running, across
+  every tab, and released the moment the last one exits. Tied to the work's lifetime on
+  purpose: an assertion that outlives what it was protecting is how a laptop ends up flat.
+  Plain interactive shells sitting at a prompt do not count as work. Cannot override a lock
+  the user triggers, a closed lid, or an MDM policy — and the settings pane says so.
 - Settings: appearance, terminal themes, fonts, agent registry, keymap editor with conflict
   detection against the shell's own bindings.
 - Full accessibility audit against `02-DESIGN-LANGUAGE.md`, including Reduce Transparency as a

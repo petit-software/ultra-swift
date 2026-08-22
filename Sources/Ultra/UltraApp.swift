@@ -46,6 +46,9 @@ struct UltraApp: App {
             PaneMenuCommands()
             WorkspaceCommands()
         }
+
+        // ⌘, and the standard Settings window, for free.
+        Settings { UltraSettings() }
     }
 }
 

@@ -85,6 +85,7 @@ enum ShellWorkspace {
 
         // Keyed by workspace, not a singleton: with tabs there are several live factories
         // at once and a menu command must reach the one belonging to the focused tab.
+        factory.onAgentActivityChange = { _ in updateSleepGuard() }
         Registry.factories[store.workspaceID] = factory
         Registry.tiles[store.workspaceID] = tiles
         Registry.stores[store.workspaceID] = store
@@ -173,6 +174,13 @@ enum ShellWorkspace {
         guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
         stageAgent(agent, for: store)
         if !store.split(edge: edge) { stageAgent(nil, for: store) }
+    }
+
+    /// Total agents running across every tab, not just one — the machine is kept awake for
+    /// the app as a whole.
+    static func updateSleepGuard() {
+        SleepGuard.shared.agentsRunningChanged(
+            to: Registry.factories.values.reduce(0) { $0 + $1.runningAgentCount })
     }
 
     /// Turn an existing pane into a different kind, in place.

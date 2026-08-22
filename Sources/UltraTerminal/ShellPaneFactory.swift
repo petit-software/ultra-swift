@@ -20,6 +20,15 @@ public final class ShellPaneFactory {
     public var defaultDirectory: String?
     /// Called when a pane's title or directory changes, so its header can follow.
     public var onDescriptorChange: ((PaneID, PaneRecord) -> Void)?
+    /// Called when a shell starts or exits, with the number of AGENT panes still running.
+    /// Drives the keep-awake assertion — see `SleepGuard`.
+    public var onAgentActivityChange: ((Int) -> Void)?
+
+    /// Panes running an agent CLI, not plain shells. A plain interactive shell sitting at a
+    /// prompt is not work, and holding the machine awake for one would be wrong.
+    public var runningAgentCount: Int {
+        shells.values.filter { $0.isRunning && $0.spec.agentCommand != nil }.count
+    }
 
     public init(theme: TerminalTheme = .dark,
                 defaultDirectory: String? = FileManager.default.currentDirectoryPath,
@@ -60,11 +69,13 @@ public final class ShellPaneFactory {
     /// Start any shell that has not started yet. Idempotent.
     public func startPendingShells() {
         for shell in shells.values where !shell.isRunning { shell.start() }
+        onAgentActivityChange?(runningAgentCount)
     }
 
     public func release(_ paneID: PaneID) {
         containers.removeValue(forKey: paneID)
         shells.removeValue(forKey: paneID)?.stop()
+        onAgentActivityChange?(runningAgentCount)
     }
 
     /// Called when a divider drag or window resize commits.
@@ -122,5 +133,7 @@ extension ShellPaneFactory: ShellTerminalViewDelegate {
         // scrollback, and closing the pane is their call, not ours.
         let message = exitCode.map { "[process exited with code \($0)]" } ?? "[process exited]"
         view.feed(text: "\r\n\u{1b}[2m\(message)\u{1b}[0m\r\n")
+        // An agent that has finished must stop holding the machine awake.
+        onAgentActivityChange?(runningAgentCount)
     }
 }
