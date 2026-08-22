@@ -20,10 +20,11 @@ public struct TodoTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             if let notice = store.notice { noticeBar(notice) }
-            list
             composer
+            list
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
     }
 
@@ -34,19 +35,21 @@ public struct TodoTile: View {
                 Image(systemName: "checklist")
                     .font(.system(size: 22))
                     .foregroundStyle(Token.Colour.tertiaryLabel)
+                // The path used to be repeated here. The footer carries it now, on every
+                // state of the tile rather than only the empty one.
                 Text(store.exists ? "No tasks yet" : "No list in this project yet")
                     .font(Token.Type_.tileSubtitle)
                     .foregroundStyle(Token.Colour.secondaryLabel)
-                Text(TileFactory.abbreviate(store.url.path))
-                    .font(Token.Type_.monoSmall)
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(store.document.grouped) { group in
-                        if let section = group.section {
+                        // A heading earns its space only when there is something to tell
+                        // apart. One section means the title names the whole list, which
+                        // the pane header already does — so it is just a word in the way.
+                        if let section = group.section, showsSectionHeadings {
                             Text(section)
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Token.Colour.tertiaryLabel)
@@ -74,39 +77,56 @@ public struct TodoTile: View {
         }
     }
 
+    /// Headings are shown only once there are several. See the comment at the call site.
+    private var showsSectionHeadings: Bool {
+        store.document.grouped.count > 1
+    }
+
+    /// The add field, sitting at the head of the list and shaped like a row in it.
+    ///
+    /// At the top rather than the bottom because that is where the new task lands, and a
+    /// composer that writes to the opposite end of the list from where it sits makes you
+    /// hunt for what you just typed. Its circle is the same circle a task wears, in the same
+    /// column, so the field reads as the row about to exist rather than a bar bolted on.
     private var composer: some View {
-        HStack(spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             Image(systemName: "plus")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Token.Colour.tertiaryLabel)
+                .font(.system(size: 12, weight: .semibold))
+                // Sized to the circle it replaced so the field's text still starts on the
+                // same column as every task's label below it.
+                .frame(width: 14)
+                .foregroundStyle(draftFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+
             TextField("Add a task", text: $draft)
                 .textFieldStyle(.plain)
                 .font(Token.Type_.tileSubtitle)
+                .foregroundStyle(Token.Colour.label)
                 .focused($draftFocused)
                 .onSubmit(add)
+
             if !draft.isEmpty {
                 Button(action: add) { Image(systemName: "return") }
                     .buttonStyle(.plain)
                     .foregroundStyle(Token.Colour.accent)
+                    .help("Add task")
             }
-
-            Menu {
-                Text(TileFactory.abbreviate(store.url.path))
-                Divider()
-                Button("Choose Location…") { chooseLocation() }
-                Button("Use Project Default") { store.resetLocation() }
-            } label: {
-                Image(systemName: "folder")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .foregroundStyle(Token.Colour.tertiaryLabel)
-            .help("Where this list is stored")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.thinMaterial)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
+        .padding(.vertical, 5)
+        .contentShape(.rect)
+        // Clicking anywhere along the row starts typing, the way clicking a task row hits
+        // its whole width rather than just the words.
+        .onTapGesture { draftFocused = true }
+    }
+
+    private var footer: some View {
+        TileFooter(summary: TileFactory.abbreviate(store.url.path), truncation: .head) {
+            TileStoreMenu(path: store.url.path,
+                          help: "Where this list is stored",
+                          choose: chooseLocation,
+                          reset: { store.resetLocation() })
+        }
     }
 
     private func chooseLocation() {
@@ -119,8 +139,10 @@ public struct TodoTile: View {
     }
 
     private func add() {
-        store.addItem(draft, to: store.document.sections.last)
+        store.prependItem(draft)
         draft = ""
+        // Focus is kept so several tasks can be typed in a row without reaching for the
+        // mouse between them.
         draftFocused = true
     }
 

@@ -40,28 +40,13 @@ public struct FileTreeTile: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            Button {
+        TileFooter(summary: "\(model.rows.count) shown") {
+            TileFooterButton(symbol: model.showsHidden ? "eye" : "eye.slash",
+                             help: model.showsHidden ? "Hide dotfiles" : "Show dotfiles") {
                 model.showsHidden.toggle()
-            } label: {
-                Image(systemName: model.showsHidden ? "eye" : "eye.slash")
             }
-            .help(model.showsHidden ? "Hide dotfiles" : "Show dotfiles")
-
-            Button { model.reload() } label: { Image(systemName: "arrow.clockwise") }
-                .help("Reload")
-
-            Spacer()
-
-            Text("\(model.rows.count) shown")
-                .font(Token.Type_.monoSmall)
-                .foregroundStyle(Token.Colour.tertiaryLabel)
+            TileFooterButton(symbol: "arrow.clockwise", help: "Reload") { model.reload() }
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial)
     }
 
     @ViewBuilder

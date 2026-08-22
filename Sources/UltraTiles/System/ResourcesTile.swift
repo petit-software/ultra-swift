@@ -23,16 +23,24 @@ public struct ResourcesTile: View {
                     .padding(.vertical, 4)
                 }
             }
-            TileFooter(isBusy: model.isRefreshing,
-                       summary: "\(model.processes.count) processes") { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
         .task { await poll() }
     }
 
     /// The headline: one number, one shape. The number is the reading; the sparkline is the
     /// trend. Neither needs an axis to do its job at this size.
+    private var footer: some View {
+        TileFooter(summary: "\(model.processes.count) processes") {
+            TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
+                             isEnabled: !model.isRefreshing) {
+                Task { await model.refresh() }
+            }
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 0) {
@@ -113,32 +121,6 @@ struct EmptyTileState: View {
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-struct TileFooter: View {
-    let isBusy: Bool
-    let summary: String
-    let refresh: () async -> Void
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button { Task { await refresh() } } label: {
-                Image(systemName: "arrow.clockwise")
-                    .opacity(isBusy ? 0.4 : 1)
-            }
-            .buttonStyle(.plain)
-            .help("Refresh now")
-            .disabled(isBusy)
-            Spacer()
-            Text(summary)
-                .font(Token.Type_.monoSmall)
-                .foregroundStyle(Token.Colour.tertiaryLabel)
-        }
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial)
     }
 }
 

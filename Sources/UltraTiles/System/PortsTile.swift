@@ -23,10 +23,9 @@ public struct PortsTile: View {
                     .padding(.vertical, 4)
                 }
             }
-            TileFooter(isBusy: model.isRefreshing,
-                       summary: "\(model.ports.count) listening") { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
         .task { await poll() }
     }
@@ -34,6 +33,15 @@ public struct PortsTile: View {
     /// Polled rather than watched: there is no notification for "a socket started
     /// listening". Two seconds is fast enough to catch a dev server starting and slow
     /// enough that `lsof` is not a background job.
+    private var footer: some View {
+        TileFooter(summary: "\(model.ports.count) listening") {
+            TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
+                             isEnabled: !model.isRefreshing) {
+                Task { await model.refresh() }
+            }
+        }
+    }
+
     private func poll() async {
         while !Task.isCancelled {
             model.ownedPIDs = context.shellPIDs()

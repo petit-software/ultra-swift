@@ -42,9 +42,9 @@ public struct GitTile: View {
                                title: "No repository here",
                                detail: TileFactory.abbreviate(context.root.path))
             }
-            TileFooter(isBusy: model.isRefreshing, summary: summary) { await model.refresh() }
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
         .task { await poll() }
         .confirmationDialog("Discard changes to \(confirming?.path ?? "")?",
@@ -57,6 +57,15 @@ public struct GitTile: View {
             Button("Cancel", role: .cancel) { confirming = nil }
         } message: {
             Text("This cannot be undone from Ultra.")
+        }
+    }
+
+    private var footer: some View {
+        TileFooter(summary: summary) {
+            TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
+                             isEnabled: !model.isRefreshing) {
+                Task { await model.refresh() }
+            }
         }
     }
 

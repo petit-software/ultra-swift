@@ -126,6 +126,44 @@ struct TodoDocumentTests {
         #expect(document.items.count == 2)
     }
 
+    @Test("prepending puts the task above every other one")
+    func prependGoesToTheTop() {
+        var document = TodoDocument(text: sample)
+        document.prependItem("newest")
+        let items = document.items
+        #expect(items.first?.text == "newest")
+        // Prose is untouched, the same criterion every other edit is held to.
+        #expect(document.text.contains("Prose between blocks."))
+        #expect(document.text.contains("Some prose that must survive"))
+    }
+
+    /// The task must land under the heading it belongs to, not above it. Hoisting it over
+    /// the `# Project` line would move it out of the section entirely.
+    @Test("prepending stays below the heading that opens the file")
+    func prependStaysUnderItsHeading() {
+        var document = TodoDocument(text: "# Plan\n\n- [ ] existing\n")
+        document.prependItem("newest")
+        #expect(document.text == "# Plan\n\n- [ ] newest\n- [ ] existing\n")
+        #expect(document.items.first?.section == "Plan")
+    }
+
+    @Test("prepending inherits the indentation of the task it displaces")
+    func prependMatchesIndent() {
+        var document = TodoDocument(text: "  - [ ] nested\n")
+        document.prependItem("newest")
+        #expect(document.text == "  - [ ] newest\n  - [ ] nested\n")
+    }
+
+    /// With nothing to sit above, prepend has to behave exactly like an append — including
+    /// the no-trailing-newline handling that `addWithoutTrailingNewline` pins down.
+    @Test("prepending into a file with no tasks yet still lands after the headings")
+    func prependWithNoTasks() {
+        var document = TodoDocument(text: "# Plan\n")
+        document.prependItem("first ever")
+        #expect(document.text == "# Plan\n- [ ] first ever\n")
+        #expect(document.items.first?.section == "Plan")
+    }
+
     @Test("removing a task removes exactly its line")
     func remove() {
         var document = TodoDocument(text: sample)

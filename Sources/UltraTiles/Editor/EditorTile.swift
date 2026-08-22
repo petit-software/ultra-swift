@@ -32,42 +32,29 @@ public struct EditorTile: View {
                 CodeTextView(text: $document.text, onSave: { document.save() })
             }
 
-            footer
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
+        // Controls lead, status trails — the same order as every other tile. This footer
+        // used to run the other way round, which is why the shared one exists.
+        TileFooter(summary: document.url.map { TileFactory.abbreviate($0.path) } ?? "No file",
+                   truncation: .head) {
+            TileFooterButton(symbol: "folder", help: "Open another file") { openPanel() }
+            if document.url != nil, !document.isBinary {
+                TileFooterButton(symbol: "square.and.arrow.down", help: "Save (⌘S)",
+                                 isEnabled: document.isDirty) { document.save() }
+            }
             if document.isDirty {
                 Circle()
                     .fill(Token.Colour.accent)
                     .frame(width: 6, height: 6)
                     .help("Unsaved changes")
             }
-            Text(document.url.map { TileFactory.abbreviate($0.path) } ?? "No file")
-                .font(Token.Type_.monoSmall)
-                .foregroundStyle(Token.Colour.tertiaryLabel)
-                .lineLimit(1)
-                .truncationMode(.head)
-
-            Spacer(minLength: 4)
-
-            if document.url != nil, !document.isBinary {
-                Button("Save") { document.save() }
-                    .disabled(!document.isDirty)
-                    .help("Save (⌘S)")
-            }
-            Button { openPanel() } label: { Image(systemName: "folder") }
-                .help("Open another file")
         }
-        .buttonStyle(.plain)
-        .font(Token.Type_.monoSmall)
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial)
     }
 
     @ViewBuilder

@@ -180,8 +180,6 @@ public struct TodoDocument: Equatable, Sendable {
 
     /// Append a task to the end of a section, or the end of the file when `section` is nil
     /// or absent. Inserted with the same indentation as the last task it joins.
-    /// Append a task to the end of a section, or the end of the file when `section` is nil
-    /// or absent. Inserted with the same indentation as the last task it joins.
     public mutating func addItem(_ text: String, to section: String? = nil) {
         let insertion = insertionPoint(for: section)
         let indent = indentForInsertion(at: insertion)
@@ -203,6 +201,24 @@ public struct TodoDocument: Equatable, Sendable {
         }
         lines.insert(Line(content: content, terminator: lines[insertion].terminator),
                      at: insertion)
+    }
+
+    /// Insert a task at the TOP of the list — above every existing task, but BELOW any
+    /// heading that opens the file. A task hoisted above its own `# Plan` line would leave
+    /// the section, which is not what "add at the top" means to someone looking at the list.
+    ///
+    /// With no tasks yet this falls through to the ordinary append, so the first task in an
+    /// empty file still lands after the headings rather than before them.
+    public mutating func prependItem(_ text: String) {
+        guard let first = firstTaskIndex() else {
+            addItem(text)
+            return
+        }
+        // Match the task BELOW rather than above: the new row joins the head of that list,
+        // so it takes that list's indentation.
+        let indent = Self.parseTask(lines[first].content)?.indent ?? 0
+        let content = String(repeating: " ", count: indent) + "- [ ] " + text
+        lines.insert(Line(content: content, terminator: lines[first].terminator), at: first)
     }
 
     public mutating func removeItem(_ id: Int) {
@@ -265,6 +281,10 @@ public struct TodoDocument: Equatable, Sendable {
             if inSection, Self.parseTask(line.content) != nil { candidate = index }
         }
         return candidate.map { $0 + 1 } ?? (lastTaskIndex().map { $0 + 1 } ?? lines.count)
+    }
+
+    private func firstTaskIndex() -> Int? {
+        lines.indices.first { Self.parseTask(lines[$0].content) != nil }
     }
 
     private func lastTaskIndex() -> Int? {

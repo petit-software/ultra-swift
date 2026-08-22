@@ -132,6 +132,14 @@ public final class TodoStore {
         edit { $0.addItem(trimmed, to: section) }
     }
 
+    /// Add at the head of the list. Same emptiness guard as `addItem` — a return pressed on
+    /// a blank field must not write a task with no text into the file.
+    public func prependItem(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        edit { $0.prependItem(trimmed) }
+    }
+
     private func edit(_ change: (inout TodoDocument) -> Void) {
         change(&document)
         save()

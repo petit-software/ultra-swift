@@ -33,9 +33,9 @@ public struct ContextTile: View {
                     .padding(.vertical, 4)
                 }
             }
-            footer
         }
         .background(Token.Colour.paneBackground)
+        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
         .tileHeaderInset()
         // The whole tile is the drop target, not a small well inside it — a drop zone you
         // have to aim at is a drop zone people miss.
@@ -56,47 +56,23 @@ public struct ContextTile: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            Button {
+        TileFooter(summary: "~\(formatted(model.totalTokens)) tokens",
+                   // Deliberately approximate, and labelled so: an exact-looking number
+                   // here would be a lie, because the real tokeniser is the model's.
+                   summaryHelp: "Rough estimate — bytes ÷ 4") {
+            TileFooterButton(symbol: "arrow.right.to.line", help: "Type @references at the prompt, without submitting",
+                             isEnabled: !model.items.isEmpty) {
                 context.injectIntoShell(model.referenceText(relativeTo: context.root))
-            } label: {
-                Label("Send", systemImage: "arrow.right.to.line")
             }
-            .help("Type @references at the prompt, without submitting")
-            .disabled(model.items.isEmpty)
-
-            Button { model.removeAllUnpinned() } label: { Image(systemName: "trash") }
-                .help("Clear everything except pinned items")
-                .disabled(model.items.allSatisfy(\.isPinned))
-
-            Menu {
-                Text(TileFactory.abbreviate(model.storeURL.path))
-                Divider()
-                Button("Choose Location…") { chooseLocation() }
-                Button("Use Project Default") { model.resetLocation() }
-            } label: {
-                Image(systemName: "folder")
+            TileFooterButton(symbol: "trash", help: "Clear everything except pinned items",
+                             isEnabled: !model.items.allSatisfy(\.isPinned)) {
+                model.removeAllUnpinned()
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Where this list is stored")
-
-            Spacer()
-
-            // Deliberately approximate, and labelled so: an exact-looking number here would
-            // be a lie, because the real tokeniser is the model's, not ours.
-            Text("~\(formatted(model.totalTokens)) tokens")
-                .font(Token.Type_.monoSmall)
-                .foregroundStyle(Token.Colour.tertiaryLabel)
-                .help("Rough estimate — bytes ÷ 4")
+            TileStoreMenu(path: model.storeURL.path,
+                          help: "Where this list is stored",
+                          choose: chooseLocation,
+                          reset: { model.resetLocation() })
         }
-        .buttonStyle(.plain)
-        .font(Token.Type_.monoSmall)
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial)
     }
 
     private func chooseLocation() {
