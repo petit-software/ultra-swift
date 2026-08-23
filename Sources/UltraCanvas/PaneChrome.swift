@@ -200,9 +200,10 @@ public struct PaneHeader: View {
                 .contentShape(.rect)
                 .onTapGesture { actions.focus(paneID) }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(descriptor.subtitle.map { "\(descriptor.title), \($0)" }
-                            ?? descriptor.title)
+        // No container of its own. `.accessibilityElement(children: .contain)` was here and
+        // did two unhelpful things: it repeated the pane's title one level in, and it added
+        // a group between the pane and its buttons. The buttons carry their own labels and
+        // are more use reached directly.
     }
 }
 
@@ -353,7 +354,7 @@ public final class PaneContainerView: NSView {
 
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel(descriptor.title)
+        updateAccessibilityLabel()
     }
 
     @available(*, unavailable)
@@ -453,6 +454,48 @@ public final class PaneContainerView: NSView {
     /// that simply never opens, with no error anywhere.
     public var headerActionsForTesting: PaneActions { actions }
 
+    /// Where this pane sits in reading order, 1-based, or nil before layout has said.
+    ///
+    /// Announced because it is also the number that FOCUSES the pane: ⌘1…⌘9 count in the
+    /// same order. Without it three shells in one directory announce identically and the
+    /// only way to tell them apart is to move focus and listen for what changed.
+    var accessibilityOrdinal: Int? {
+        didSet { guard accessibilityOrdinal != oldValue else { return }; updateAccessibilityLabel() }
+    }
+
+    /// "2. Shell — ultra-swift" rather than "~/Repo/Ultra" three times over.
+    ///
+    /// The KIND leads because it is what distinguishes a pane from its neighbours far more
+    /// often than the path does — a workspace is usually one directory and several kinds.
+    private func updateAccessibilityLabel() {
+        var parts: [String] = []
+        if let accessibilityOrdinal { parts.append("\(accessibilityOrdinal).") }
+        if let kind { parts.append(Self.name(of: kind)) }
+        // A tile whose title merely repeats its kind — "Todo", "Ports" — says it once.
+        if !descriptor.title.isEmpty,
+           kind.map({ Self.name(of: $0).caseInsensitiveCompare(descriptor.title) != .orderedSame })
+            ?? true {
+            parts.append("— \(descriptor.title)")
+        }
+        setAccessibilityLabel(parts.joined(separator: " "))
+    }
+
+    /// Spoken names for the kinds. Deliberately NOT the raw case names: "fileTree" is read
+    /// aloud as one word and lands somewhere between "filetree" and a spelling.
+    private static func name(of kind: PaneRecord.Kind) -> String {
+        switch kind {
+        case .shell: "Shell"
+        case .fileTree: "File Tree"
+        case .editor: "Editor"
+        case .todo: "Todo"
+        case .ports: "Ports"
+        case .resources: "Resources"
+        case .git: "Git"
+        case .context: "Context"
+        case .placeholder: "Pane"
+        }
+    }
+
     /// Re-read the accent and repaint. See `PaneSurfaceStore.refreshChrome`.
     public func refreshChrome() { refresh() }
 
@@ -460,7 +503,7 @@ public final class PaneContainerView: NSView {
     public func update(descriptor: PaneDescriptor) {
         guard descriptor != self.descriptor else { return }
         self.descriptor = descriptor
-        setAccessibilityLabel(descriptor.title)
+        updateAccessibilityLabel()
         refresh()
     }
 
@@ -502,13 +545,13 @@ public final class PaneContainerView: NSView {
 
 #Preview("Pane header — focused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
-               descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
+               descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
                currentKind: nil, isFocused: true, canClose: true, actions: .inert)
 }
 
 #Preview("Pane header — unfocused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
-               descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
+               descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
                currentKind: nil, isFocused: false, canClose: true, actions: .inert)
 }
 
@@ -520,6 +563,6 @@ public final class PaneContainerView: NSView {
 
 #Preview("Pane header — narrow", traits: .fixedLayout(width: 190, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
-               descriptor: PaneDescriptor(title: "ultra-swift", subtitle: "~/Repo/ultra-swift"),
+               descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
                currentKind: nil, isFocused: true, canClose: true, actions: .inert)
 }

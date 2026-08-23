@@ -87,7 +87,7 @@ public struct Transcript: Sendable {
     public static func fixture(_ index: Int) -> Transcript {
         switch (index - 1) % 5 {
         case 0:
-            Transcript(title: "ultra-swift", subtitle: "~/Repo/ultra-swift", icon: "apple.terminal",
+            Transcript(title: "Ultra", subtitle: "~/Repo/Ultra", icon: "apple.terminal",
                        lines: [.prompt("swift build"),
                                .dim("Building for debugging..."),
                                .success("Build complete! (2.62s)"),
@@ -95,7 +95,7 @@ public struct Transcript: Sendable {
                                .prompt("swift test"),
                                .success("✔ 46 tests in 8 suites passed")])
         case 1:
-            Transcript(title: "claude", subtitle: "agent · ultra-swift", icon: "sparkles",
+            Transcript(title: "claude", subtitle: "agent · Ultra", icon: "sparkles",
                        lines: [.dim("● Reading Sources/UltraLayout/Layout.swift"),
                                .dim("● Editing Operations.swift"),
                                .output("Split now takes space only from"),

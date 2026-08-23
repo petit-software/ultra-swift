@@ -89,7 +89,7 @@ public struct WindowTitleBar: View {
 }
 
 #Preview("Window bar", traits: .fixedLayout(width: 700, height: 40)) {
-    WindowTitleBar(title: "ultra-swift", subtitle: "~/Repo/ultra-swift", isZoomed: false,
+    WindowTitleBar(title: "Ultra", subtitle: "~/Repo/Ultra", isZoomed: false,
                    actions: [
                     WindowBarAction(id: "b", symbol: "command", help: "Command Palette") {},
                    ])
@@ -97,7 +97,7 @@ public struct WindowTitleBar: View {
 }
 
 #Preview("Window bar — zoomed", traits: .fixedLayout(width: 700, height: 40)) {
-    WindowTitleBar(title: "ultra-swift", subtitle: "~/Repo/ultra-swift", isZoomed: true,
+    WindowTitleBar(title: "Ultra", subtitle: "~/Repo/Ultra", isZoomed: true,
                    actions: [WindowBarAction(id: "b", symbol: "command", help: "Command Palette") {}])
     .background(Token.Colour.tileBackground)
 }

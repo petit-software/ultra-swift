@@ -155,6 +155,12 @@ public final class SplitCanvasView: NSView {
         let result = UltraLayout.layout(displayTree, in: canvas, metrics: metrics)
         currentResult = result
 
+        // Reading order, which is also ⌘1…⌘9 order — the number announced is the number
+        // that focuses the pane. Assigned here because only the layout knows the order.
+        for (index, paneID) in result.visualOrder.enumerated() {
+            store.surfaces.surface(for: paneID).accessibilityOrdinal = index + 1
+        }
+
         // Implicit CALayer animation off: a pane must track the cursor exactly during a
         // divider drag. Nothing animates while dragging.
         CATransaction.begin()
