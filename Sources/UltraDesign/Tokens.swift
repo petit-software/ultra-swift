@@ -69,7 +69,7 @@ public enum Token {
         /// assert the ring is this fraction of the accent, not that it is any particular
         /// number, so trying a different weight is a one-line change instead of a one-line
         /// change plus two broken tests.
-        public static let focusBorderOpacity: Double = 0.64
+        public static let focusBorderOpacity: Double = 0.5
 
         /// Border of the focused pane. The focused pane must be unmistakable without
         /// relying on colour alone — pair this with the header brightness difference.

@@ -98,9 +98,9 @@ struct FocusBorderTests {
     /// The fraction the user asked for, asserted as a NUMBER rather than as a ratio.
     /// Everything else here holds for any weight, so nothing else would notice this
     /// silently drifting back to a rounder value.
-    @Test("the ring carries 0.64 of the tint")
+    @Test("the ring carries 0.5 of the tint")
     func ringWeightIsWhatWasAskedFor() {
-        #expect(abs(Token.Colour.focusBorderOpacity - 0.64) < 0.0001)
+        #expect(abs(Token.Colour.focusBorderOpacity - 0.5) < 0.0001)
     }
 
     /// The regression this guards is real and was shipped: a TRANSLUCENT ring drew on the
