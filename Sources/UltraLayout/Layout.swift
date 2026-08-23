@@ -5,6 +5,9 @@ public struct LayoutMetrics: Equatable, Sendable {
     /// Space between siblings. The divider hairline is drawn centered in it.
     public var gutter: CGFloat
     /// Inset around the whole canvas, on the leading, trailing and bottom edges.
+    ///
+    /// The real inset on those edges is this PLUS `edgeInset` — two knobs over the same
+    /// three edges, which is worth knowing before tuning either. Together they are 12pt.
     public var padding: CGFloat
     /// Inset above the topmost panes. Zero: the toolbar's content layout rect already holds
     /// the panes off the window's top edge, so any padding here reads as a second gap under
@@ -23,7 +26,7 @@ public struct LayoutMetrics: Equatable, Sendable {
     public var scale: CGFloat
 
     public init(gutter: CGFloat = 12,
-                padding: CGFloat = 12,
+                padding: CGFloat = 8,
                 topPadding: CGFloat = 0,
                 edgeInset: CGFloat = 4,
                 minPaneSize: CGSize = CGSize(width: 160, height: 80),

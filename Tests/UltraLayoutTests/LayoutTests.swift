@@ -77,18 +77,18 @@ struct LayoutGeometryTests {
     @Test("golden frames — sidebar + main at 1200×800")
     func golden() {
         let result = layout(.fixture(.sidebarMain), in: bounds)
-        // padded content: padding 12 + edgeInset 4 on left/right/bottom, and NOTHING on
+        // padded content: padding 8 + edgeInset 4 on left/right/bottom, and NOTHING on
         // top — the toolbar's layout rect already holds the panes off that edge, so padding
-        // there reads as a second gap. x 16…1184 (1168 wide), y 0…784 (784 tall);
-        // row gutter 12 -> 1156 usable.
-        #expect(result.frames[pane(1)]!.width == 289)             // 0.25 * 1156
-        #expect(result.frames[pane(2)]!.minX == 317)              // 16 + 289 + 12
-        #expect(result.frames[pane(2)]!.maxX == 1184)
+        // there reads as a second gap. x 12…1188 (1176 wide), y 0…788 (788 tall);
+        // row gutter 12 -> 1164 usable.
+        #expect(result.frames[pane(1)]!.width == 291)             // 0.25 * 1164
+        #expect(result.frames[pane(2)]!.minX == 315)              // 12 + 291 + 12
+        #expect(result.frames[pane(2)]!.maxX == 1188)
         // The top pane starts flush against the top of the canvas.
         #expect(result.frames[pane(1)]!.minY == 0)
-        // column: 784 tall, one gutter -> 772 usable, split 0.7 / 0.3
-        #expect(result.frames[pane(2)]!.height == 540.5)          // 0.7 * 772, pixel-snapped
-        #expect(result.frames[pane(3)]!.maxY == 784)
+        // column: 788 tall, one gutter -> 776 usable, split 0.7 / 0.3
+        #expect(result.frames[pane(2)]!.height == 543)            // 0.7 * 776, pixel-snapped
+        #expect(result.frames[pane(3)]!.maxY == 788)
     }
 
     /// The toolbar's content layout rect already holds the panes off the window's top

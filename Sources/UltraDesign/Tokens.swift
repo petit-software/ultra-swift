@@ -9,9 +9,14 @@ public enum Token {
     // MARK: Spacing — mirrors LayoutMetrics, which is the source of truth for the canvas.
 
     public enum Space {
+        /// Mirrors `LayoutMetrics.padding`. The canvas's real outer inset is this plus
+        /// `edgeInset`, which is 12pt — the note below is about the GUTTER between panes,
+        /// where the material has to read, not about the window's outer edges, where there
+        /// is nothing between the pane and the window to make visible.
+        ///
         /// Wide enough that the frosted material between panes is actually visible.
         /// At 6pt the glass was there and invisible, which is the worst of both.
-        public static let canvasPadding: CGFloat = 12
+        public static let canvasPadding: CGFloat = 8
         public static let gutter: CGFloat = 12
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
