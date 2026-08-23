@@ -41,6 +41,37 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public private(set) var spec: ShellSpec
     /// Nil until the process starts; nil again once it exits.
     public private(set) var processID: pid_t?
+
+    /// What this pane is running RIGHT NOW, read from the tty's foreground process group.
+    ///
+    /// Deliberately not cached: it changes whenever the user runs anything, and a stale
+    /// answer is worse than the syscall it saves. Nil once the shell has exited.
+    public var activity: PaneActivity? {
+        guard isRunning else { return nil }
+        return ForegroundProcess.activity(ofTerminal: process.childfd)
+    }
+
+    /// Is an agent running in this pane?
+    ///
+    /// Two sources, ORed, because they answer for two different ways of starting one and
+    /// neither covers the other:
+    ///
+    /// - **Launched as an agent.** `ShellLauncher` runs `-l -c "exec <command>"`, so the
+    ///   pane's process IS the agent rather than a shell wrapping it. It therefore cannot
+    ///   outlive its agent: when the agent exits the process exits, `isRunning` goes false,
+    ///   and this goes false with it. No tty reading needed, and none that could race with
+    ///   the exec while the agent is starting.
+    /// - **Typed at a prompt.** `claude` run in a plain interactive shell — how most agents
+    ///   are actually started, and completely invisible to what the app recorded at launch.
+    ///   The tty sees it, and sees it exit back to the prompt.
+    ///
+    /// The launched half is deliberately NOT gated on the tty agreeing. A user's own agent
+    /// need not be one of the built-ins, and demanding the foreground process match a known
+    /// binary would stop counting every agent they configured themselves.
+    public var isRunningAgent: Bool {
+        guard isRunning else { return false }
+        return spec.agentCommand != nil || (activity?.isAgent ?? false)
+    }
     public private(set) var isRunning = false
 
     private var process: LocalProcess!

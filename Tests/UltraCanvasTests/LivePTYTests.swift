@@ -78,6 +78,51 @@ struct LivePTYTests {
         #expect(firstFactory.shells[watched] != nil)
     }
 
+    /// The tty is asked what is running, and it answers correctly — against a real shell,
+    /// with a real foreground process, not a fixture.
+    ///
+    /// This is the whole reason agent state moved off launch-time bookkeeping: the answer has
+    /// to change when the user runs something and change BACK when it exits, and nothing the
+    /// app records at launch can do that.
+    @Test("a pane reports the process actually in its foreground, and follows it")
+    func activityFollowsTheForegroundProcess() {
+        let (store, _, factory, _) = makeHost()
+        let paneID = store.tree.focused
+        _ = store.surfaces.surface(for: paneID)
+        factory.startPendingShells()
+
+        let shell = try! #require(factory.shells[paneID])
+        #expect(poll(upTo: 3, until: { shell.activity != nil }),
+                "the pane never reported any foreground process")
+
+        // At rest the shell itself is in the foreground, and a shell is not an agent.
+        let atRest = try! #require(shell.activity)
+        #expect(!atRest.isAgent, "a plain shell counted as an agent: \(atRest.command)")
+        #expect(!shell.isRunningAgent)
+
+        // Run something slow, and the foreground process becomes that thing.
+        shell.inject("sleep 4", submit: true)
+        #expect(poll(upTo: 3, until: { shell.activity?.command == "sleep" }),
+                "foreground never became `sleep`, saw \(shell.activity?.command ?? "nil")")
+        #expect(shell.isRunningAgent == false, "`sleep` is not an agent")
+    }
+
+    /// The counter is what the keep-awake assertion reads, so it has to fall as well as
+    /// rise. The launched-as answer could only ever rise: a pane started as an agent went on
+    /// counting after the agent exited, holding the machine open for a shell at a prompt.
+    @Test("the agent count reflects the tty, not what the pane was launched as")
+    func agentCountComesFromTheTty() {
+        let (store, _, factory, _) = makeHost()
+        let paneID = store.tree.focused
+        _ = store.surfaces.surface(for: paneID)
+        factory.startPendingShells()
+
+        let shell = try! #require(factory.shells[paneID])
+        #expect(poll(upTo: 3, until: { shell.activity != nil }))
+        // A plain shell, however many panes exist, is not agent work.
+        #expect(factory.runningAgentCount == 0)
+    }
+
     @Test("a shell keeps its pid across 100 random layout operations")
     func pidSurvivesChaos() {
         let (store, canvas, factory, _) = makeHost()

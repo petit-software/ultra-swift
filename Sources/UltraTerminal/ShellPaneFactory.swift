@@ -30,8 +30,17 @@ public final class ShellPaneFactory {
 
     /// Panes running an agent CLI, not plain shells. A plain interactive shell sitting at a
     /// prompt is not work, and holding the machine awake for one would be wrong.
+    ///
+    /// Counts agents TYPED at a prompt as well as ones this app launched. The launched-as
+    /// answer missed every `claude` run in a plain shell, which is how most agents are
+    /// actually started — so the machine was free to sleep in the middle of one.
     public var runningAgentCount: Int {
-        shells.values.filter { $0.isRunning && $0.spec.agentCommand != nil }.count
+        shells.values.filter(\.isRunningAgent).count
+    }
+
+    /// What each live pane is running, for anything that wants to show it.
+    public var activityByPane: [PaneID: PaneActivity] {
+        shells.compactMapValues { $0.activity }
     }
 
     public init(theme: TerminalTheme = .dark,
