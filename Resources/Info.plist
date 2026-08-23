@@ -11,7 +11,7 @@
 	<key>CFBundleIconName</key>
 	<string>Ultra</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.bigb.ultra-swift</string>
+	<string>software.petit.ultra</string>
 	<key>CFBundleName</key>
 	<string>Ultra</string>
 	<key>CFBundlePackageType</key>
