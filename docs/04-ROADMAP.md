@@ -299,6 +299,47 @@ pane in every fixture sits flush.
   idle CPU near zero with the window occluded.
 - Developer ID signing, hardened runtime, notarization, stapling, DMG, auto-update feed.
 
+## M9 — Tile chrome, and a file tree that can leave the project
+
+Small surface, and three of the four are corrections rather than features. Grouped because
+they are all about a tile's edges: what draws over content, what steals width from it, and
+what happens when a pane points somewhere the project does not own.
+
+- **The footer ramp does not draw over a scrolling list.** It works over static content and
+  looks like nothing at all over a `ScrollView`, which is most tiles.
+- **Hide scrollbars while a pointing device is connected.** With a mouse attached macOS
+  defaults to showing scrollbars always, which puts a permanent gutter inside every tile.
+  Panes here are narrow by design and the gutter is a hard vertical edge across the glass.
+- **Centre the Todo composer's `+`.** It is aligned to the text baseline and should be
+  centred on the row, like the checkbox on every task beneath it.
+- **A File Tree pane can leave the project.** Open any folder, travel outside the root, and
+  come back in one click — with the pane saying plainly that it is somewhere else, rather
+  than looking identical to a pane that is at home.
+
+Three things to settle before building, recorded because two of them are invisible until
+they bite:
+
+- **`safeAreaInset` is why the ramp is missing.** It floats the footer AND shrinks the scroll
+  view's safe area, so the list stops exactly at the footer's top edge. Nothing passes
+  underneath, so there is nothing for the ramp to fade and it renders against flat pane
+  background. The content has to extend the full height with only its *content* inset, not
+  its bounds.
+- **Hiding scrollbars overrides a deliberate system setting.** "Always" in System Settings is
+  a choice someone made, and it is next door to an accessibility preference. This belongs
+  behind a default-on setting that says what it overrides, in the same spirit as the
+  keep-awake pane in M8 — not a silent policy.
+- **Leaving the project must not widen the agent channel.** M4c refuses every path outside
+  the workspace root, symlinks included, and refuses rather than clamps so a traversal
+  attempt stays visible. A File Tree that can wander is a UI affordance only: opening a file
+  from outside the root in the Editor must not become a path the socket will then accept.
+  The two scopes are separate on purpose and this is the change most likely to quietly join
+  them.
+
+**Accept when** a list scrolled to its middle shows content fading out beneath the footer
+rather than stopping at it; a tile shows no scrollbar gutter with a mouse attached; and a
+File Tree pointed outside the project says so and returns home in one click — while the agent
+channel accepts not one path it would have refused before.
+
 ---
 
 ## Risks, and what we do about them
