@@ -20,6 +20,12 @@ struct CodeTextView: NSViewRepresentable {
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
+        // Pinned, for the same reason `ShellTerminalView` pins it: with "Show scroll bars:
+        // Always" — which is what a user gets the moment a mouse is attached — macOS makes
+        // every scroller `.legacy`, and a legacy scroller RESERVES width instead of floating
+        // over the content. That is a permanent grey gutter down a pane that is already as
+        // narrow as the user made it, and `autohidesScrollers` does not prevent it.
+        scroll.scrollerStyle = .overlay
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
 

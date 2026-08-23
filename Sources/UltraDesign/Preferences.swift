@@ -180,8 +180,16 @@ public enum Preferences {
         post()
     }
 
+    /// Announced WITH the store that changed.
+    ///
+    /// Posting `object: nil` made every observer a global one, because nil on the receiving
+    /// side means "any sender" — so a suite watching its own isolated store also counted
+    /// changes made by every other test target in the process. That presents as a
+    /// count-off-by-one about one run in ten, which reads like a broken assertion rather
+    /// than like a race. The app has one store and observes with nil, so nothing changes
+    /// there; anyone who needs to care now can.
     private static func post() {
-        NotificationCenter.default.post(name: didChange, object: nil)
+        NotificationCenter.default.post(name: didChange, object: store)
     }
 
     /// Clamped on read as well as write — the same reasoning as `Appearance`: a value that

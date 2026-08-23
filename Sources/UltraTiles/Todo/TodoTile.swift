@@ -74,6 +74,7 @@ public struct TodoTile: View {
                 }
                 .padding(.bottom, 6)
             }
+            .tileScrollBar()
         }
     }
 

@@ -134,6 +134,9 @@ public struct GitTile: View {
                         }
                     }
                 }
+                // Horizontal, and already hiding its indicator. The tile scroll bar reports
+                // VERTICAL position; on a row of worktree chips it would be a marker for an
+                // axis that does not move.
             }
         }
         .padding(.horizontal, 12)
@@ -158,6 +161,7 @@ public struct GitTile: View {
                 }
                 .padding(.vertical, 4)
             }
+            .tileScrollBar()
         }
     }
 

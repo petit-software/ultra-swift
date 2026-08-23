@@ -200,8 +200,13 @@ struct PreferencesTests {
     func accentNotifies() {
         clean {
             var count = 0
+            // Scoped to THIS suite's store. `object: nil` means "any sender", so this
+            // counted preference changes made by every other test target sharing the
+            // process — a one-in-ten miscount that looked like a broken assertion.
             let token = NotificationCenter.default.addObserver(
-                forName: Preferences.didChange, object: nil, queue: nil) { _ in count += 1 }
+                forName: Preferences.didChange, object: Preferences.store, queue: nil) { _ in
+                    count += 1
+                }
             defer { NotificationCenter.default.removeObserver(token) }
             Preferences.accentColour = .teal
             Preferences.accentColour = .teal

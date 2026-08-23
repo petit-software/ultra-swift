@@ -34,6 +34,7 @@ public struct FileTreeTile: View {
             }
             .padding(.vertical, 4)
         }
+        .tileScrollBar()
         .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()

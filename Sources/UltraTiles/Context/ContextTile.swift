@@ -32,6 +32,7 @@ public struct ContextTile: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .tileScrollBar()
             }
         }
         .background(Token.Colour.paneBackground)
