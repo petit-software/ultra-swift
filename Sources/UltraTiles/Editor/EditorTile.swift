@@ -34,7 +34,7 @@ public struct EditorTile: View {
 
         }
         .background(Token.Colour.paneBackground)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .tileFooter { footer }
         .tileHeaderInset()
     }
 

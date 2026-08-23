@@ -24,7 +24,7 @@ public struct TodoTile: View {
             list
         }
         .background(Token.Colour.paneBackground)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .tileFooter { footer }
         .tileHeaderInset()
     }
 
@@ -89,7 +89,11 @@ public struct TodoTile: View {
     /// hunt for what you just typed. Its circle is the same circle a task wears, in the same
     /// column, so the field reads as the row about to exist rather than a bar bolted on.
     private var composer: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        // Centred rather than baseline-aligned. A task row aligns to the first text baseline
+        // because its label can wrap to several lines and the checkbox belongs beside the
+        // first of them; the field here is always one line, so the baseline just pushes the
+        // glyph low against a row it is supposed to sit in the middle of.
+        HStack(alignment: .center, spacing: 7) {
             Image(systemName: "plus")
                 .font(.system(size: 12, weight: .semibold))
                 // Sized to the circle it replaced so the field's text still starts on the

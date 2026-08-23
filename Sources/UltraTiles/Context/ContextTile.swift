@@ -35,7 +35,7 @@ public struct ContextTile: View {
             }
         }
         .background(Token.Colour.paneBackground)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .tileFooter { footer }
         .tileHeaderInset()
         // The whole tile is the drop target, not a small well inside it — a drop zone you
         // have to aim at is a drop zone people miss.

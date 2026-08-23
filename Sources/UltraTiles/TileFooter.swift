@@ -114,6 +114,25 @@ public struct TileStoreMenu: View {
     }
 }
 
+public extension View {
+    /// Floats a tile's footer over its content, with the content able to scroll beneath.
+    ///
+    /// `safeAreaInset` was the obvious spelling and it is wrong here: it floats the footer
+    /// AND shrinks the container, so a list inside stops dead at the footer's top edge.
+    /// Nothing ever passes underneath, which leaves the footer's ramp nothing to fade — it
+    /// renders against flat pane background and reads as no gradient at all.
+    ///
+    /// Content margins instead: the scroll view keeps its full height, and only its CONTENT
+    /// is inset, so the last row can still be scrolled clear of the footer while everything
+    /// above it slides under. On a tile whose content does not scroll the margin is a no-op
+    /// and the overlay alone does the work.
+    func tileFooter<Footer: View>(@ViewBuilder _ footer: () -> Footer) -> some View {
+        self
+            .contentMargins(.bottom, Token.Space.tileHeaderHeight, for: .scrollContent)
+            .overlay(alignment: .bottom) { footer() }
+    }
+}
+
 #Preview("Tile footer", traits: .fixedLayout(width: 340, height: 44)) {
     TileFooter(summary: "12 shown") {
         TileFooterButton(symbol: "eye.slash", help: "Show dotfiles") {}

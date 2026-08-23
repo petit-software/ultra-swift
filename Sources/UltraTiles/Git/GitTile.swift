@@ -44,7 +44,7 @@ public struct GitTile: View {
             }
         }
         .background(Token.Colour.paneBackground)
-        .safeAreaInset(edge: .bottom, spacing: 0) { footer }
+        .tileFooter { footer }
         .tileHeaderInset()
         .task { await poll() }
         .confirmationDialog("Discard changes to \(confirming?.path ?? "")?",
