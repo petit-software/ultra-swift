@@ -121,3 +121,38 @@ struct RestoreTests {
         #expect(after.tree.zoomed == before.tree.zoomed)
     }
 }
+
+/// The store is what actually writes the document, so the directory has to survive the trip
+/// from `ShellWorkspace.make` through `LayoutStore.document` to disk. The storage-level
+/// tests prove lookup works; this proves the value ever gets there.
+@Suite("Workspace directory reaches the document")
+@MainActor
+struct WorkspaceDirectoryPersistenceTests {
+
+    private func store() -> LayoutStore {
+        let factory = PlaceholderPaneFactory()
+        return LayoutStore(tree: .fixture(.twoAcross)) { factory.makeContent(for: $0) }
+    }
+
+    @Test("a store's directory is written into its document")
+    func directoryReachesDocument() {
+        let store = store()
+        store.workspaceDirectory = "/tmp/alpha"
+        #expect(store.document.directory == "/tmp/alpha")
+        #expect(store.document.version == WorkspaceDocument.currentVersion)
+    }
+
+    /// The document is canonicalised on the way in, so a store handed a path with a trailing
+    /// slash still writes the one spelling everything else looks up by.
+    @Test("the written directory is the canonical spelling")
+    func directoryIsCanonical() {
+        let store = store()
+        store.workspaceDirectory = "/tmp/alpha/"
+        #expect(store.document.directory == "/tmp/alpha")
+    }
+
+    @Test("a store with no directory writes none, rather than inventing one")
+    func noDirectoryWritesNil() {
+        #expect(store().document.directory == nil)
+    }
+}

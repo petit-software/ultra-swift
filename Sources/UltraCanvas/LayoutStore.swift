@@ -19,6 +19,9 @@ public final class LayoutStore {
     /// What this window is. Shown in the window bar.
     public var workspaceTitle: String = "Ultra"
     public var workspaceSubtitle: String?
+    /// The project this workspace is open on. Written into the document so the layout can be
+    /// found again BY PATH the next time this project is opened.
+    public var workspaceDirectory: String?
     /// Last laid-out canvas bounds, so commands can reason about geometry.
     public internal(set) var canvasBounds: CGRect = .zero
 
@@ -231,6 +234,7 @@ extension LayoutStore {
     /// The workspace exactly as it should come back.
     public var document: WorkspaceDocument {
         var document = WorkspaceDocument(id: workspaceID,
+                                         directory: workspaceDirectory,
                                          title: workspaceTitle,
                                          subtitle: workspaceSubtitle,
                                          tree: tree,

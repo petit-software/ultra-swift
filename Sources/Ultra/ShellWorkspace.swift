@@ -20,7 +20,9 @@ enum ShellWorkspace {
                      directory: String,
                      theme: TerminalTheme? = nil,
                      restore: Bool = true) -> LayoutStore {
-        let document = restore ? storage.loadAll().first : nil
+        // BY PATH, not "whichever document is first on disk" — that stood in for this while
+        // there was only ever one project, and silently gave every project the same layout.
+        let document = restore ? storage.load(directory: directory) : nil
         let records: [PaneID: PaneRecord] = document.map { document in
             Dictionary(uniqueKeysWithValues: document.panes.compactMap { key, value in
                 PaneID(uuidString: key).map { ($0, value) }
@@ -76,6 +78,7 @@ enum ShellWorkspace {
         store.workspaceTitle = document?.title
             ?? URL(fileURLWithPath: directory).lastPathComponent
         store.workspaceSubtitle = document?.subtitle ?? ShellPaneFactory.abbreviate(directory)
+        store.workspaceDirectory = directory
         store.windowFrame = document?.windowFrame?.rect
 
         // Closing a pane is the only thing that kills its PTY.
@@ -128,6 +131,20 @@ enum ShellWorkspace {
         @MainActor static var tiles: [UUID: TileFactory] = [:]
         @MainActor static var stores: [UUID: LayoutStore] = [:]
         @MainActor static var channels: [UUID: AgentChannel] = [:]
+        /// The window each workspace lives in, so an already-open project can be RAISED
+        /// rather than opened twice. Two windows on one project both restore the same
+        /// document id and both persist to it, so the second silently overwrites the
+        /// first's layout — the same last-writer-wins collision as two editors on one file.
+        @MainActor static var windows: [UUID: NSWindow] = [:]
+
+        /// The workspace already open on this project, if any. Compared canonically, so a
+        /// path spelled differently is still recognised as the same project.
+        @MainActor static func store(forDirectory path: String) -> LayoutStore? {
+            let wanted = WorkspaceDocument.canonical(path)
+            return stores.values.first {
+                $0.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
+            }
+        }
 
         /// Where a new tile should point: the focused pane's directory when it has one,
         /// else any pane's, else the workspace's own. Pane records carry the LIVE cwd —

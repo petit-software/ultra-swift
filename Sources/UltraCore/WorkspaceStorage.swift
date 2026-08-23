@@ -80,6 +80,40 @@ public final class WorkspaceStorage: @unchecked Sendable {
         }
     }
 
+    /// The saved workspace for a project, or nil if it has never been opened.
+    ///
+    /// This is what `loadAll().first` used to stand in for, and the reason every project
+    /// resolved to the same layout: "the first document on disk" is not "this project's
+    /// document" once there is more than one.
+    public func load(directory: String) -> WorkspaceDocument? {
+        loadAll().first { $0.belongs(to: directory) }
+    }
+
+    /// Every project with a saved workspace, most recently written first — the backing for
+    /// a recents list. A document with no directory is skipped: it cannot be reopened by
+    /// path, so offering it as a menu item would be offering something that does nothing.
+    public func recentDirectories(limit: Int = 10) -> [String] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let dated = files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { url -> (URL, Date)? in
+                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate
+                return date.map { (url, $0) }
+            }
+            .sorted { $0.1 > $1.1 }
+        var seen = Set<String>()
+        var out: [String] = []
+        for (url, _) in dated {
+            guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
+                  let path = load(id)?.directory, seen.insert(path).inserted else { continue }
+            out.append(path)
+            if out.count == limit { break }
+        }
+        return out
+    }
+
     public func loadAll() -> [WorkspaceDocument] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory,
                                                                   includingPropertiesForKeys: nil))

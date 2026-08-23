@@ -85,11 +85,22 @@ final class WorkspaceModel {
         return cwd == "/" ? NSHomeDirectory() : cwd
     }
 
+    /// The project the NEXT window should open on. Consumed once, the same idiom as a
+    /// staged tile: `openWindow` cannot carry a value through to `WorkspaceModel`, and a
+    /// value left standing would make every later tab inherit a project opened once.
+    @MainActor static var pendingDirectory: String?
+
     init() {
-        let restore = !Self.hasRestored
+        let requested = WorkspaceModel.pendingDirectory
+        WorkspaceModel.pendingDirectory = nil
+        // A window opened ON a project restores that project's layout even though it is not
+        // the first window of the launch. The "new tab is new work" rule exists to stop a
+        // tab cloning the panes already on screen; a different project's document cannot do
+        // that, and refusing to restore it would throw the layout away instead.
+        let restore = requested != nil || !Self.hasRestored
         Self.hasRestored = true
         store = ShellWorkspace.make(storage: WorkspaceStorage(),
-                                    directory: Self.startDirectory,
+                                    directory: requested ?? Self.startDirectory,
                                     restore: restore)
     }
 
@@ -97,8 +108,9 @@ final class WorkspaceModel {
     /// tab has a saved frame; a new tab takes AppKit's cascade.
     func adoptWindow() {
         NSApplication.shared.activate()
-        guard let frame = store.windowFrame else { return }
         let window = NSApp.windows.first { $0.isKeyWindow } ?? NSApp.windows.first
+        if let window { ShellWorkspace.Registry.windows[store.workspaceID] = window }
+        guard let frame = store.windowFrame else { return }
         window?.setFrame(frame, display: false)
     }
 }
@@ -115,8 +127,52 @@ struct WorkspaceCommands: Commands {
         return store.surfaces.records[store.tree.focused]?.kind
     }
 
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Open"
+        panel.message = "Choose a project folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        open(directory: url.path)
+    }
+
+    /// Raise the project if it is already open; otherwise hand it to the next window.
+    ///
+    /// Raising rather than opening a second window is not politeness. Both windows would
+    /// restore the same document id and both would persist to it, so whichever was touched
+    /// last would silently overwrite the other's layout.
+    private func open(directory: String) {
+        if let existing = ShellWorkspace.Registry.store(forDirectory: directory),
+           let window = ShellWorkspace.Registry.windows[existing.workspaceID] {
+            window.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate()
+            return
+        }
+        RecentProjects.remember(directory)
+        WorkspaceModel.pendingDirectory = directory
+        openWindow(id: UltraApp.workspaceWindowID)
+    }
+
     var body: some Commands {
         CommandGroup(after: .newItem) {
+            Button("Open Folder…") { chooseFolder() }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+
+            Menu("Open Recent") {
+                ForEach(RecentProjects.list, id: \.self) { path in
+                    Button(ShellPaneFactory.abbreviate(path)) { open(directory: path) }
+                }
+                if !RecentProjects.list.isEmpty {
+                    Divider()
+                    Button("Clear Menu") { RecentProjects.clear() }
+                }
+            }
+            .disabled(RecentProjects.list.isEmpty)
+
+            Divider()
+
             // ⌘T is the tab key on every other Mac app, so it is the tab key here. The
             // pane verb it used to hold moved to ⌥⌘T, beside the other pane bindings.
             Button("New Tab") { openWindow(id: UltraApp.workspaceWindowID) }

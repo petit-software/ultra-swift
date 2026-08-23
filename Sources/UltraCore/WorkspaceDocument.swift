@@ -49,10 +49,17 @@ public struct WindowFrame: Codable, Equatable, Sendable {
 public struct WorkspaceDocument: Codable, Equatable, Sendable {
     /// Bumped whenever the shape changes. Migration is a pure function per version step,
     /// each with a fixture test.
-    public static let currentVersion = 1
+    public static let currentVersion = 2
 
     public var version: Int
     public var id: UUID
+    /// The project this workspace IS — the absolute path its panes, its agent socket, and
+    /// its per-project files are all scoped to.
+    ///
+    /// Optional only because a v1 document predates it and the migration cannot always
+    /// recover one. A document with no directory is never matched to a project; it is
+    /// restorable but not findable, which is the honest outcome.
+    public var directory: String?
     public var title: String
     public var subtitle: String?
     public var tree: LayoutTree
@@ -60,11 +67,13 @@ public struct WorkspaceDocument: Codable, Equatable, Sendable {
     public var windowFrame: WindowFrame?
     public var themeID: String?
 
-    public init(id: UUID = UUID(), title: String, subtitle: String? = nil,
+    public init(id: UUID = UUID(), directory: String? = nil,
+                title: String, subtitle: String? = nil,
                 tree: LayoutTree, panes: [PaneID: PaneRecord],
                 windowFrame: CGRect? = nil, themeID: String? = nil) {
         self.version = Self.currentVersion
         self.id = id
+        self.directory = directory.map(WorkspaceDocument.canonical)
         self.title = title
         self.subtitle = subtitle
         self.tree = tree
@@ -89,6 +98,24 @@ public struct WorkspaceDocument: Codable, Equatable, Sendable {
     public var isConsistent: Bool {
         tree.validate().isEmpty && tree.paneIDs.allSatisfy { panes[$0.uuidString] != nil }
     }
+
+    /// Does this document belong to `path`?
+    ///
+    /// Compared canonically, because the same project arrives spelled several ways: with a
+    /// trailing slash from a drag, through `~` from a config, and through a symlink from
+    /// `/tmp`. Three spellings of one project would be three workspaces, each with its own
+    /// layout, and the user would see their panes vanish depending on how they opened it.
+    public func belongs(to path: String) -> Bool {
+        guard let directory else { return false }
+        return directory == Self.canonical(path)
+    }
+
+    /// One spelling per project: tilde expanded, symlinks resolved, trailing slash dropped.
+    public static func canonical(_ path: String) -> String {
+        let expanded = (path as NSString).expandingTildeInPath
+        let resolved = URL(fileURLWithPath: expanded).resolvingSymlinksInPath().path
+        return resolved.count > 1 && resolved.hasSuffix("/") ? String(resolved.dropLast()) : resolved
+    }
 }
 
 public enum WorkspaceMigration {
@@ -99,7 +126,16 @@ public enum WorkspaceMigration {
             throw WorkspaceError.unsupportedVersion(document.version)
         }
         var document = document
-        // v1 is the first version; steps get added here as `if document.version < N`.
+        // v1 → v2 added `directory`. A v1 document never stored one, but its SUBTITLE was
+        // written as the abbreviated path, so the tilde form can be expanded back. That is a
+        // recovery, not a guarantee: a document whose subtitle was overridden by the user
+        // gets no directory and simply is not matched to a project, rather than being
+        // adopted by whichever project the string happens to resemble.
+        if document.version < 2 {
+            document.directory = document.subtitle
+                .map(WorkspaceDocument.canonical)
+                .flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+        }
         document.version = WorkspaceDocument.currentVersion
         document.reconcile()
         return document
