@@ -5,16 +5,16 @@ import Foundation
 @testable import UltraDesign
 
 /// See `AppearanceTests` — an isolated domain per call, so suites cannot stomp each other.
+/// Runs `body` against a suite of its own.
+///
+/// Bound rather than assigned. Assigning a global worked until a second test TARGET did the
+/// same thing in the same process, at which point the two swapped the store out from under
+/// each other and three different suites started failing about one run in three.
 private func clean(_ body: () -> Void) {
     let name = "ultra.tests.preferences.\(UUID().uuidString)"
     let suite = UserDefaults(suiteName: name)!
-    let previous = Preferences.store
-    Preferences.store = suite
-    defer {
-        Preferences.store = previous
-        suite.removePersistentDomain(forName: name)
-    }
-    body()
+    defer { suite.removePersistentDomain(forName: name) }
+    Preferences.withStore(suite, body)
 }
 
 @Suite("Preferences", .serialized)

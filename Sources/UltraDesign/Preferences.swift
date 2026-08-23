@@ -68,9 +68,40 @@ public enum Preferences {
     public static let didChange = Notification.Name("com.ultra.preferences.didChange")
     private static let prefix = "preference."
 
-    /// Injectable so tests can use an isolated suite; two suites mutating the same keys
-    /// in `.standard` is a genuine flake, not a theoretical one.
-    public nonisolated(unsafe) static var store: UserDefaults = .standard
+    /// Where preferences are read and written.
+    ///
+    /// TASK-LOCAL, not a mutable global. Tests need an isolated suite — two of them mutating
+    /// the same keys in `.standard` is a genuine flake, not a theoretical one — and the
+    /// obvious way to give them one is to assign this, run, and put it back. That works
+    /// until two test TARGETS do it in the same process, at which point one swaps the store
+    /// out from under the other mid-test. It presented as three different suites failing
+    /// about one full run in three while every one of them passed in isolation, and it
+    /// survived two fixes aimed at the suites rather than at the global.
+    ///
+    /// Bound with `Preferences.withStore(suite) { … }`, a swap now reaches only the task
+    /// that made it. Production never binds it and reads `.standard`.
+    public static var store: UserDefaults { boundStore.defaults }
+
+    /// Run `body` with preferences read from and written to `defaults`.
+    ///
+    /// The binding covers this task and anything it awaits. It does NOT reach work handed to
+    /// another executor and left to run later — such work sees `.standard`, which is the
+    /// honest outcome: a task-local cannot follow a value somewhere its scope does not go.
+    public static func withStore<T>(_ defaults: UserDefaults,
+                                    _ body: () throws -> T) rethrows -> T {
+        try $boundStore.withValue(BoundStore(defaults), operation: body)
+    }
+
+    @TaskLocal static var boundStore = BoundStore(.standard)
+
+    /// `UserDefaults` declares its `Sendable` conformance UNAVAILABLE, so it cannot be a
+    /// task-local value directly. It is documented as thread-safe, and this box carries it
+    /// without claiming anything more than that — the unchecked conformance is about
+    /// Foundation's annotation, not about a guarantee being waived.
+    struct BoundStore: @unchecked Sendable {
+        let defaults: UserDefaults
+        init(_ defaults: UserDefaults) { self.defaults = defaults }
+    }
 
     // MARK: - Values
 
