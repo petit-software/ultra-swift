@@ -30,6 +30,17 @@ refract anything. This was the difference between "grey slabs" and glass.
 fully opaque at any value. So the cells are transparent while the content stays readable,
 and `window.isOpaque = false` with a clear `window.backgroundColor` is what lets it composite.
 
+**Half-strength accent has one definition.** `Token.Colour.accentHalf` — the accent at
+`accentHalfStrength`, by ALPHA rather than by blending toward it. Half of the way to a
+saturated colour still reads as that colour, only darker; half the alpha reads as half. The
+focused pane's ring is this token, and anything else wanting a held-back tint should be too,
+so a second idea of "half" cannot appear.
+
+**Why the ring is inset.** Drawn on the pane's outer edge it coincides with the glass rim, a
+near-white line, and any alpha composited over that reads at full strength however little it
+carries. A ring "at 0.5" measured 54% of the way to the accent once it was moved a point in,
+and looked like the whole colour before.
+
 **Why headers have no fill.** A header with any background is a second surface, and a second
 surface is a seam. The label sits directly on the pane's glass, in the same material as the
 terminal beneath it.

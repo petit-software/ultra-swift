@@ -21,6 +21,10 @@ public enum Token {
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
         public static let tileHeaderHeight: CGFloat = 36
+        /// The focused pane's ring, and how far in from the pane's edge it sits. Inset so it
+        /// draws over the PANE rather than over the glass rim — see `PaneContainerView.ring`.
+        public static let focusRingWidth: CGFloat = 2
+        public static let focusRingInset: CGFloat = 1.5
         /// How far the traffic lights sit from the window's leading edge. AppKit's default
         /// puts them tight into the corner; with a 24pt-tall bar and a rounded window they
         /// want more room to breathe.
@@ -67,6 +71,22 @@ public enum Token {
                     : NSColor.black.withAlphaComponent(0.18)
             }
         }
+
+        /// How much of the accent a "held back" tint carries.
+        ///
+        /// One source for every half-strength use of the accent, so the focus ring and
+        /// anything added later cannot drift into two different ideas of "half".
+        public static let accentHalfStrength: Double = 0.5
+
+        /// The accent at half strength. TRANSLUCENT on purpose.
+        ///
+        /// An opaque mix toward the accent was tried and reads wrong: 50% of the way to a
+        /// saturated blue is still plainly blue, just darker, so the number and what the eye
+        /// sees disagree. Alpha lets the pane show through, which is what "half" looks like.
+        public static var accentHalf: Color { accent.opacity(accentHalfStrength) }
+
+        /// The focused pane's ring — the accent, held back.
+        public static var focusBorder: Color { accentHalf }
 
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 

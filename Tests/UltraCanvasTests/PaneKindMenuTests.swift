@@ -63,11 +63,9 @@ struct PaneKindMenuTests {
     }
 }
 
-/// The focus ring is gone. Focus is said by DEPTH alone now, so the thing worth asserting is
-/// that the two states are actually different — a lift of zero would leave the focused pane
-/// indistinguishable, with nothing else left to carry the signal.
-@Suite("Focused pane depth")
-struct FocusDepthTests {
+/// The focused pane says so three ways: the ring, the icon taking the accent, and depth.
+@Suite("Focused pane")
+struct FocusSignalTests {
 
     @Test("a focused pane sits higher than an unfocused one")
     func focusLifts() {
@@ -75,5 +73,39 @@ struct FocusDepthTests {
         #expect(base > 0, "an unfocused pane still needs a shadow to lift FROM")
         #expect(base * 1.6 > base)
         #expect(base * 1.6 <= 1, "a shadow opacity above 1 is clamped, losing the difference")
+    }
+
+    /// TRANSLUCENT, not an opaque mix. Half of the way to a saturated colour still reads as
+    /// that colour; half the alpha reads as half. The previous ring was opaque and looked
+    /// like the whole accent, which is the complaint this replaced.
+    @Test("the ring is the accent held back by alpha, not a blend")
+    func ringIsTranslucent() {
+        let ring = NSColor(Token.Colour.focusBorder).usingColorSpace(.sRGB)!
+        let accent = NSColor(Token.Colour.accent).usingColorSpace(.sRGB)!
+        #expect(abs(ring.alphaComponent - Token.Colour.accentHalfStrength) < 0.01)
+        // Same colour underneath — a ring that disagreed with the tint would be a second
+        // accent.
+        #expect(abs(ring.redComponent - accent.redComponent) < 0.02)
+        #expect(abs(ring.greenComponent - accent.greenComponent) < 0.02)
+        #expect(abs(ring.blueComponent - accent.blueComponent) < 0.02)
+    }
+
+    /// The ring is inset so it draws over the PANE, not over the glass rim it would otherwise
+    /// sit on — the rim is near-white, and any alpha over it reads at full strength.
+    @Test("the ring is inset from the pane's edge, and stays concentric")
+    func ringIsInset() {
+        #expect(Token.Space.focusRingInset > 0)
+        #expect(Token.Space.focusRingInset < Token.Space.paneRadius)
+        #expect(Token.Space.focusRingWidth > 0)
+    }
+
+    /// One source for "half the accent", so a second half-strength use cannot invent its own.
+    @Test("half strength has a single definition")
+    func oneSourceForHalf() {
+        #expect(Token.Colour.accentHalfStrength == 0.5)
+        let half = NSColor(Token.Colour.accentHalf).usingColorSpace(.sRGB)!
+        let ring = NSColor(Token.Colour.focusBorder).usingColorSpace(.sRGB)!
+        #expect(abs(half.alphaComponent - ring.alphaComponent) < 0.0001,
+                "the ring must BE the shared half-strength accent, not a copy of its value")
     }
 }

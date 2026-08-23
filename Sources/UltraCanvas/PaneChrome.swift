@@ -253,6 +253,15 @@ public final class PaneContainerView: NSView {
     /// The pane's surface: real Liquid Glass, rounded, with the tile's content inside it.
     /// The container itself stays unclipped so it can cast a shadow.
     private let glass = NSGlassEffectView()
+
+    /// The focused pane's ring.
+    ///
+    /// Its own layer, INSET from the pane's edge rather than drawn on it. On the edge it
+    /// coincides with the glass rim — a near-white line — and anything composited over that
+    /// reads at full strength however little alpha it carries. That is why an earlier ring
+    /// "at 0.5" looked like the whole colour: the number was right and the ground was wrong.
+    /// A point in, it sits over the pane itself, and half means half.
+    private let ring = CALayer()
     private let clip = FlippedView()
     private let header: NSHostingView<PaneHeader>
     private var descriptor: PaneDescriptor
@@ -298,6 +307,11 @@ public final class PaneContainerView: NSView {
         clip.layer?.cornerRadius = Token.Space.paneRadius
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
+
+        ring.cornerCurve = .continuous
+        ring.borderWidth = Token.Space.focusRingWidth
+        ring.isHidden = true
+        clip.layer?.addSublayer(ring)
 
         // The tile's content lives INSIDE the glass, which is what `NSGlassEffectView`
         // expects — the material is the pane's surface, not a layer stacked behind it.
@@ -396,12 +410,15 @@ public final class PaneContainerView: NSView {
 
     /// Colours that live on layers. Cheap, idempotent, and safe to re-run on every redraw.
     private func applyLayerState() {
-        // No focus ring. A focused pane is said by DEPTH — it lifts off the material — and
-        // by its header brightening. An outline was tried and removed: drawn on the clip
-        // layer inside the pane's glass it read as a hard saturated line rather than as the
-        // held-back tint it was specified to be, and a box around a pane is the thing this
-        // design language spends its effort avoiding.
-        // Depth is now the WHOLE signal, so it has to carry on its own.
+        // The ring, resolved INSIDE the view's own appearance. `NSColor.cgColor` on a
+        // dynamic colour resolves against whatever appearance happens to be current, which
+        // outside a draw is the light one.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            ring.borderColor = Token.Colour.focusBorder.nsColor.cgColor
+        }
+        ring.isHidden = !isFocused
+        // Colour never carries a signal alone here: the focused pane also lifts, which is
+        // what keeps focus legible for anyone who cannot separate the accent from grey.
         layer?.shadowOpacity = isFocused
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
@@ -430,6 +447,11 @@ public final class PaneContainerView: NSView {
         CATransaction.setDisableActions(true)
         glass.frame = bounds
         clip.frame = bounds
+        let inset = Token.Space.focusRingInset
+        ring.frame = bounds.insetBy(dx: inset, dy: inset)
+        // The radius follows the inset, so the ring stays concentric with the pane instead
+        // of bulging at the corners.
+        ring.cornerRadius = max(0, Token.Space.paneRadius - inset)
         layer?.shadowPath = CGPath(roundedRect: bounds,
                                    cornerWidth: Token.Space.paneRadius,
                                    cornerHeight: Token.Space.paneRadius,
