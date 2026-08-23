@@ -21,8 +21,12 @@ public struct TileScrollBar: View {
     /// Deliberately thinner than any system scroller: it floats over content, so it has to
     /// be findable without being furniture.
     public static let thickness: CGFloat = 4
-    /// Inset from the pane's trailing edge and from its ends.
-    public static let inset: CGFloat = 3
+    /// Inset from the pane's trailing edge. Only from the SIDE — the track runs the full
+    /// height of the scrollable area, so there is nothing to inset at the ends.
+    public static let sideInset: CGFloat = 12
+    /// The track behind the knob. Barely there on purpose: it says how far there is to go
+    /// without becoming a second edge down the inside of the pane.
+    public static let trackOpacity: Double = 0.08
 
     /// 0...1 — how far down the content is.
     let progress: Double
@@ -40,22 +44,30 @@ public struct TileScrollBar: View {
     /// The travel available to the knob, never negative — a pane shorter than the knob has
     /// nowhere to move it, and a negative range would put the knob outside the pane.
     var travel: CGFloat {
-        max(0, trackHeight - Self.knobHeight - 2 * Self.inset)
+        max(0, trackHeight - Self.knobHeight)
     }
 
     public var body: some View {
         if isScrollable, trackHeight > Self.knobHeight {
-            Capsule(style: .continuous)
-                .fill(Token.Colour.tertiaryLabel)
-                .frame(width: Self.thickness,
-                       height: min(Self.knobHeight, max(0, trackHeight - 2 * Self.inset)))
-                .padding(.trailing, Self.inset)
-                .offset(y: Self.inset + travel * clamped(progress))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                // No track behind it, and no hit testing: this REPORTS position, it is not a
-                // control. A drag target here would compete with the content underneath for
-                // a gesture the wheel and trackpad already handle.
-                .allowsHitTesting(false)
+            ZStack(alignment: .top) {
+                // The track runs the full height of the pane, so the knob's position reads
+                // against the whole of what there is rather than against nothing.
+                Capsule(style: .continuous)
+                    .fill(Token.Colour.label.opacity(Self.trackOpacity))
+                    .frame(width: Self.thickness, height: trackHeight)
+
+                Capsule(style: .continuous)
+                    .fill(Token.Colour.tertiaryLabel)
+                    .frame(width: Self.thickness, height: Self.knobHeight)
+                    .offset(y: travel * clamped(progress))
+            }
+            .frame(width: Self.thickness, height: trackHeight, alignment: .top)
+            .padding(.trailing, Self.sideInset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            // No hit testing: this REPORTS position, it is not a control. A drag target here
+            // would compete with the content underneath for a gesture the wheel and trackpad
+            // already handle.
+            .allowsHitTesting(false)
         }
     }
 
@@ -82,6 +94,9 @@ private struct TileScrollBarModifier: ViewModifier {
     @State private var isScrollable = false
     @State private var trackHeight: CGFloat = 0
 
+    /// The scroll view's bottom content margin — the room the floating footer occupies.
+    @State private var bottomInset: CGFloat = 0
+
     func body(content: Content) -> some View {
         content
             // `.never`, not `.hidden`. Hidden still lets macOS flash its own indicator
@@ -89,23 +104,29 @@ private struct TileScrollBarModifier: ViewModifier {
             // width beside our own capsule.
             .scrollIndicators(.never)
             .onScrollGeometryChange(for: ScrollSnapshot.self) { geometry in
-                let visible = geometry.containerSize.height
-                let total = geometry.contentSize.height
-                    + geometry.contentInsets.top + geometry.contentInsets.bottom
-                let range = total - visible
+                // `containerSize` is the VISIBLE area, with the content insets already taken
+                // out of it. Adding those insets to the content as well counted the footer's
+                // margin twice — once as extra range to travel and once as room already
+                // removed — so the knob ran out of progress before the content ran out of
+                // scroll and stopped short of the bottom. With a 36pt footer over a pane of
+                // 500 showing 700 of content, that put its maximum at 200/236, which is the
+                // three-quarters this presented as.
+                let range = geometry.contentSize.height - geometry.containerSize.height
                 return ScrollSnapshot(
-                    // The offset starts at minus the top inset, so it is measured from the
-                    // top of the CONTENT rather than from zero. Without that, a scroll view
-                    // with a content inset reports itself already scrolled at rest.
+                    // Measured from the top of the CONTENT rather than from zero: a scroll
+                    // view with a top inset rests at minus that inset, and without the shift
+                    // would report itself already scrolled before anyone touched it.
                     progress: range > 0
                         ? (geometry.contentOffset.y + geometry.contentInsets.top) / range
                         : 0,
                     isScrollable: range > 1,
-                    trackHeight: visible)
+                    trackHeight: geometry.containerSize.height,
+                    bottomInset: geometry.contentInsets.bottom)
             } action: { _, snapshot in
                 progress = snapshot.progress
                 isScrollable = snapshot.isScrollable
                 trackHeight = snapshot.trackHeight
+                bottomInset = snapshot.bottomInset
             }
             .overlay {
                 // The track height is read from LAYOUT, not from the scroll geometry.
@@ -113,9 +134,12 @@ private struct TileScrollBarModifier: ViewModifier {
                 // baseline rather than a change — so a pane that is never scrolled would
                 // keep a track height of zero and draw nothing at all.
                 GeometryReader { proxy in
+                    // Shortened by the footer's own margin, so the track ends where the
+                    // visible content does rather than running on underneath it — the last
+                    // stretch of travel was hidden behind the footer.
                     TileScrollBar(progress: progress,
                                   isScrollable: isScrollable,
-                                  trackHeight: proxy.size.height)
+                                  trackHeight: max(0, proxy.size.height - bottomInset))
                 }
             }
     }
@@ -126,4 +150,5 @@ private struct ScrollSnapshot: Equatable {
     var progress: Double
     var isScrollable: Bool
     var trackHeight: CGFloat
+    var bottomInset: CGFloat
 }

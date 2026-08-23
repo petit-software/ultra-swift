@@ -35,12 +35,19 @@ struct TileScrollBarTests {
         #expect(bar(progress: 1, height: height).travel == 0)
     }
 
-    @Test("a tall pane travels its height less the knob and both insets")
+    /// The track is the full height of the pane, so the knob travels all of it — at
+    /// progress 1 its bottom edge sits exactly on the pane's bottom edge.
+    @Test("a tall pane travels its full height less the knob")
     func tallPaneTravels() {
         let height: CGFloat = 500
-        let expected = height - TileScrollBar.knobHeight - 2 * TileScrollBar.inset
+        let expected = height - TileScrollBar.knobHeight
         #expect(bar(progress: 0, height: height).travel == expected)
         #expect(expected > 0)
+    }
+
+    @Test("the indicator sits 12pt in from the pane's trailing edge")
+    func sideInset() {
+        #expect(TileScrollBar.sideInset == 12)
     }
 
     @Test("content that does not scroll shows no indicator")
@@ -57,31 +64,43 @@ struct TileScrollBarTests {
 struct ScrollProgressTests {
 
     /// Mirrors the expression in `TileScrollBarModifier`.
+    ///
+    /// `visible` is the CONTAINER size, which already has the content insets taken out of
+    /// it — adding them to the content as well is the double-count that stopped the knob
+    /// short of the bottom.
     private func progress(offset: CGFloat, topInset: CGFloat,
-                          content: CGFloat, insets: CGFloat, visible: CGFloat) -> Double {
-        let total = content + insets
-        let range = total - visible
+                          content: CGFloat, visible: CGFloat) -> Double {
+        let range = content - visible
         return range > 0 ? Double((offset + topInset) / range) : 0
     }
 
     @Test("at rest with a top inset, progress is zero — not part-way down")
     func restWithInsetIsZero() {
-        #expect(progress(offset: -36, topInset: 36, content: 1000, insets: 36, visible: 400) == 0)
+        #expect(progress(offset: -36, topInset: 36, content: 1000, visible: 400) == 0)
     }
 
     @Test("fully scrolled is one")
     func endIsOne() {
-        let p = progress(offset: 600, topInset: 0, content: 1000, insets: 0, visible: 400)
-        #expect(abs(p - 1) < 0.0001)
+        #expect(abs(progress(offset: 600, topInset: 0, content: 1000, visible: 400) - 1) < 0.0001)
+    }
+
+    /// The regression that presented as "the knob stops about three quarters down". A pane
+    /// showing 500 of 700 with a 36pt footer margin reached only 200/236 ≈ 0.85, because the
+    /// footer's margin was counted BOTH as extra distance to travel and as room already
+    /// removed from the container.
+    @Test("a floating footer's margin does not shorten the knob's travel")
+    func footerMarginDoesNotCapProgress() {
+        // container is the visible area, already 36 shorter than the pane.
+        #expect(abs(progress(offset: 200, topInset: 0, content: 700, visible: 500) - 1) < 0.0001)
     }
 
     @Test("content shorter than the pane is zero, not a division by zero")
     func shortContentIsZero() {
-        #expect(progress(offset: 0, topInset: 0, content: 100, insets: 0, visible: 400) == 0)
+        #expect(progress(offset: 0, topInset: 0, content: 100, visible: 400) == 0)
     }
 
     @Test("content exactly the height of the pane does not divide by zero")
     func exactFitIsZero() {
-        #expect(progress(offset: 0, topInset: 0, content: 400, insets: 0, visible: 400) == 0)
+        #expect(progress(offset: 0, topInset: 0, content: 400, visible: 400) == 0)
     }
 }
