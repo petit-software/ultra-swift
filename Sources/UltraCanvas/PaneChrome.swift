@@ -51,6 +51,30 @@ public final class PaneActions {
     }
 }
 
+/// The focused pane's ring, as a view so it can sit above the pane's header.
+@MainActor
+final class PaneRingView: NSView {
+    var tint: NSColor = .clear {
+        didSet { layer?.borderColor = tint.cgColor }
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.borderWidth = Token.Space.focusRingWidth
+        layer?.cornerCurve = .continuous
+        // Concentric with the pane: the radius follows the inset, or the ring bulges at the
+        // corners against the rounding it is meant to trace.
+        layer?.cornerRadius = max(0, Token.Space.paneRadius - Token.Space.focusRingInset)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// Decorative. It covers the header, so taking clicks would make the title bar dead.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// A plain top-left-origin container.
 final class FlippedView: NSView {
     override var isFlipped: Bool { true }
@@ -256,12 +280,15 @@ public final class PaneContainerView: NSView {
 
     /// The focused pane's ring.
     ///
-    /// Its own layer, INSET from the pane's edge rather than drawn on it. On the edge it
-    /// coincides with the glass rim — a near-white line — and anything composited over that
-    /// reads at full strength however little alpha it carries. That is why an earlier ring
-    /// "at 0.5" looked like the whole colour: the number was right and the ground was wrong.
-    /// A point in, it sits over the pane itself, and half means half.
-    private let ring = CALayer()
+    /// A VIEW above everything else, not a layer inside the clip. Inside, the header is a
+    /// subview of the same clip and therefore draws over it, so the ring vanished along the
+    /// whole title band — a three-sided ring, which reads as a rendering fault rather than
+    /// as focus.
+    ///
+    /// Still INSET from the pane's edge. On the edge it coincides with the glass rim, a
+    /// near-white line, and anything composited over that reads at full strength however
+    /// little alpha it carries. A point in, it sits over the pane itself and half means half.
+    private let ring = PaneRingView()
     private let clip = FlippedView()
     private let header: NSHostingView<PaneHeader>
     private var descriptor: PaneDescriptor
@@ -308,10 +335,7 @@ public final class PaneContainerView: NSView {
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
 
-        ring.cornerCurve = .continuous
-        ring.borderWidth = Token.Space.focusRingWidth
         ring.isHidden = true
-        clip.layer?.addSublayer(ring)
 
         // The tile's content lives INSIDE the glass, which is what `NSGlassEffectView`
         // expects — the material is the pane's surface, not a layer stacked behind it.
@@ -324,6 +348,7 @@ public final class PaneContainerView: NSView {
         clip.addSubview(headerBlur)
         clip.addSubview(header)
         clip.addSubview(dragHandle)
+        addSubview(ring, positioned: .above, relativeTo: nil)
         refresh()
 
         setAccessibilityElement(true)
@@ -414,7 +439,7 @@ public final class PaneContainerView: NSView {
         // dynamic colour resolves against whatever appearance happens to be current, which
         // outside a draw is the light one.
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            ring.borderColor = Token.Colour.focusBorder.nsColor.cgColor
+            ring.tint = Token.Colour.focusBorder.nsColor
         }
         ring.isHidden = !isFocused
         // Colour never carries a signal alone here: the focused pane also lifts, which is
@@ -449,9 +474,6 @@ public final class PaneContainerView: NSView {
         clip.frame = bounds
         let inset = Token.Space.focusRingInset
         ring.frame = bounds.insetBy(dx: inset, dy: inset)
-        // The radius follows the inset, so the ring stays concentric with the pane instead
-        // of bulging at the corners.
-        ring.cornerRadius = max(0, Token.Space.paneRadius - inset)
         layer?.shadowPath = CGPath(roundedRect: bounds,
                                    cornerWidth: Token.Space.paneRadius,
                                    cornerHeight: Token.Space.paneRadius,
