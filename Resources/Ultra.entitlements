@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Deliberately empty.
+
+	The hardened runtime is required for notarization, and every entitlement added here is a
+	hole punched back through it. Ultra spawns login shells and PTYs, and that needs NO
+	entitlement: a child process is its own process with its own signature, not code loaded
+	into ours.
+
+	What might genuinely be needed later, and only once something is observed to fail:
+
+	  com.apple.security.cs.disable-library-validation
+	      if a plug-in or an injected library has to load into Ultra itself.
+	  com.apple.security.cs.allow-dyld-environment-variables
+	      if DYLD_* set in a shell has to reach a process Ultra spawned.
+
+	Neither is added on a guess. An entitlement granted speculatively is indistinguishable
+	from one that was needed, so the next person cannot tell which are load-bearing.
+	-->
+</dict>
+</plist>

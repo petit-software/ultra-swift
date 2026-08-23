@@ -17,6 +17,10 @@ let package = Package(
         // from the AppKit view — that separation is what makes shell panes previewable and
         // leaves a path to our own renderer. See docs/00-OVERVIEW.md.
         .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.2.0"),
+        // Updates. Sparkle is what notarized Mac apps outside the store use, and it already
+        // owns the parts that are easy to get wrong: atomic replacement, a resumed or
+        // corrupt download, and not installing over a running copy of itself.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         // Pure model + layout math. Deliberately depends on nothing of ours and
@@ -31,7 +35,10 @@ let package = Package(
         // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
         // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
         .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout"]),
-        .executableTarget(name: "Ultra", dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal", "UltraTiles", "UltraLayout", "UltraDesign"]),
+        .executableTarget(name: "Ultra",
+                          dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal",
+                                         "UltraTiles", "UltraLayout", "UltraDesign",
+                                         .product(name: "Sparkle", package: "Sparkle")]),
         .testTarget(name: "UltraLayoutTests", dependencies: ["UltraLayout"]),
         .testTarget(name: "UltraDesignTests", dependencies: ["UltraDesign"]),
         .testTarget(name: "UltraCanvasTests", dependencies: ["UltraCanvas", "UltraTerminal", "UltraLayout", "UltraDesign"]),

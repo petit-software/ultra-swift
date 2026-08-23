@@ -299,27 +299,35 @@ pane in every fixture sits flush.
   idle CPU near zero with the window occluded.
 - Developer ID signing, hardened runtime, notarization, stapling, DMG, auto-update feed.
 
-### Updates, from GitHub — NOT YET DECIDED
+### Updates, from GitHub — DECIDED, and built
+
+> **Status: the mechanism is in; the first release has not been cut.** Sparkle 2.9, a public
+> releases repo, and `scripts/release.sh` doing build → Developer ID → notarize → staple →
+> DMG → appcast. What has NOT happened: a real signing certificate has never been through
+> it, so the notarization and stapling steps are argued from Apple's documentation rather
+> than observed. Expect the first run to find something.
+
+The questions below were the open ones. Answers in bold.
 
 The distribution path is Developer ID plus notarization, so updates have to come from
 somewhere we control, and that somewhere is GitHub Releases. Everything past that sentence is
 open. Recorded here as questions rather than as a plan, because writing it down as a plan
 would be pretending three of these are settled.
 
-- **Sparkle, or our own checker?** Sparkle is what every notarized Mac app outside the store
-  uses, and it has solved the parts that are easy to get wrong — atomic replacement, staged
+- **Sparkle, or our own checker? — SPARKLE.** It is what every notarized Mac app outside the
+  store uses, and it has solved the parts that are easy to get wrong — atomic replacement, staged
   rollout, the "downloaded a broken build" case. Its cost is an appcast to host and a second
   signing key. A bespoke checker against the Releases API is fifty lines and owns none of
   that.
 - **A second signing key, whichever way it goes.** Sparkle signs updates with EdDSA,
   SEPARATELY from Developer ID and notarization. Two keys, two places to lose them.
-- **The repo has to be public, or the download does.** A private repo's release assets need
+- **Public releases repo.** A private repo's release assets need
   an authenticated request, and an app cannot hold a credential for that — shipping one in
   the bundle is shipping it to everybody. Either releases are public or they sit behind
   something that redirects to them.
-- **Do not update a build from source.** The app is built and run from a checkout today, and
-  an updater that offers to replace a developer's own build with a release is wrong, loudly.
-  Whatever ships has to know which it is.
+- **A build from source never updates — DONE.** `build-app.sh` deletes any feed URL and
+  `Updater` additionally refuses when the bundle sits beside a `Package.swift`. Verified both
+  ways: the menu item is absent from a checkout build and present on a copy outside it.
 - **Rate limits.** Unauthenticated GitHub API is 60 requests an hour per IP. A check on
   launch and a daily one after is nowhere near it; anything that polls is.
 - **Channels.** GitHub marks prereleases, so stable-versus-early is a flag rather than a

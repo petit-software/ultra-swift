@@ -121,6 +121,23 @@ private struct GeneralSettings: View {
             }
 
             Section {
+                if Updater.shared.canCheck {
+                    Toggle("Check for updates automatically",
+                           isOn: Binding(get: { Updater.shared.checksAutomatically },
+                                         set: { Updater.shared.checksAutomatically = $0 }))
+                    Button("Check Now…") { Updater.shared.checkForUpdates() }
+                } else {
+                    // Says WHY rather than hiding an empty section. A missing control with no
+                    // explanation is what makes people think the feature is broken.
+                    Text(Updater.unavailableReason ?? "Updates are unavailable for this copy.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("Updates")
+            }
+
+            Section {
                 Toggle("Keep this Mac awake while an agent is running",
                        isOn: Binding(get: { guardState.isEnabled },
                                      set: { guardState.isEnabled = $0 }))

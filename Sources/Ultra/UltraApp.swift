@@ -68,6 +68,7 @@ struct WorkspaceWindow: View {
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
                 MenuBarItem.shared.syncWithPreference()
+                Updater.shared.startIfUpdatable()
             }
             .onDisappear { model.store.persistNow() }
             .focusedSceneValue(\.layoutStore, model.store)
@@ -169,6 +170,14 @@ struct WorkspaceCommands: Commands {
     }
 
     var body: some Commands {
+        // Where every Mac app puts it. Absent entirely on a copy that cannot update, rather
+        // than present and disabled: a disabled item invites a click and explains nothing.
+        CommandGroup(after: .appInfo) {
+            if Updater.shared.canCheck {
+                Button("Check for Updates…") { Updater.shared.checkForUpdates() }
+            }
+        }
+
         CommandGroup(after: .newItem) {
             Button("Open Folder…") { chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])

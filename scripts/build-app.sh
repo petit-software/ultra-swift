@@ -31,13 +31,42 @@ cp ".build/release/Ultra" "$APP/Contents/MacOS/Ultra.new"
 mv -f "$APP/Contents/MacOS/Ultra.new" "$APP/Contents/MacOS/Ultra"
 
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# A LOCAL build never gets a feed URL, so it can never offer an update. See Updater.swift:
+# this bundle is written into the checkout, and offering to replace a developer's own build
+# with a download would overwrite uncommitted work. scripts/release.sh adds the key.
+/usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP/Contents/Info.plist" 2>/dev/null || true
 # The build number tracks the commit count, so About can tell two builds apart.
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 
 # --- Icon -------------------------------------------------------------------------------
 scripts/make-iconset.sh "$APP/Contents/Resources"
 
+# --- Frameworks -------------------------------------------------------------------------
+# SwiftPM links Sparkle but does not embed it: a bare executable has nowhere to embed it TO.
+# The framework has to travel inside the bundle, and the executable needs an rpath that finds
+# it there — without one the app launches only on a machine that happens to have Sparkle.
+SPARKLE="$(find .build/artifacts -name Sparkle.framework -maxdepth 5 -type d | head -1)"
+if [ -n "$SPARKLE" ]; then
+  rm -rf "$APP/Contents/Frameworks"
+  mkdir -p "$APP/Contents/Frameworks"
+  # -R preserves the framework's symlinks; copying it flat produces a bundle that fails to
+  # load with an error naming a path that plainly exists.
+  cp -R "$SPARKLE" "$APP/Contents/Frameworks/"
+  # Already present on a rebuild, and add_rpath fails rather than no-ops on a duplicate.
+  if ! otool -l "$APP/Contents/MacOS/Ultra" | grep -q "@executable_path/../Frameworks"; then
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/Ultra"
+  fi
+else
+  echo "warning: Sparkle.framework not found — run 'swift build' first" >&2
+fi
+
 # Re-sign after every change; a stale signature makes the bundle refuse to launch.
+# Inner code FIRST: a signature over a bundle is a signature over what it contained at the
+# time, so signing the app before its framework leaves the app's seal describing something
+# that no longer matches.
+if [ -d "$APP/Contents/Frameworks/Sparkle.framework" ]; then
+  codesign --force --sign - --timestamp=none --deep "$APP/Contents/Frameworks/Sparkle.framework"
+fi
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --deep --strict "$APP" && echo "signature OK"
 
