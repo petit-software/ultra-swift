@@ -78,11 +78,17 @@ final class WorkspaceModel {
     /// restoring into it would clone the panes the user already has open.
     private static var hasRestored = false
 
-    /// A bundled app is launched by `launchd` with "/" as its working directory, so a new
-    /// tab would open at the filesystem root. Home is the sane default for a shell.
+    /// Where the FIRST window of a launch opens.
+    ///
+    /// A bundled app is launched by `launchd` with "/" as its working directory, so the cwd
+    /// says nothing about intent and the app would open on the filesystem root. Falling back
+    /// to home meant every launch landed in `$HOME` no matter how many projects had been
+    /// opened — Open Folder every single time, which is not a feature, it is a chore.
     static var startDirectory: String {
-        let cwd = FileManager.default.currentDirectoryPath
-        return cwd == "/" ? NSHomeDirectory() : cwd
+        WorkspaceLaunch.directory(cwd: FileManager.default.currentDirectoryPath,
+                                  recents: RecentProjects.list,
+                                  home: NSHomeDirectory(),
+                                  exists: { FileManager.default.fileExists(atPath: $0) })
     }
 
     /// The project the NEXT window should open on. Consumed once, the same idiom as a

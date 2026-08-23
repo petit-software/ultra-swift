@@ -41,6 +41,43 @@ struct LivePTYTests {
         return (store, canvas, factory, window)
     }
 
+    /// The second half of M3's acceptance criterion: "no PTY is killed by a tab switch."
+    ///
+    /// A tab here is a whole second workspace — its own `LayoutStore`, its own factory, its
+    /// own panes. Nothing in building or using one should reach the first tab's shells. The
+    /// failure this guards against is a release path keyed by pane rather than by workspace:
+    /// pane ids are unique, but a factory handed another store's release callback would kill
+    /// processes belonging to a tab the user never touched.
+    @Test("opening and working in a second tab does not kill the first tab's shell")
+    func secondTabLeavesTheFirstAlone() {
+        let (firstStore, _, firstFactory, _) = makeHost()
+        let watched = firstStore.tree.focused
+        _ = firstStore.surfaces.surface(for: watched)
+        firstFactory.startPendingShells()
+
+        let shell = try! #require(firstFactory.shells[watched])
+        let pid = try! #require(shell.processID)
+        #expect(shell.isRunning)
+
+        // A second tab, built and then worked in — splits, focus changes, and a close.
+        let (secondStore, _, secondFactory, _) = makeHost()
+        _ = secondStore.surfaces.surface(for: secondStore.tree.focused)
+        secondFactory.startPendingShells()
+        _ = secondStore.split(edge: .right)
+        _ = secondStore.split(edge: .bottom)
+        for paneID in secondStore.tree.paneIDs { _ = secondStore.surfaces.surface(for: paneID) }
+        secondFactory.startPendingShells()
+        if let victim = secondStore.tree.paneIDs.last, secondStore.tree.paneIDs.count > 1 {
+            secondStore.close(victim)
+        }
+
+        // Give any mistaken teardown time to land, then assert it did not happen.
+        _ = poll(upTo: 0.4, until: { !shell.isRunning })
+        #expect(shell.isRunning, "the first tab's shell died while a second tab was used")
+        #expect(shell.processID == pid, "the first tab's shell was replaced")
+        #expect(firstFactory.shells[watched] != nil)
+    }
+
     @Test("a shell keeps its pid across 100 random layout operations")
     func pidSurvivesChaos() {
         let (store, canvas, factory, _) = makeHost()
