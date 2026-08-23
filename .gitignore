@@ -5,6 +5,11 @@
 # Packaged app bundle (rebuilt from source)
 Ultra.app/
 
+# Release output: signed DMGs and the generated appcast. Built by scripts/release.sh and
+# uploaded to a GitHub release — a DMG in git is a hundred megabytes nobody can diff, and an
+# appcast committed here would compete with the one actually being served.
+dist/
+
 # Xcode
 *.xcuserstate
 xcuserdata/
