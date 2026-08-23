@@ -252,4 +252,34 @@ extension LayoutTree {
         self = candidate
         return true
     }
+
+    /// Move a pane to one edge of the WHOLE tree, spanning that entire side.
+    ///
+    /// The operation `move(_:toEdgeOf:edge:)` cannot express. That one splits a target pane,
+    /// so the moved pane inherits the target's height or width — a "sidebar" built that way
+    /// is only as tall as whichever pane it landed beside. This wraps the root instead, so
+    /// the pane runs the full side and everything else compresses into the remainder.
+    ///
+    /// Built the same way as its sibling: close, then rebuild. Closing first is what keeps
+    /// the pane count honest and lets `close` collapse whatever container the pane leaves
+    /// behind — moving a node without removing it first is how a tree grows a container with
+    /// one child.
+    public mutating func move(_ paneID: PaneID, toRootEdge edge: Edge) -> Bool {
+        guard contains(paneID), paneCount >= 2 else { return false }
+        var candidate = self
+        guard candidate.close(paneID) else { return false }
+
+        let moved = LayoutNode.leaf(Leaf(paneID: paneID))
+        // Leading edges put the pane FIRST in the container; trailing edges put it last.
+        // The axis follows the edge, so a left or right drop makes a horizontal split.
+        let children = (edge == .left || edge == .top)
+            ? [moved, candidate.root]
+            : [candidate.root, moved]
+        candidate.root = .container(Container(id: UUID(), axis: edge.axis, children: children))
+        candidate.focused = paneID
+        candidate.normalize()
+        guard candidate.validate().isEmpty else { return false }
+        self = candidate
+        return true
+    }
 }

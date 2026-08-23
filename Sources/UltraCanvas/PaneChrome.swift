@@ -196,6 +196,16 @@ struct PaneHeaderButton: View {
     }
 }
 
+/// The pasteboard type a dragged pane travels as.
+///
+/// A UUID string rather than an archived pane: the pane itself never moves between processes,
+/// and a drop only needs to name which one was picked up. Anything richer would be state that
+/// can disagree with the tree by the time it lands.
+public enum PaneDragType {
+    public static let identifier = "com.ultra.pane"
+    public static var pasteboard: NSPasteboard.PasteboardType { .init(identifier) }
+}
+
 // MARK: - Kind menu
 
 /// The "turn this pane into…" control: a chevron sitting beside the split buttons.
@@ -299,6 +309,7 @@ public final class PaneContainerView: NSView {
         clip.addSubview(content)
         clip.addSubview(headerBlur)
         clip.addSubview(header)
+        clip.addSubview(dragHandle)
         refresh()
 
         setAccessibilityElement(true)
@@ -329,6 +340,34 @@ public final class PaneContainerView: NSView {
             DispatchQueue.main.async { focus(id) }
         }
         return hit
+    }
+
+    /// The band of the header you can pick the pane up by. Between the kind menu on the left
+    /// and the split/close cluster on the right, so all three keep their own gestures.
+    private lazy var dragHandle = PaneDragHandleView(paneID: paneID) { [weak self] in
+        self?.paneSnapshot()
+    }
+
+    /// A click on the handle that never became a drag is still a click on the header.
+    func focusFromHandle() { actions.focus(paneID) }
+
+    /// What the drag carries: the pane as it looks right now, at a size that reads as a
+    /// thumbnail rather than as a second window being flung around.
+    private func paneSnapshot() -> NSImage? {
+        guard bounds.width > 1, bounds.height > 1,
+              let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        let full = NSImage(size: bounds.size)
+        full.addRepresentation(rep)
+        let scale = min(1, 240 / max(bounds.width, 1))
+        let size = CGSize(width: (bounds.width * scale).rounded(),
+                          height: (bounds.height * scale).rounded())
+        let thumb = NSImage(size: size)
+        thumb.lockFocus()
+        full.draw(in: CGRect(origin: .zero, size: size),
+                  from: .zero, operation: .copy, fraction: 0.85)
+        thumb.unlockFocus()
+        return thumb
     }
 
     /// A blur that ramps in from nothing at its bottom edge to full at the top.
@@ -404,6 +443,13 @@ public final class PaneContainerView: NSView {
         headerBlur.frame = CGRect(x: 0, y: 0, width: bounds.width,
                                   height: min(headerHeight, bounds.height))
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: min(headerHeight, bounds.height))
+        // Between the kind menu (the icon, on the left) and the split/close cluster. Both
+        // ends are controls, and a drag that starts on one of them is a misfire.
+        let leadingGutter: CGFloat = 40
+        let trailingGutter: CGFloat = canClose ? 96 : 68
+        dragHandle.frame = CGRect(x: leadingGutter, y: 0,
+                                  width: max(0, bounds.width - leadingGutter - trailingGutter),
+                                  height: min(headerHeight, bounds.height))
         CATransaction.commit()
     }
 

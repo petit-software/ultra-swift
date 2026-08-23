@@ -226,6 +226,30 @@ public final class LayoutStore {
     public func swap(_ a: PaneID, _ b: PaneID) {
         apply("Swap Panes") { $0.swap(a, b) }
     }
+
+    /// Move a pane to one edge of the whole canvas, spanning that side.
+    public func move(_ paneID: PaneID, toRootEdge edge: Edge) {
+        apply("Move Pane to Edge") { $0.move(paneID, toRootEdge: edge) }
+    }
+
+    /// Perform whatever a drop resolved to. One entry point, so the drag handler does not
+    /// have to know which of three operations a zone corresponds to.
+    public func apply(_ target: DropTarget) {
+        switch target {
+        case .swap(let other): swap(tree.focused, other)
+        case .edge(let other, let edge): move(tree.focused, toEdgeOf: other, edge: edge)
+        case .root(let edge): move(tree.focused, toRootEdge: edge)
+        }
+    }
+
+    /// The same, for a drag that names its own pane rather than using the focused one.
+    public func apply(_ target: DropTarget, dragging paneID: PaneID) {
+        switch target {
+        case .swap(let other): swap(paneID, other)
+        case .edge(let other, let edge): move(paneID, toEdgeOf: other, edge: edge)
+        case .root(let edge): move(paneID, toRootEdge: edge)
+        }
+    }
 }
 
 // MARK: - Persistence

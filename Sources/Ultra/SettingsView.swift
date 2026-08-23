@@ -212,10 +212,18 @@ private struct GeneralSettings: View {
 }
 
 private struct AboutSettings: View {
+    /// Read from the bundle, with no fallback VERSION.
+    ///
+    /// It used to fall back to a literal "0.1", which is a second place a version number
+    /// lives and therefore a place it drifts — About would confidently report a number the
+    /// app had not been for months. There is no correct guess here: a bundle with no version
+    /// is broken, and saying so is more use to whoever is reading About than a plausible lie.
     private var version: String {
         let info = Bundle.main.infoDictionary
-        let short = info?["CFBundleShortVersionString"] as? String ?? "0.1"
-        let build = info?["CFBundleVersion"] as? String ?? "1"
+        guard let short = info?["CFBundleShortVersionString"] as? String else {
+            return "Version unknown"
+        }
+        let build = info?["CFBundleVersion"] as? String ?? "?"
         return "Version \(short) (\(build))"
     }
 

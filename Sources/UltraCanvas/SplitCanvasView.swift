@@ -31,6 +31,11 @@ public final class SplitCanvasView: NSView {
     /// is what makes adding a tab re-lay-out immediately.
     private var contentRectObservation: NSKeyValueObservation?
 
+    /// The drop preview, created the first time a pane is dragged over the canvas and kept
+    /// hidden afterwards rather than rebuilt — a glass view is not free, and a drag produces
+    /// a great many updates.
+    var dropHighlight: DropHighlightView?
+
     public init(store: LayoutStore) {
         self.store = store
         self.overlay = DividerOverlayView()
@@ -103,6 +108,7 @@ public final class SplitCanvasView: NSView {
 
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        registerForDraggedTypes([PaneDragType.pasteboard])
         contentRectObservation = window?.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -111,6 +117,32 @@ public final class SplitCanvasView: NSView {
             }
         }
         needsLayout = true
+    }
+
+    // MARK: Dragging destination
+
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        updateDrop(sender)
+    }
+
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        updateDrop(sender)
+    }
+
+    public override func draggingExited(_ sender: NSDraggingInfo?) {
+        clearDropHighlight()
+    }
+
+    public override func draggingEnded(_ sender: NSDraggingInfo) {
+        clearDropHighlight()
+    }
+
+    public override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        Self.pane(from: sender) != nil
+    }
+
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        performDrop(sender)
     }
 
     public override func layout() {

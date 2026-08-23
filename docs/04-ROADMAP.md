@@ -29,7 +29,10 @@ Scaffolding only. No features.
 > controls, the window bar, persistence/restore, and drag-to-rearrange with drop zones are
 > built and green at **82 tests** (10,000 random operations; surfaces proven to build
 > exactly once across 100 random layout operations; layouts proven to reopen with identical
-> frames). Verified running: splits via menus and header buttons, divider drag via synthetic
+> frames). Drag-to-rearrange is now genuinely built — the OPERATIONS were, and this status
+> line claimed the gesture was too, which it was not: there was no drag source, no drop
+> target, and no hit-testing anywhere in the canvas.
+> Verified running: splits via menus and header buttons, divider drag via synthetic
 > mouse events. **Outstanding:** the VoiceOver walkthrough, and dropping on the window's
 > outer edges to split the root.
 

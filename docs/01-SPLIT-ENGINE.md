@@ -371,7 +371,16 @@ the pane will actually land (a half for an edge, the whole pane for a swap) — 
 above content, exactly where glass belongs. Under Reduce Transparency it becomes a solid
 high-contrast fill rather than being quietly dropped. Dropping a pane on itself is refused.
 
-Dropping on the window's own outer edges to split the root is not implemented yet.
+**The sixth zone: the window's own outer edges.** Within `DropZone.rootBandInset` of the
+canvas edge — and outside it entirely, for a drag released past the window — a drop splits the
+ROOT rather than a pane. The dragged pane then spans that whole side, which the five per-pane
+zones cannot express: they split a target pane, so a "sidebar" dropped beside one pane of a
+grid is only as tall as that pane. The band deliberately reaches INSIDE the outermost pane,
+because confined to the gutter it would be a target a few points wide.
+
+Corners belong to whichever band they are deeper into, so the two meet on the corner's
+diagonal rather than one winning by declaration order. With a single pane the root drop is
+refused: wrapping the root around its only child is a no-op wearing a gesture.
 
 ---
 

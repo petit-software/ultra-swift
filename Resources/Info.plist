@@ -17,7 +17,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>0.1.1</string>
 	<key>CFBundleVersion</key>
 	<string>26</string>
 	<key>LSMinimumSystemVersion</key>
@@ -39,6 +39,18 @@
 			<string>Ultra Todo Item</string>
 			<key>UTTypeIdentifier</key>
 			<string>com.ultra.todo-item</string>
+			<key>UTTypeTagSpecification</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Ultra Pane</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.ultra.pane</string>
 			<key>UTTypeTagSpecification</key>
 			<dict/>
 		</dict>
