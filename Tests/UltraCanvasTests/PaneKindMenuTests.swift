@@ -66,21 +66,41 @@ struct PaneKindMenuTests {
 @Suite("Selected pane border")
 struct FocusBorderTests {
 
-    /// Deliberately reads the CURRENT accent rather than setting one. `Preferences` is
-    /// global, another target's suite mutates it concurrently, and swapping its store from
-    /// two places is a flake this project has already paid for twice. The property here is
-    /// a ratio, which holds whatever the accent happens to be.
+    private func srgb(_ colour: Color) -> NSColor {
+        NSColor(colour).usingColorSpace(.sRGB)!
+    }
+    private func spread(_ colour: Color) -> CGFloat {
+        let c = srgb(colour)
+        return max(c.redComponent, c.greenComponent, c.blueComponent)
+             - min(c.redComponent, c.greenComponent, c.blueComponent)
+    }
+
+    /// Both inputs are passed in rather than read from the tokens. `paneBackground` and
+    /// `accent` are live settings another target's suite mutates while this one runs, and
+    /// reading ground, accent, and border as three separate statements let the accent change
+    /// between two of them — the border then got checked against arithmetic done on a colour
+    /// it was never derived from. That failed roughly one run in ten and read as a broken
+    /// ratio rather than as a race, which is what makes it worth a comment this long.
     @Test("the border sits the tuning fraction of the way from the pane to the accent")
     func borderIsAMixTowardTheAccent() {
-        let ground = NSColor(Token.Colour.paneBackground).usingColorSpace(.sRGB)!
-        let accent = NSColor(Token.Colour.accent).usingColorSpace(.sRGB)!
-        let border = NSColor(Token.Colour.focusBorder).usingColorSpace(.sRGB)!
+        let ground = Color(nsColor: NSColor(srgbRed: 0.10, green: 0.11, blue: 0.13, alpha: 1))
+        let accent = Color(nsColor: NSColor(srgbRed: 0.90, green: 0.31, blue: 0.20, alpha: 1))
+        let border = srgb(Token.Colour.focusBorder(mixing: ground, toward: accent))
         let ratio = CGFloat(Token.Colour.focusBorderOpacity)
 
         func mixed(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * ratio }
-        #expect(abs(border.redComponent - mixed(ground.redComponent, accent.redComponent)) < 0.02)
-        #expect(abs(border.greenComponent - mixed(ground.greenComponent, accent.greenComponent)) < 0.02)
-        #expect(abs(border.blueComponent - mixed(ground.blueComponent, accent.blueComponent)) < 0.02)
+        let g = srgb(ground), a = srgb(accent)
+        #expect(abs(border.redComponent - mixed(g.redComponent, a.redComponent)) < 0.02)
+        #expect(abs(border.greenComponent - mixed(g.greenComponent, a.greenComponent)) < 0.02)
+        #expect(abs(border.blueComponent - mixed(g.blueComponent, a.blueComponent)) < 0.02)
+    }
+
+    /// The fraction the user asked for, asserted as a NUMBER rather than as a ratio.
+    /// Everything else here holds for any weight, so nothing else would notice this
+    /// silently drifting back to a rounder value.
+    @Test("the ring carries 0.64 of the tint")
+    func ringWeightIsWhatWasAskedFor() {
+        #expect(abs(Token.Colour.focusBorderOpacity - 0.64) < 0.0001)
     }
 
     /// The regression this guards is real and was shipped: a TRANSLUCENT ring drew on the
@@ -93,20 +113,23 @@ struct FocusBorderTests {
         #expect(Token.Colour.focusBorder.nsColor.cgColor.alpha > 0.99)
     }
 
-    @Test("the ring is a tint, not a neutral — it must carry the accent's hue")
+    /// Passes a KNOWN tint in rather than reading `Token.Colour.accent`, which defaults to
+    /// White — a legitimate setting for which "the ring carries a hue" is false and should
+    /// be. Phrased as a `#require` on the ambient accent this failed whenever another suite
+    /// left the accent neutral.
+    @Test("a tinted accent reaches the ring — it does not come out neutral")
     func ringCarriesTheAccentHue() {
-        let ground = NSColor(Token.Colour.paneBackground).usingColorSpace(.sRGB)!
-        let accent = NSColor(Token.Colour.accent).usingColorSpace(.sRGB)!
-        let border = NSColor(Token.Colour.focusBorder).usingColorSpace(.sRGB)!
-        // Only meaningful when the accent is itself a tint; "White" is a legitimate setting.
-        let accentSpread = max(accent.redComponent, accent.greenComponent, accent.blueComponent)
-            - min(accent.redComponent, accent.greenComponent, accent.blueComponent)
-        try? #require(accentSpread > 0.05)
-        guard accentSpread > 0.05 else { return }
-        let borderSpread = max(border.redComponent, border.greenComponent, border.blueComponent)
-            - min(border.redComponent, border.greenComponent, border.blueComponent)
-        let groundSpread = max(ground.redComponent, ground.greenComponent, ground.blueComponent)
-            - min(ground.redComponent, ground.greenComponent, ground.blueComponent)
-        #expect(borderSpread > groundSpread, "the ring came out neutral — the accent never reached it")
+        let ground = Color(nsColor: NSColor(srgbRed: 0.12, green: 0.12, blue: 0.12, alpha: 1))
+        let tint = Color(nsColor: NSColor(srgbRed: 0.10, green: 0.45, blue: 0.95, alpha: 1))
+        #expect(spread(Token.Colour.focusBorder(mixing: ground, toward: tint)) > spread(ground),
+                "the ring came out neutral — the accent never reached it")
+    }
+
+    /// A neutral accent must NOT invent a hue. The mix is the only thing standing between
+    /// "White" as a setting and a ring that quietly tints anyway.
+    @Test("a white accent leaves the ring neutral")
+    func neutralAccentStaysNeutral() {
+        let ground = Color(nsColor: NSColor(srgbRed: 0.12, green: 0.12, blue: 0.12, alpha: 1))
+        #expect(spread(Token.Colour.focusBorder(mixing: ground, toward: .white)) < 0.02)
     }
 }

@@ -85,10 +85,24 @@ public struct PaneHeader: View {
 
     @State private var isHovering = false
 
-    private var icon: some View {
-        Image(systemName: descriptor.icon)
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+    /// The pane's own icon IS the "turn this pane into…" control.
+    ///
+    /// It was a chevron beside the split buttons, and that was the wrong place: the icon is
+    /// the thing that says what the pane is, so it is the thing people press to change what
+    /// the pane is. A second control next to Split read as another way to split.
+    ///
+    /// Falls back to a plain image when the app supplied no kinds — an empty `NSMenu`
+    /// declines to open, and a button that does nothing is worse than a label.
+    @ViewBuilder private var icon: some View {
+        if actions.kinds().isEmpty {
+            Image(systemName: descriptor.icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+        } else {
+            PaneKindMenuButton(paneID: paneID, symbol: descriptor.icon,
+                               currentKind: currentKind, isFocused: isFocused,
+                               actions: actions)
+        }
     }
 
     private func labels(showSubtitle: Bool) -> some View {
@@ -107,12 +121,14 @@ public struct PaneHeader: View {
     }
 
     public var body: some View {
-        HStack(spacing: 6) {
+        // 2 rather than 6: the icon's plate already supplies its own breathing room.
+        HStack(spacing: 2) {
             // A head-truncated subtitle reading "…t" is worse than no subtitle, so drop
             // parts of the identity as the pane narrows rather than mangling them.
-            // The icon sits OUTSIDE `ViewThatFits`: that view renders its candidates in
-            // order to measure them, and an interactive control inside it does not reliably
-            // take clicks. Only the labels need to collapse as the pane narrows.
+            // The icon sits OUTSIDE `ViewThatFits`, and now that it is a control that is
+            // load-bearing rather than tidy: that view renders its candidates in order to
+            // measure them, and an interactive control inside it does not reliably take
+            // clicks. Only the labels need to collapse as the pane narrows.
             icon
             ViewThatFits(in: .horizontal) {
                 labels(showSubtitle: true)
@@ -123,13 +139,6 @@ public struct PaneHeader: View {
             Spacer(minLength: 4)
 
             HStack(spacing: 1) {
-                // Hidden outright when the app supplied no kinds. An empty NSMenu declines
-                // to open, so the button would look identical to a working one and do
-                // nothing — the exact failure `PaneKindMenuTests` was written against.
-                if !actions.kinds().isEmpty {
-                    PaneKindMenuButton(paneID: paneID, currentKind: currentKind,
-                                       actions: actions)
-                }
                 PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                     actions.split(paneID, .right)
                 }
@@ -147,7 +156,11 @@ public struct PaneHeader: View {
             .opacity(isHovering ? 1 : (isFocused ? 0.72 : 0.4))
             .fixedSize()
         }
-        .padding(.leading, 10)
+        // 4, not 10: the icon is now a control wearing the standard 28-wide hover plate,
+        // which carries ~6.5pt of slack either side of the glyph. Padding the header as if
+        // the glyph were still bare would indent it past everything below it. Measured to
+        // put the glyph centre at 18pt, where the bare icon sat.
+        .padding(.leading, 4)
         .padding(.trailing, 5)
         .frame(height: Token.Space.tileHeaderHeight)
         .frame(maxWidth: .infinity)
@@ -188,17 +201,21 @@ struct PaneHeaderButton: View {
 /// The "turn this pane into…" control: a chevron sitting beside the split buttons.
 struct PaneKindMenuButton: View {
     let paneID: PaneID
+    /// The pane's CURRENT icon — the control wears whatever the pane is right now, so the
+    /// header keeps reading as identity rather than gaining a generic menu glyph.
+    let symbol: String
     let currentKind: PaneRecord.Kind?
+    let isFocused: Bool
     let actions: PaneActions
 
     var body: some View {
-        // A point smaller than its neighbours: a chevron carries more ink per point than the
-        // split glyphs, and matching their 15 makes it read as the loudest control in the
-        // row rather than the quietest.
+        // Keeps the focused pane's accent tint at rest and picks up the standard hover
+        // plate, so it is discoverable as a control without becoming a new kind of one.
         //
         // Every kind is also reachable from the palette; the tooltip teaches that rather
         // than pretending this pointer affordance is the only way in.
-        ChromeMenuButton(symbol: "chevron.down", help: "Change Pane Type (⇧⌘P)", size: 13) {
+        ChromeMenuButton(symbol: symbol, help: "Change Pane Type (\u{21E7}\u{2318}P)",
+                         tint: isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel) {
             actions.kinds().map { choice in
                 // The pane's current kind is ticked and cannot be re-chosen: converting a
                 // pane into what it already is would tear down a live tile to rebuild the

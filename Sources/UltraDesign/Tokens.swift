@@ -69,7 +69,7 @@ public enum Token {
         /// assert the ring is this fraction of the accent, not that it is any particular
         /// number, so trying a different weight is a one-line change instead of a one-line
         /// change plus two broken tests.
-        public static let focusBorderOpacity: Double = 0.5
+        public static let focusBorderOpacity: Double = 0.64
 
         /// Border of the focused pane. The focused pane must be unmistakable without
         /// relying on colour alone — pair this with the header brightness difference.
@@ -86,10 +86,22 @@ public enum Token {
         /// glass happened to be doing. Mixing toward the accent pins the colour to the pane
         /// instead, so the number means the same thing everywhere it is used.
         public static var focusBorder: Color {
+            focusBorder(mixing: paneBackground, toward: accent)
+        }
+
+        /// The derivation itself, with BOTH inputs passed in.
+        ///
+        /// Split out because `paneBackground` and `accent` are live user settings that other
+        /// suites mutate. A test reading ground, accent, and border as three separate
+        /// statements can have the accent change underneath it between two of them, and then
+        /// checks a border derived from one colour against arithmetic done on another — a
+        /// flake that looks exactly like a broken ratio. With both inputs explicit there is
+        /// no ambient state left for a race to touch.
+        static func focusBorder(mixing ground: Color, toward accent: Color) -> Color {
             // `.device` rather than the default perceptual mix: the fraction is a knob
-            // someone tunes by eye against a number, so "half way to the accent" has to be
-            // literally half way, not half way through a perceptual curve.
-            paneBackground.mix(with: accent, by: focusBorderOpacity, in: .device)
+            // someone tunes by eye against a number, so "0.64 of the way to the accent" has
+            // to be literally 0.64 of the way, not that far through a perceptual curve.
+            ground.mix(with: accent, by: focusBorderOpacity, in: .device)
         }
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 

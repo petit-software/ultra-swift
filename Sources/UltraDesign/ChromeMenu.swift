@@ -26,20 +26,23 @@ public struct ChromeMenuButton: View {
     let symbol: String
     let help: String
     var size: CGFloat = ChromeIconLabel.size
+    var tint: Color?
     let entries: () -> [ChromeMenuEntry]
 
     @State private var anchor = MenuAnchorBox()
 
     public init(symbol: String, help: String, size: CGFloat = ChromeIconLabel.size,
+                tint: Color? = nil,
                 entries: @escaping () -> [ChromeMenuEntry]) {
         self.symbol = symbol
         self.help = help
         self.size = size
+        self.tint = tint
         self.entries = entries
     }
 
     public var body: some View {
-        ChromeIconButton(symbol: symbol, help: help, size: size, action: present)
+        ChromeIconButton(symbol: symbol, help: help, size: size, tint: tint, action: present)
             .background(MenuAnchorView(box: anchor))
     }
 

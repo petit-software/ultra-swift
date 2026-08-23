@@ -18,13 +18,20 @@ public struct ChromeIconLabel: View {
     var size: CGFloat = ChromeIconLabel.size
     var isHovering = false
     var isDestructive = false
+    /// Overrides the RESTING colour only. A pane's own icon carries the app tint when its
+    /// pane is focused, and that identity has to survive the icon becoming pressable —
+    /// otherwise making it a control would quietly cost the focused pane its accent.
+    /// Hover still brightens to `label`, so every chrome icon answers the pointer alike.
+    var tint: Color?
 
     public init(symbol: String, size: CGFloat = ChromeIconLabel.size,
-                isHovering: Bool = false, isDestructive: Bool = false) {
+                isHovering: Bool = false, isDestructive: Bool = false,
+                tint: Color? = nil) {
         self.symbol = symbol
         self.size = size
         self.isHovering = isHovering
         self.isDestructive = isDestructive
+        self.tint = tint
     }
 
     public var body: some View {
@@ -34,7 +41,7 @@ public struct ChromeIconLabel: View {
             .contentShape(.rect)
             .foregroundStyle(isHovering
                              ? (isDestructive ? Color.red : Token.Colour.label)
-                             : Token.Colour.secondaryLabel)
+                             : (tint ?? Token.Colour.secondaryLabel))
             .background {
                 if isHovering {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -55,25 +62,29 @@ public struct ChromeIconButton: View {
     var size: CGFloat = ChromeIconLabel.size
     var isDestructive = false
     var isEnabled = true
+    var tint: Color?
     let action: () -> Void
 
     @State private var isHovering = false
 
     public init(symbol: String, help: String, size: CGFloat = ChromeIconLabel.size,
                 isDestructive: Bool = false, isEnabled: Bool = true,
+                tint: Color? = nil,
                 action: @escaping () -> Void) {
         self.symbol = symbol
         self.help = help
         self.size = size
         self.isDestructive = isDestructive
         self.isEnabled = isEnabled
+        self.tint = tint
         self.action = action
     }
 
     public var body: some View {
         Button(action: action) {
             ChromeIconLabel(symbol: symbol, size: size,
-                            isHovering: isHovering, isDestructive: isDestructive)
+                            isHovering: isHovering, isDestructive: isDestructive,
+                            tint: tint)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
