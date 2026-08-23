@@ -340,7 +340,22 @@ rather than stopping at it; a tile shows no scrollbar gutter with a mouse attach
 File Tree pointed outside the project says so and returns home in one click — while the agent
 channel accepts not one path it would have refused before.
 
-## M10 — Agentic Sessions pane
+## M10 — Agentic Sessions pane ← *parked*
+
+> **Status: paused, and deliberately last.** Not cancelled and not scheduled — a thing to
+> reconsider once the milestones above it have landed, because most of what would decide its
+> shape has not happened yet.
+>
+> The reason to wait is that the pane's value scales with how many sessions there are to
+> look at, and today there is no way to open a second project (M3), so there is rarely more
+> than one. A list of one row is a worse answer than the pane header already gives. M3 and
+> M7 both move that number; revisit after them, and the design below is either obviously
+> worth building or obviously not.
+>
+> The fork recorded below — across-tabs versus truly detached — is the actual decision, and
+> it is cheaper to make once agents are a daily habit rather than now, from a guess about
+> how they will be used. Nothing here is blocked on it: the across-tabs reading needs no
+> engine change and stays available whenever it is wanted.
 
 One place that answers "what is running, and where is it?" Every agent session across the
 workspace, its state, and one click to get to it — opening a shell for it if it is not on
