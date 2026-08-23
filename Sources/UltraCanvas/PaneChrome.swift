@@ -285,9 +285,9 @@ public final class PaneContainerView: NSView {
     /// whole title band — a three-sided ring, which reads as a rendering fault rather than
     /// as focus.
     ///
-    /// Still INSET from the pane's edge. On the edge it coincides with the glass rim, a
-    /// near-white line, and anything composited over that reads at full strength however
-    /// little alpha it carries. A point in, it sits over the pane itself and half means half.
+    /// Flush with the pane's edge. It was inset while the ring read at full strength
+    /// whatever alpha it carried — see `Token.Space.focusRingInset` for why that is no
+    /// longer needed, and what it cost.
     private let ring = PaneRingView()
     private let clip = FlippedView()
     private let header: NSHostingView<PaneHeader>

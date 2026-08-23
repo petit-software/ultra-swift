@@ -21,10 +21,15 @@ public enum Token {
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
         public static let tileHeaderHeight: CGFloat = 36
-        /// The focused pane's ring, and how far in from the pane's edge it sits. Inset so it
-        /// draws over the PANE rather than over the glass rim — see `PaneContainerView.ring`.
         public static let focusRingWidth: CGFloat = 2
-        public static let focusRingInset: CGFloat = 1.5
+        /// How far in from the pane's edge the ring sits. ZERO — flush.
+        ///
+        /// It was 1.5 while the ring appeared at full strength no matter what alpha it
+        /// carried, on the theory that it was compositing over a near-white glass rim. The
+        /// inset did fix it, but it left a visible sliver of pane outside the ring, and the
+        /// rim measures (55,54,50) now — dark enough that flush costs nothing. Measured both
+        /// ways: 53–54% of the way from the pane to a full accent either side of the change.
+        public static let focusRingInset: CGFloat = 0
         /// How far the traffic lights sit from the window's leading edge. AppKit's default
         /// puts them tight into the corner; with a 24pt-tall bar and a rounded window they
         /// want more room to breathe.
@@ -72,21 +77,24 @@ public enum Token {
             }
         }
 
-        /// How much of the accent a "held back" tint carries.
+        /// How much of the accent a held-back tint carries.
         ///
-        /// One source for every half-strength use of the accent, so the focus ring and
-        /// anything added later cannot drift into two different ideas of "half".
-        public static let accentHalfStrength: Double = 0.5
+        /// One source for every muted use of the accent, so the focus ring and anything
+        /// added later cannot drift into two different ideas of "quieter". Named for what it
+        /// does rather than for its value — it was `accentHalf` at 0.5 for about an hour,
+        /// and a token whose name states a number is a token that will eventually lie.
+        public static let accentMutedStrength: Double = 0.25
 
-        /// The accent at half strength. TRANSLUCENT on purpose.
+        /// The accent, held back. TRANSLUCENT on purpose.
         ///
-        /// An opaque mix toward the accent was tried and reads wrong: 50% of the way to a
-        /// saturated blue is still plainly blue, just darker, so the number and what the eye
-        /// sees disagree. Alpha lets the pane show through, which is what "half" looks like.
-        public static var accentHalf: Color { accent.opacity(accentHalfStrength) }
+        /// An opaque mix toward the accent was tried and reads wrong: a colour blended part
+        /// of the way toward a saturated blue is still plainly blue, only darker, so the
+        /// number and what the eye sees disagree. Alpha lets the pane show through, which is
+        /// what "less" actually looks like.
+        public static var accentMuted: Color { accent.opacity(accentMutedStrength) }
 
         /// The focused pane's ring — the accent, held back.
-        public static var focusBorder: Color { accentHalf }
+        public static var focusBorder: Color { accentMuted }
 
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 

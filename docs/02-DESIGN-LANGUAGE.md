@@ -30,16 +30,20 @@ refract anything. This was the difference between "grey slabs" and glass.
 fully opaque at any value. So the cells are transparent while the content stays readable,
 and `window.isOpaque = false` with a clear `window.backgroundColor` is what lets it composite.
 
-**Half-strength accent has one definition.** `Token.Colour.accentHalf` — the accent at
-`accentHalfStrength`, by ALPHA rather than by blending toward it. Half of the way to a
-saturated colour still reads as that colour, only darker; half the alpha reads as half. The
+**A muted accent has one definition.** `Token.Colour.accentMuted` — the accent at
+`accentMutedStrength`, by ALPHA rather than by blending toward it. A colour blended toward a
+saturated one still reads as that colour, only darker; reduced alpha reads as reduced. The
 focused pane's ring is this token, and anything else wanting a held-back tint should be too,
-so a second idea of "half" cannot appear.
+so a second idea of "quieter" cannot appear. The name deliberately states no number.
 
-**Why the ring is inset.** Drawn on the pane's outer edge it coincides with the glass rim, a
-near-white line, and any alpha composited over that reads at full strength however little it
-carries. A ring "at 0.5" measured 54% of the way to the accent once it was moved a point in,
-and looked like the whole colour before.
+**The ring is flush, and above the header.** It draws in its own view added last, because as a
+layer inside the pane's clip the header — a subview of that same clip — painted over it and
+the ring vanished along the whole title band.
+
+It was briefly inset by 1.5pt, when a ring "at 0.5" still read as the whole colour and the
+glass rim was the suspect. The inset worked but left a visible sliver of pane outside the
+ring; the rim measures (55,54,50) today, dark enough that flush costs nothing. 53–54% of the
+way from the pane to a full accent, measured either side of that change.
 
 **Why headers have no fill.** A header with any background is a second surface, and a second
 surface is a seam. The label sits directly on the pane's glass, in the same material as the
