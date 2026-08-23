@@ -26,6 +26,8 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUPublicEDKey</key>
+	<string>SribIcG3bOjhcAnl9uSgRmlTpXg4txE8gGCGSP05LX4=</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>

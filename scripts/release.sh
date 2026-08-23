@@ -46,12 +46,14 @@ scripts/build-app.sh
 echo "==> Stamping the update feed"
 /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED_URL" "$APP/Contents/Info.plist" \
   2>/dev/null || /usr/libexec/PlistBuddy -c "Set :SUFeedURL $FEED_URL" "$APP/Contents/Info.plist"
-# The public half of the Sparkle key. Sparkle refuses an update it cannot verify, which is
-# the point: without this an appcast is a list of URLs anyone who can serve it may choose.
-PUBKEY="$("$(find .build/artifacts -name generate_keys -type f | head -1)" -p 2>/dev/null || true)"
-if [ -n "$PUBKEY" ]; then
-  /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $PUBKEY" "$APP/Contents/Info.plist" \
-    2>/dev/null || /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey $PUBKEY" "$APP/Contents/Info.plist"
+# SUPublicEDKey is NOT stamped here — it lives in the tracked Resources/Info.plist, which is
+# correct twice over: it is a PUBLIC key, so it belongs in the repository, and baking it in
+# means a release does not depend on the right private key happening to be in the keychain of
+# whoever runs this. A mismatch would produce updates that every installed copy refuses, and
+# the failure would appear on users' machines rather than here.
+if ! /usr/libexec/PlistBuddy -c "Print :SUPublicEDKey" "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+  echo "error: Resources/Info.plist has no SUPublicEDKey — run generate_keys" >&2
+  exit 1
 fi
 
 echo "==> Signing with Developer ID"
