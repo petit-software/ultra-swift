@@ -122,3 +122,57 @@ struct DropZoneTests {
         #expect(DropZone.preview(for: .swap(b), frames: frames, canvas: canvas) == frames[b])
     }
 }
+
+/// A divider that refuses to move is not necessarily broken.
+///
+/// Written after an audit mistook one for a bug: VoiceOver's Increment returned "no change"
+/// on a layout whose neighbouring pane was already at `minPaneSize`, and the refusal was the
+/// constraint doing its job. The distinguishing property is that the OTHER direction still
+/// moves — a genuinely dead splitter refuses both.
+@Suite("Resize at the minimum")
+@MainActor
+struct ResizeAtMinimumTests {
+
+    private let minPane: CGFloat = 160
+
+    /// Two panes with the trailing one pushed exactly to the floor, and the leading one left
+    /// with room to give back. Squeezing harder than this pins BOTH sides, which is a
+    /// different situation and not the one being described.
+    private func atTheFloor() -> (LayoutTree, DividerRef, CGFloat) {
+        var tree = LayoutTree.fixture(.twoAcross)
+        let bounds = CGRect(x: 0, y: 0, width: 424, height: 600)
+        let divider = layout(tree, in: bounds).dividers[0]
+        let container = divider.containerSize
+        // Push far enough that the trailing pane lands on the floor and stops.
+        _ = tree.resize(divider: divider.ref, by: container,
+                        containerSize: container, minPaneSize: minPane)
+        return (tree, divider.ref, container)
+    }
+
+    @Test("the trailing pane really is at the floor")
+    func fixtureIsAtTheFloor() {
+        let (tree, _, container) = atTheFloor()
+        let bounds = CGRect(x: 0, y: 0, width: 424, height: 600)
+        let widths = layout(tree, in: bounds).frames.values.map(\.width).sorted()
+        #expect(abs((widths.first ?? 0) - minPane) < 2,
+                "expected a pane pinned at \(minPane), got \(widths)")
+        #expect(container > 0)
+    }
+
+    @Test("growing into a pane already at the floor moves nothing")
+    func growingIsRefused() {
+        var (tree, ref, container) = atTheFloor()
+        let moved = tree.resize(divider: ref, by: 16,
+                                containerSize: container, minPaneSize: minPane)
+        #expect(moved == 0, "a pane at the floor has nothing to donate")
+    }
+
+    /// What separates "at the limit" from "the splitter does not work".
+    @Test("the opposite direction still moves")
+    func shrinkingStillWorks() {
+        var (tree, ref, container) = atTheFloor()
+        let moved = tree.resize(divider: ref, by: -16,
+                                containerSize: container, minPaneSize: minPane)
+        #expect(moved != 0, "giving space back is always available")
+    }
+}
