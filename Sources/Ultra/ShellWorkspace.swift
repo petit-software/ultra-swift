@@ -269,9 +269,11 @@ enum ShellWorkspace {
 
     /// Total agents running across every tab, not just one — the machine is kept awake for
     /// the app as a whole.
+    /// A shell started or exited. The monitor polls anyway, but a lifecycle event is a
+    /// known-good moment to look, so the badge and the assertion follow a launch or a quit
+    /// immediately rather than up to one tick later.
     static func updateSleepGuard() {
-        SleepGuard.shared.agentsRunningChanged(
-            to: Registry.factories.values.reduce(0) { $0 + $1.runningAgentCount })
+        AgentMonitor.shared.sample()
     }
 
     /// Turn an existing pane into a different kind, in place.

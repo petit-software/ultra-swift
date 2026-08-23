@@ -61,7 +61,13 @@ struct WorkspaceWindow: View {
 
     var body: some View {
         RootView(store: model.store, ui: model.ui)
-            .task { model.adoptWindow() }
+            .task {
+                model.adoptWindow()
+                // Idempotent: every tab asks, one monitor runs. Started from a window
+                // rather than from `init` because there is nothing to count until a
+                // workspace exists, and stopping it is the app quitting.
+                AgentMonitor.shared.start()
+            }
             .onDisappear { model.store.persistNow() }
             .focusedSceneValue(\.layoutStore, model.store)
             .focusedSceneValue(\.uiState, model.ui)

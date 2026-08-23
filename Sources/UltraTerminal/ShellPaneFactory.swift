@@ -43,6 +43,18 @@ public final class ShellPaneFactory {
         shells.compactMapValues { $0.activity }
     }
 
+    /// The panes with an agent in them, named.
+    ///
+    /// The name prefers what the tty reports, because that is what is actually running; a
+    /// pane launched as an agent falls back to the command it was launched with, which is
+    /// the only name available in the moment between the fork and the exec.
+    public var agentPanes: [PaneID: String] {
+        shells.compactMapValues { shell in
+            guard shell.isRunningAgent else { return nil }
+            return shell.activity?.command ?? shell.spec.agentCommand ?? "agent"
+        }
+    }
+
     public init(theme: TerminalTheme = .dark,
                 defaultDirectory: String? = FileManager.default.currentDirectoryPath,
                 restoring records: [PaneID: PaneRecord] = [:]) {

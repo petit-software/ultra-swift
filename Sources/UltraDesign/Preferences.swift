@@ -120,6 +120,20 @@ public enum Preferences {
         set { setNumber("terminalBackgroundOpacity", newValue, current: terminalBackgroundOpacity, in: 0...1) }
     }
 
+    /// Notify when a long-running agent finishes.
+    ///
+    /// Off by default, and deliberately so: turning it on is what asks macOS for permission
+    /// to post notifications, and an app that raises that prompt on first launch for a
+    /// feature nobody asked for has spent the user's goodwill on a guess.
+    public static var notifiesOnAgentCompletion: Bool {
+        get { store.object(forKey: prefix + "notifiesOnAgentCompletion") as? Bool ?? false }
+        set {
+            guard newValue != notifiesOnAgentCompletion else { return }
+            store.set(newValue, forKey: prefix + "notifiesOnAgentCompletion")
+            post()
+        }
+    }
+
     public static var themeMode: ThemeMode {
         get {
             store.string(forKey: prefix + "themeMode")
@@ -204,6 +218,7 @@ public enum Preferences {
 
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
+                    "notifiesOnAgentCompletion",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath"] {
             store.removeObject(forKey: prefix + key)

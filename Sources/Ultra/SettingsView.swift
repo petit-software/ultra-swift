@@ -1,5 +1,6 @@
 import SwiftUI
 import UltraDesign
+import UltraTerminal
 
 /// The Settings window (⌘,).
 struct UltraSettings: View {
@@ -124,6 +125,18 @@ private struct GeneralSettings: View {
                        isOn: Binding(get: { guardState.isEnabled },
                                      set: { guardState.isEnabled = $0 }))
                 Text(guardState.statusDescription)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Notify me when a long-running agent finishes",
+                       isOn: Binding(get: { Preferences.notifiesOnAgentCompletion },
+                                     set: { Preferences.notifiesOnAgentCompletion = $0 }))
+                Text("""
+                     Only for agents that ran longer than \
+                     \(Int(AgentCompletionPolicy.minimumDuration)) seconds, and only when \
+                     you are not already looking at Ultra. Turning this on asks macOS for \
+                     permission to show notifications.
+                     """)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } header: {
