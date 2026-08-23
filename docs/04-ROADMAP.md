@@ -340,6 +340,46 @@ rather than stopping at it; a tile shows no scrollbar gutter with a mouse attach
 File Tree pointed outside the project says so and returns home in one click — while the agent
 channel accepts not one path it would have refused before.
 
+## M10 — Agentic Sessions pane
+
+One place that answers "what is running, and where is it?" Every agent session across the
+workspace, its state, and one click to get to it — opening a shell for it if it is not on
+screen already.
+
+- List every active agent session, with what it is and whether it is working or waiting.
+- Click a session to reveal the pane it lives in; if it has none, open one.
+- Live state, driven from the signal that already exists rather than a view timer.
+
+Most of the inputs are built: `ShellPaneFactory` tracks `runningAgentCount` and fires
+`onAgentActivityChange`, `Registry.factories` is keyed by workspace so several tabs can be
+enumerated at once, and `AgentDefinition.builtIns` plus `which` probing already say what an
+agent IS. What is missing is a registry that names sessions rather than counting them.
+
+**The thing to settle first: what "not open already" can mean.** Today a session's PTY dies
+with its pane — "closing a pane is the only thing that kills its PTY" is a stated invariant
+with a test behind it. So a session that is active but has no pane cannot exist, and the
+pane's central verb has nothing to act on. Two readings, and they are different products:
+
+- **Across tabs.** A session open in another window tab is invisible from this one. "Open"
+  means reveal it there, or adopt it into this layout. Achievable now, changes no invariant,
+  and is probably the case actually being asked for.
+- **Truly detached.** A session that outlives its pane and can be re-attached later, the way
+  tmux does it. That means breaking the pane-owns-the-PTY invariant, and with it the M2
+  acceptance test that proves a shell survives layout operations because its surface is
+  never rebuilt. Worth wanting, but it is an engine change, not a tile.
+
+Build the first. The pane is the same either way; only what it can reach changes.
+
+**Do NOT give shell panes their own tabs.** A pane with a tab strip is a second answer to
+"which session am I looking at", competing with splits and with the window tabs from M3 —
+three mechanisms for one question. This pane is the index; the layout is the workspace. If
+the problem is screen space for parked agents, that is an argument for this list, not for
+tabs inside a pane.
+
+**Accept when** an agent started in one tab shows in the Sessions pane of another with live
+state, clicking it puts the user in front of that session, and a session already on screen is
+revealed rather than duplicated.
+
 ---
 
 ## Risks, and what we do about them
