@@ -120,6 +120,19 @@ public enum Preferences {
         set { setNumber("terminalBackgroundOpacity", newValue, current: terminalBackgroundOpacity, in: 0...1) }
     }
 
+    /// Show Ultra in the menu bar.
+    ///
+    /// On by default: it is the only place the app can say something while its windows are
+    /// closed or behind everything else, which is exactly when an agent is running.
+    public static var showsMenuBarIcon: Bool {
+        get { store.object(forKey: prefix + "showsMenuBarIcon") as? Bool ?? true }
+        set {
+            guard newValue != showsMenuBarIcon else { return }
+            store.set(newValue, forKey: prefix + "showsMenuBarIcon")
+            post()
+        }
+    }
+
     /// Notify when a long-running agent finishes.
     ///
     /// Off by default, and deliberately so: turning it on is what asks macOS for permission
@@ -218,7 +231,7 @@ public enum Preferences {
 
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
-                    "notifiesOnAgentCompletion",
+                    "notifiesOnAgentCompletion", "showsMenuBarIcon",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath"] {
             store.removeObject(forKey: prefix + key)

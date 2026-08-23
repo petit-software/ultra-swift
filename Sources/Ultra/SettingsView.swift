@@ -128,6 +128,17 @@ private struct GeneralSettings: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
+                Toggle("Show Ultra in the menu bar",
+                       isOn: Binding(get: { Preferences.showsMenuBarIcon },
+                                     set: { Preferences.showsMenuBarIcon = $0 }))
+                Text("""
+                     The menu bar is the only place Ultra can say anything while its \
+                     windows are closed or buried, which is when an agent is usually \
+                     running. It shows the same count as the Dock icon.
+                     """)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
                 Toggle("Notify me when a long-running agent finishes",
                        isOn: Binding(get: { Preferences.notifiesOnAgentCompletion },
                                      set: { Preferences.notifiesOnAgentCompletion = $0 }))

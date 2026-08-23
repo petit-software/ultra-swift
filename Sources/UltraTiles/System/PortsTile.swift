@@ -25,7 +25,6 @@ public struct PortsTile: View {
                 .tileScrollBar()
             }
         }
-        .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()
         .task { await poll() }

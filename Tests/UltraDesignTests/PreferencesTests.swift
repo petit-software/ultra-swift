@@ -173,8 +173,6 @@ struct PreferencesTests {
             Preferences.accentColour = .red
             let red = components(Token.Colour.accent)
             #expect(red.0 > 0.5 && red.2 < 0.5)
-            #expect(components(Token.Colour.focusBorder).0 == red.0,
-                    "the focus ring must be the accent, not a second colour")
             // The washes are the accent at a lower alpha, not a different hue.
             func dominantChannel(_ c: (Double, Double, Double, Double)) -> Int {
                 c.0 >= c.1 && c.0 >= c.2 ? 0 : (c.1 >= c.2 ? 1 : 2)

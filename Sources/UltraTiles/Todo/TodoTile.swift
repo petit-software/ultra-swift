@@ -23,7 +23,6 @@ public struct TodoTile: View {
             composer
             list
         }
-        .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()
     }

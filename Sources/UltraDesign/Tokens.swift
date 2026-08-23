@@ -68,46 +68,6 @@ public enum Token {
             }
         }
 
-        /// How much of the accent the focus ring carries.
-        ///
-        /// Named rather than inlined because it is a value that gets TUNED — the tests
-        /// assert the ring is this fraction of the accent, not that it is any particular
-        /// number, so trying a different weight is a one-line change instead of a one-line
-        /// change plus two broken tests.
-        public static let focusBorderOpacity: Double = 0.5
-
-        /// Border of the focused pane. The focused pane must be unmistakable without
-        /// relying on colour alone — pair this with the header brightness difference.
-        ///
-        /// Derived, not a second accent — a focus ring that disagreed with the app's tint
-        /// would be the clearest possible sign the colours are not coming from one place.
-        /// Held back from full strength because it outlines a whole pane rather than marking
-        /// a small control: at 100% a border that long competes with the content inside it.
-        /// OPAQUE, and mixed rather than faded. A translucent ring was the obvious spelling
-        /// and it was wrong: the pane's border sits on the clip layer INSIDE the
-        /// `NSGlassEffectView`, so a 32% ring composited over the glass rim — a near-white
-        /// edge around every pane — not over the pane. The measured result was a border far
-        /// stronger and lighter than the fraction asked for, and it moved with whatever the
-        /// glass happened to be doing. Mixing toward the accent pins the colour to the pane
-        /// instead, so the number means the same thing everywhere it is used.
-        public static var focusBorder: Color {
-            focusBorder(mixing: paneBackground, toward: accent)
-        }
-
-        /// The derivation itself, with BOTH inputs passed in.
-        ///
-        /// Split out because `paneBackground` and `accent` are live user settings that other
-        /// suites mutate. A test reading ground, accent, and border as three separate
-        /// statements can have the accent change underneath it between two of them, and then
-        /// checks a border derived from one colour against arithmetic done on another — a
-        /// flake that looks exactly like a broken ratio. With both inputs explicit there is
-        /// no ambient state left for a race to touch.
-        static func focusBorder(mixing ground: Color, toward accent: Color) -> Color {
-            // `.device` rather than the default perceptual mix: the fraction is a knob
-            // someone tunes by eye against a number, so "0.64 of the way to the accent" has
-            // to be literally 0.64 of the way, not that far through a perceptual curve.
-            ground.mix(with: accent, by: focusBorderOpacity, in: .device)
-        }
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 
         /// Divider hairline. Under Increase Contrast this becomes an opaque separator.

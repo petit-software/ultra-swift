@@ -35,7 +35,6 @@ public struct ContextTile: View {
                 .tileScrollBar()
             }
         }
-        .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()
         // The whole tile is the drop target, not a small well inside it — a drop zone you

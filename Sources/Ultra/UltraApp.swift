@@ -67,6 +67,7 @@ struct WorkspaceWindow: View {
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
+                MenuBarItem.shared.syncWithPreference()
             }
             .onDisappear { model.store.persistNow() }
             .focusedSceneValue(\.layoutStore, model.store)

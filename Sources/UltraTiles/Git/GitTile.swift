@@ -43,7 +43,6 @@ public struct GitTile: View {
                                detail: TileFactory.abbreviate(context.root.path))
             }
         }
-        .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()
         .task { await poll() }

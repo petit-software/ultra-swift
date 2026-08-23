@@ -33,7 +33,6 @@ public struct EditorTile: View {
             }
 
         }
-        .background(Token.Colour.paneBackground)
         .tileFooter { footer }
         .tileHeaderInset()
     }

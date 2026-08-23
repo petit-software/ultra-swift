@@ -103,6 +103,7 @@ final class AgentMonitor {
         runningCount = count
         SleepGuard.shared.agentsRunningChanged(to: count)
         applyDockBadge(count)
+        MenuBarItem.shared.update(runningAgents: count)
     }
 
     /// The dock badge, which is the whole point of counting on a timer: it is what tells

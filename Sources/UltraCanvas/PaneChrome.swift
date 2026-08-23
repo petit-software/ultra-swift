@@ -288,7 +288,6 @@ public final class PaneContainerView: NSView {
         clip.layer?.cornerRadius = Token.Space.paneRadius
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
-        clip.layer?.borderWidth = 1
 
         // The tile's content lives INSIDE the glass, which is what `NSGlassEffectView`
         // expects — the material is the pane's surface, not a layer stacked behind it.
@@ -358,20 +357,12 @@ public final class PaneContainerView: NSView {
 
     /// Colours that live on layers. Cheap, idempotent, and safe to re-run on every redraw.
     private func applyLayerState() {
-        // Resolved INSIDE the view's own appearance. `NSColor.cgColor` on a dynamic colour
-        // silently resolves against whatever appearance happens to be current, which outside
-        // a draw is the light one — and the focus ring is mixed from `paneBackground`, which
-        // is near-white in light and near-black in dark. The ring came out a washed neutral
-        // instead of the accent, and no amount of tuning the fraction could fix it, because
-        // the wrong ground was being mixed.
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            // An unfocused pane wears no border at all — depth already separates it. Drawing
-            // a box around every pane is what made six panes read as six grey slabs.
-            clip.layer?.borderColor = isFocused
-                ? Token.Colour.focusBorder.nsColor.cgColor
-                : NSColor.clear.cgColor
-        }
-        // Colour alone must never carry the signal, so the focused pane also lifts higher.
+        // No focus ring. A focused pane is said by DEPTH — it lifts off the material — and
+        // by its header brightening. An outline was tried and removed: drawn on the clip
+        // layer inside the pane's glass it read as a hard saturated line rather than as the
+        // held-back tint it was specified to be, and a box around a pane is the thing this
+        // design language spends its effort avoiding.
+        // Depth is now the WHOLE signal, so it has to carry on its own.
         layer?.shadowOpacity = isFocused
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity

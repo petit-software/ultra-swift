@@ -33,9 +33,4 @@ public extension View {
         }
     }
 
-    /// Pane content. Deliberately NOT glass: opaque, so monospaced text keeps its
-    /// contrast and a shell dumping output is a compositor no-op.
-    func ultraPaneSurface() -> some View {
-        background(Token.Colour.paneBackground)
-    }
 }
