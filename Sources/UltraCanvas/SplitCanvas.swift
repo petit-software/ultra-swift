@@ -57,7 +57,7 @@ public struct CanvasSurface: View {
         }
         .ignoresSafeArea()
         .background(WindowChrome(theme: store.theme,
-                                 title: store.workspaceTitle) { store.noteWindowFrame($0) })
+                                 title: store.windowTitle) { store.noteWindowFrame($0) })
     }
 
 }

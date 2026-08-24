@@ -17,7 +17,21 @@ public final class LayoutStore {
     /// light chrome bolted to a dark terminal. See docs/02-DESIGN-LANGUAGE.md.
     public var theme: TerminalTheme
     /// What this window is. Shown in the window bar.
-    public var workspaceTitle: String = "Ultra"
+    /// The PROJECT's name. Persisted, and what a workspace is called in recents.
+    public var workspaceTitle: String = "Ultra" {
+        didSet { refreshWindowTitle() }
+    }
+
+    /// What the window and its TAB are called.
+    ///
+    /// Deliberately not the same thing as `workspaceTitle`. The project name is what a
+    /// workspace IS and belongs in the document; the tab label is where you currently are,
+    /// which is the question a row of tabs has to answer. They were one value, so every tab
+    /// on a project read identically and none of them moved when a shell changed directory.
+    ///
+    /// Follows the FOCUSED pane, because that is the one being worked in — the same rule
+    /// Terminal and iTerm use.
+    public private(set) var windowTitle: String = "Ultra"
     public var workspaceSubtitle: String?
     /// The project this workspace is open on. Written into the document so the layout can be
     /// found again BY PATH the next time this project is opened.
@@ -158,7 +172,23 @@ public final class LayoutStore {
     public func focus(_ paneID: PaneID) {
         guard tree.contains(paneID), paneID != tree.focused else { return }
         tree.focused = paneID   // not a structural change: no undo entry
+        refreshWindowTitle()
         persist()
+    }
+
+    /// Re-read the window title from the focused pane.
+    ///
+    /// Called on focus changes and whenever a pane reports a new directory. The surface
+    /// store is not `@Observable`, so a record changing cannot drive this on its own — the
+    /// value has to be pushed onto the store that IS observed, or the tab label silently
+    /// stops following the shell.
+    public func refreshWindowTitle() {
+        let name = surfaces.records[tree.focused]?.cwd
+            .map { URL(fileURLWithPath: $0).lastPathComponent }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        // A pane with no directory of its own — a tile — leaves the project name showing
+        // rather than blanking the tab.
+        windowTitle = name ?? workspaceTitle
     }
 
     public func moveFocus(_ direction: Edge) {

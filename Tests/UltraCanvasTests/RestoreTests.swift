@@ -156,3 +156,82 @@ struct WorkspaceDirectoryPersistenceTests {
         #expect(store().document.directory == nil)
     }
 }
+
+/// The tab label and the project name are two different questions.
+///
+/// They were one value, so every tab on a project read identically and none of them moved
+/// when a shell changed directory — the tab row answered "which project" three times over
+/// instead of "where am I" once each.
+@Suite("Window title follows the focused pane")
+@MainActor
+struct WindowTitleTests {
+
+    /// Surfaces are materialised up front: `updateRecord` silently drops a record for a pane
+    /// that has never been shown, which makes a test look like a logic failure when it is
+    /// really a fixture that never built the pane.
+    private func store() -> LayoutStore {
+        let factory = PlaceholderPaneFactory()
+        let store = LayoutStore(tree: .fixture(.twoAcross)) { factory.makeContent(for: $0) }
+        store.workspaceTitle = "ultra"
+        for paneID in store.tree.paneIDs { _ = store.surfaces.surface(for: paneID) }
+        return store
+    }
+
+    @Test("with no directory to show, the project name stands in")
+    func fallsBackToProject() {
+        let store = store()
+        store.refreshWindowTitle()
+        #expect(store.windowTitle == "ultra")
+    }
+
+    @Test("a focused pane's directory becomes the tab label")
+    func followsFocusedPane() {
+        let store = store()
+        let paneID = store.tree.paneIDs[0]
+        store.surfaces.updateRecord(
+            PaneRecord(kind: .shell, title: "x", cwd: "/Users/x/Repo/tailor"), for: paneID)
+        store.focus(paneID)
+        store.refreshWindowTitle()
+        #expect(store.windowTitle == "tailor", "the tab says where you are, not what project")
+    }
+
+    /// Two panes in different directories: the label follows FOCUS, so moving between them
+    /// changes the tab rather than leaving it on whichever pane happened to report last.
+    @Test("moving focus moves the title")
+    func focusChangesTitle() {
+        let store = store()
+        let a = store.tree.paneIDs[0], b = store.tree.paneIDs[1]
+        store.surfaces.updateRecord(PaneRecord(kind: .shell, title: "a", cwd: "/tmp/alpha"), for: a)
+        store.surfaces.updateRecord(PaneRecord(kind: .shell, title: "b", cwd: "/tmp/beta"), for: b)
+        store.focus(a)
+        store.refreshWindowTitle()
+        #expect(store.windowTitle == "alpha")
+        store.focus(b)
+        #expect(store.windowTitle == "beta")
+    }
+
+    /// A tile has no directory. Blanking the tab would be worse than saying the project.
+    @Test("a pane with no directory leaves the project name showing")
+    func tileKeepsProjectName() {
+        let store = store()
+        let paneID = store.tree.paneIDs[0]
+        store.surfaces.updateRecord(PaneRecord(kind: .todo, title: "Todo"), for: paneID)
+        store.focus(paneID)
+        store.refreshWindowTitle()
+        #expect(store.windowTitle == "ultra")
+    }
+
+    /// The DOCUMENT keeps the project name — the tab label is a view of the moment and must
+    /// not be what a workspace is called in recents.
+    @Test("the saved document still records the project, not the current directory")
+    func documentKeepsTheProject() {
+        let store = store()
+        let paneID = store.tree.paneIDs[0]
+        store.surfaces.updateRecord(
+            PaneRecord(kind: .shell, title: "x", cwd: "/tmp/somewhere-else"), for: paneID)
+        store.focus(paneID)
+        store.refreshWindowTitle()
+        #expect(store.windowTitle == "somewhere-else")
+        #expect(store.document.title == "ultra")
+    }
+}

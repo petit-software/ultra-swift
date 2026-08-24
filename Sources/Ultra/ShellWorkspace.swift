@@ -96,8 +96,11 @@ enum ShellWorkspace {
         // Once geometry stops moving, every shell gets its authoritative size.
         store.onGeometrySettled = { [weak factory] in factory?.commitResize() }
         // A shell renames its own pane as it runs; the header follows.
+        // A shell renames its own pane as it runs; the header follows, and so does the tab
+        // when the pane doing the renaming is the focused one.
         factory.onDescriptorChange = { [weak store] paneID, record in
             store?.surfaces.updateRecord(record, for: paneID)
+            if store?.tree.focused == paneID { store?.refreshWindowTitle() }
             store?.persist()
         }
 
