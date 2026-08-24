@@ -84,10 +84,37 @@ echo "==> Signing with Developer ID"
 # Inner code first, and NOT --deep: --deep re-signs nested code with the OUTER bundle's
 # options, which is how an XPC service ends up without the entitlements it needed. Apple
 # document it as unsuitable for distribution; each nested item is signed on its own terms.
+#
+# EVERY piece of nested code, not just the bundles. Sparkle ships `Autoupdate` as a bare
+# Mach-O executable beside its framework binary — no .app, no .xpc, nothing to match on — and
+# a loop that signed only nested BUNDLES walked straight past it. Notarization rejected the
+# whole archive for that one file: not signed with a Developer ID certificate, no secure
+# timestamp, no hardened runtime, once per architecture. Signing the framework does not reach
+# it; each nested executable carries its own signature.
+#
+# Paths under Versions/Current are skipped because they are symlinks to the versioned
+# directory already being walked, and signing the same file twice through two names is at
+# best wasted work.
 find "$APP/Contents/Frameworks" -name "*.framework" -maxdepth 1 -type d 2>/dev/null | while read -r fw; do
-  find "$fw" \( -name "*.xpc" -o -name "*.app" \) -print0 | while IFS= read -r -d '' nested; do
-    codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$nested"
-  done
+  fwname="$(basename "$fw" .framework)"
+
+  # 1. Bare executables (Sparkle's Autoupdate). Not the framework's own binary — that one is
+  #    covered by signing the framework, and signing it separately first is undone anyway.
+  find "$fw" -type f -perm +111 -not -path "*/Versions/Current/*" -print0 \
+    | while IFS= read -r -d '' exe; do
+        case "$exe" in */Contents/MacOS/*) continue;; esac
+        [ "$(basename "$exe")" = "$fwname" ] && continue
+        file "$exe" | grep -q "Mach-O" || continue
+        codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$exe"
+      done
+
+  # 2. Nested bundles: helper apps and XPC services.
+  find "$fw" \( -name "*.xpc" -o -name "*.app" \) -not -path "*/Versions/Current/*" -print0 \
+    | while IFS= read -r -d '' nested; do
+        codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$nested"
+      done
+
+  # 3. The framework last, over everything already signed inside it.
   codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$fw"
 done
 # Hardened runtime is required for notarization, and the app spawns login shells and PTYs,
