@@ -77,6 +77,15 @@ private struct GeneralSettings: View {
                      """)
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
+
+                Toggle("Draw terminals on the GPU",
+                       isOn: prefs.flag({ Preferences.useMetalRenderer },
+                                        { Preferences.useMetalRenderer = $0 }))
+                Text("Moves glyph drawing to Metal, which mainly shows up in fast-scrolling "
+                     + "output. Off by default because it can fail to start on some "
+                     + "hardware — a pane that cannot use it says so and keeps drawing.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
             }
 
             Section("Files") {

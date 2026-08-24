@@ -67,10 +67,17 @@ struct WorkspaceWindow: View {
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
+                // Settings only reach panes that already exist because of this.
+                PreferenceBridge.start()
                 MenuBarItem.shared.syncWithPreference()
                 Updater.shared.startIfUpdatable()
             }
-            .onDisappear { model.store.persistNow() }
+            .onDisappear {
+                model.store.persistNow()
+                // Before the panes stop existing: nothing else captures their history, and
+                // a closed window is the common way this app is quit.
+                ShellWorkspace.Registry.factories[model.store.workspaceID]?.saveScrollback()
+            }
             .focusedSceneValue(\.layoutStore, model.store)
             .focusedSceneValue(\.uiState, model.ui)
     }

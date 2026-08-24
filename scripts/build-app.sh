@@ -38,6 +38,28 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 # The build number tracks the commit count, so About can tell two builds apart.
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 
+# --- SwiftPM resource bundles -----------------------------------------------------------
+# A package target with `resources:` compiles them into a `<Package>_<Target>.bundle` left in
+# the build directory, and nothing copies it into the .app — SwiftPM has no notion of one.
+#
+# Contents/Resources, which is where `Bundle.main.resourceURL` points and where a packaged
+# app is expected to put these. Contents/MacOS looks right, because that is "beside the
+# executable" and it is what SwiftPM's own generated accessor probes first, but the accessor
+# also calls `fatalError` when it misses — SwiftTerm avoids it for exactly that reason and
+# searches `resourceURL` itself.
+#
+# Missing, the failure is narrow and silent: everything that does not touch a resource still
+# works, so the app looks fine. SwiftTerm's Metal renderer loads its shader source this way,
+# and without the bundle it threw "Failed to load Metal shader source" and fell back to
+# CoreGraphics — the GPU setting appeared to be doing nothing at all.
+#
+# Copied wholesale rather than by name so a bundle added by any future dependency travels too.
+for RESOURCE_BUNDLE in .build/release/*.bundle; do
+  [ -e "$RESOURCE_BUNDLE" ] || continue
+  cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
+  echo "  embedded $(basename "$RESOURCE_BUNDLE")"
+done
+
 # --- Icon -------------------------------------------------------------------------------
 scripts/make-iconset.sh "$APP/Contents/Resources"
 

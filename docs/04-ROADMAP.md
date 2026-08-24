@@ -58,10 +58,36 @@ renders in the Xcode canvas.
 
 ## M2 — Shell tile
 
-> **Status: core landed.** Real PTYs, splits, focus routing, theming, coalesced resize, and
-> the agent launcher are built and green at **105 tests**, including live-process tests that
-> assert a shell keeps its pid across 100 random layout operations. **Outstanding:**
-> scrollback persistence, a font-settings surface, and the Metal renderer opt-in.
+> **Status: COMPLETE.** Real PTYs, splits, focus routing, theming, coalesced resize, the
+> agent launcher, scrollback persistence and the Metal renderer opt-in are all built and
+> green, including live-process tests that assert a shell keeps its pid across 100 random
+> layout operations.
+>
+> **Scrollback** is a sidecar text file per pane, not part of `WorkspaceDocument` — that
+> document is rewritten on every divider drag, and history is up to 128KB a pane. What is
+> saved is PLAIN TEXT from the normal buffer, and three things the build settled:
+>
+> - **The normal buffer, never the active one.** A pane sitting in `vim` has the ALT buffer
+>   up, which has no scrollback and vanishes when the program exits. Saving it would restore
+>   a snapshot of a full-screen app the user has left and throw away the session they wanted.
+> - **Restored text is sanitized on the way OUT, not just in.** The file is plain text in
+>   Application Support; what was written being clean says nothing about what is on disk now.
+>   Every control byte including ESC is stripped, so a file cannot drive the terminal it is
+>   fed into — the same reasoning that keeps the agent channel off the tty in M4c, and it
+>   matters more here because restoring happens at launch without anyone asking.
+> - **The blank rows below the last line are not history.** A terminal is a fixed grid, so a
+>   pane showing three lines also holds twenty empty ones. Saved unchanged, every relaunch
+>   restored its own wall of whitespace on top of the last one's.
+>
+> **The Metal renderer** is a setting, default OFF: `setUseMetal` THROWS, and a default that
+> can fail at launch makes the app look broken for a reason the user did not choose. A pane
+> that cannot start it says so and keeps drawing rather than going blank.
+>
+> Turning it on found a packaging bug that had nothing to do with Metal: **SwiftPM resource
+> bundles were never copied into the .app.** A target with `resources:` leaves a
+> `<Package>_<Target>.bundle` in the build directory and nothing puts it in the bundle, so
+> SwiftTerm could not find its shader source. The failure is narrow and silent — everything
+> that does not touch a resource still works — and it would have shipped.
 >
 > One structural note: `LocalProcessTerminalView` is deliberately NOT used. Its `sizeChanged`
 > is `public` rather than `open`, so its resize-immediately policy cannot be overridden from
@@ -69,7 +95,7 @@ renders in the Xcode canvas.
 > lines — which is what makes the coalescing below possible, and is the same seam that keeps
 > a custom renderer reachable later.
 
-- SwiftTerm integrated; `zsh -l` in a pane; Metal renderer on.
+- SwiftTerm integrated; `zsh -l` in a pane; Metal renderer available as an opt-in setting.
 - PTY resize coalescing (33ms during drag, authoritative 50ms after commit).
 - Terminal themes (light + dark defaults), font settings, selection, copy/paste, URL clicking.
 - Scrollback persisted and restored as marked inert text.

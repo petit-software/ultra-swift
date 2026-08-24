@@ -55,12 +55,22 @@ public final class ShellPaneFactory {
         }
     }
 
+    /// Where each pane's history is kept between launches. Nil disables the feature
+    /// entirely — which is what tests that are not about scrollback want, so they neither
+    /// read the user's real history nor write into it.
+    public var scrollback: ScrollbackStore?
+
+    /// History loaded for a pane but not yet written to it — see `startPendingShells()`.
+    private var pendingHistory: [PaneID: String] = [:]
+
     public init(theme: TerminalTheme = .dark,
                 defaultDirectory: String? = FileManager.default.currentDirectoryPath,
-                restoring records: [PaneID: PaneRecord] = [:]) {
+                restoring records: [PaneID: PaneRecord] = [:],
+                scrollback: ScrollbackStore? = nil) {
         self.theme = theme
         self.defaultDirectory = defaultDirectory
         self.restored = records
+        self.scrollback = scrollback
     }
 
     /// The next pane created will run this agent instead of a plain shell. Consumed once —
@@ -80,6 +90,17 @@ public final class ShellPaneFactory {
         let view = ShellTerminalView(spec: spec, font: Preferences.terminalFont)
         if let agentSocketPath { view.extraEnvironment["ULTRA_AGENT_SOCK"] = agentSocketPath }
         view.shellDelegate = self
+        // Held rather than fed here. A view that has not been laid out yet reports SwiftTerm's
+        // default 80 columns, so history written now hard-wraps at 80 and STAYS wrapped once
+        // the pane turns out to be wider — the same "no real size yet" problem the deferred
+        // start below already exists to avoid. It is replayed from `startPendingShells()`,
+        // which runs a runloop turn later with the pane's true width.
+        //
+        // Only a pane being RESTORED gets its history back: a brand new pane has none, and a
+        // pane whose id happened to match a file would be showing someone else's session.
+        if record != nil, let history = scrollback?.load(for: paneID) {
+            pendingHistory[paneID] = history
+        }
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)
         containers[paneID] = container
@@ -93,15 +114,41 @@ public final class ShellPaneFactory {
     }
 
     /// Start any shell that has not started yet. Idempotent.
+    ///
+    /// Restored history is written just BEFORE the shell starts, so the first prompt lands
+    /// underneath it rather than above — and late enough that the pane has its real width.
     public func startPendingShells() {
-        for shell in shells.values where !shell.isRunning { shell.start() }
+        for (paneID, shell) in shells where !shell.isRunning {
+            if let history = pendingHistory.removeValue(forKey: paneID) {
+                shell.restore(history: history)
+            }
+            shell.start()
+        }
         onAgentActivityChange?(runningAgentCount)
     }
 
+    /// A closed pane's history is DISCARDED, not saved.
+    ///
+    /// Its ID is never issued again, so a saved file could only ever be orphaned — and the
+    /// user closing a pane is the clearest statement available that they are done with what
+    /// was in it. Keeping it would also mean a "close" that quietly leaves the session's
+    /// output on disk, which is not what the word means.
     public func release(_ paneID: PaneID) {
         containers.removeValue(forKey: paneID)
         shells.removeValue(forKey: paneID)?.stop()
+        pendingHistory.removeValue(forKey: paneID)
+        scrollback?.discard(for: paneID)
         onAgentActivityChange?(runningAgentCount)
+    }
+
+    /// Write every live pane's history. Called on termination, where the panes are about to
+    /// stop existing and nothing else would capture them.
+    public func saveScrollback() {
+        guard let scrollback else { return }
+        for (paneID, shell) in shells {
+            scrollback.save(shell.historyText, for: paneID)
+        }
+        scrollback.prune(keeping: Set(shells.keys))
     }
 
     /// Called when a divider drag or window resize commits.
@@ -119,6 +166,11 @@ public final class ShellPaneFactory {
             shell.font = font
             shell.commitPendingResize()
         }
+    }
+
+    /// Push the renderer preference to every live shell.
+    public func applyRenderer() {
+        for shell in shells.values { shell.wantsMetalRenderer = Preferences.useMetalRenderer }
     }
 
     public func apply(theme: TerminalTheme) {

@@ -136,10 +136,80 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         send(source: self, data: payload[...])
     }
 
+    // MARK: - Scrollback
+
+    /// This pane's history as plain text, for `ScrollbackStore`.
+    ///
+    /// The NORMAL buffer, never the active one: a pane sitting in `vim` or `less` has the
+    /// ALT buffer up, which is a scratch screen with no scrollback and is gone the moment the
+    /// program exits. Saving it would restore a snapshot of a full-screen app the user is no
+    /// longer in, with the actual session history — the thing they wanted — thrown away.
+    public var historyText: String {
+        String(decoding: getTerminal().getBufferAsData(kind: .normal), as: UTF8.self)
+    }
+
+    /// Show restored history above the live session.
+    ///
+    /// Written dimmed and under a rule, because restored text is NOT this session: the
+    /// commands in it did not run in this shell, and a user scrolling up needs to be able to
+    /// tell where the boundary is before they trust what they are reading. It is also the
+    /// only honest way to present it — the processes are gone, the exit codes are gone, and
+    /// nothing above the rule can be re-run by pressing up.
+    ///
+    /// Fed before the shell starts, so its first prompt lands underneath.
+    public func restore(history: String) {
+        let text = history.hasSuffix("\n") ? String(history.dropLast()) : history
+        guard !text.isEmpty else { return }
+        // The rule's own escape sequences are OURS, not the file's — `ScrollbackStore` has
+        // already stripped every control byte from `text`, so nothing in it can reach here.
+        feed(text: "\u{1b}[2m" + text.replacingOccurrences(of: "\n", with: "\r\n")
+             + "\r\n\u{1b}[2m\u{2500}\u{2500} restored \u{2500}\u{2500}\u{1b}[0m\r\n")
+    }
+
     public func apply(theme: TerminalTheme) {
         spec.theme = theme
         TerminalPalette.apply(theme, to: self)
         needsDisplay = true
+    }
+
+    // MARK: - Renderer
+
+    /// Whether this pane SHOULD be drawing on the GPU. The actual state is
+    /// `isUsingMetalRenderer`, and the two differ when Metal was asked for and refused.
+    public var wantsMetalRenderer = Preferences.useMetalRenderer {
+        didSet { guard wantsMetalRenderer != oldValue else { return }; applyRenderer() }
+    }
+
+    /// Set once a fallback has been reported, so a pane that cannot do Metal says so a single
+    /// time rather than on every layout pass.
+    private var hasReportedMetalFailure = false
+
+    /// SwiftTerm requires the view to be in a window before Metal can be turned on — the
+    /// renderer binds to the window's screen to pick a scale factor. Applying here as well as
+    /// on the preference change is what makes the setting work for panes that do not exist
+    /// yet when it is flipped.
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyRenderer()
+    }
+
+    /// Bring the renderer in line with `wantsMetalRenderer`.
+    ///
+    /// A refusal is REPORTED, not swallowed. `setUseMetal` throws when there is no Metal
+    /// device or the pipeline will not build, and a pane that silently stayed on
+    /// CoreGraphics would leave the user with a setting that is on and doing nothing —
+    /// they would have no way to tell that from Metal simply not being faster.
+    public func applyRenderer() {
+        guard window != nil else { return }
+        guard wantsMetalRenderer != isUsingMetalRenderer else { return }
+        do {
+            try setUseMetal(wantsMetalRenderer)
+        } catch {
+            guard wantsMetalRenderer, !hasReportedMetalFailure else { return }
+            hasReportedMetalFailure = true
+            feed(text: "\r\n\u{1b}[2m[GPU rendering unavailable: \(error)"
+                 + " — using CoreGraphics]\u{1b}[0m\r\n")
+        }
     }
 
     // MARK: - Resize policy

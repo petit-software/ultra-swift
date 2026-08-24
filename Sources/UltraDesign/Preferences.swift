@@ -181,6 +181,21 @@ public enum Preferences {
         set { setNumber("gitInterval", newValue, current: gitInterval, in: 1...60) }
     }
 
+    /// Draw terminals on the GPU.
+    ///
+    /// OFF by default, and opt-in rather than opt-out on purpose. SwiftTerm ships the Metal
+    /// path disabled too, and `setUseMetal(_:)` THROWS — a machine with no usable Metal
+    /// device, or a pipeline that fails to build, is a real outcome rather than a
+    /// hypothetical. A default that can fail at launch is a default that can make the app
+    /// look broken for reasons the user did not choose, so this is something they turn on.
+    ///
+    /// The failure is not silent either way: see `ShellPaneFactory.applyRenderer()`, which
+    /// falls back to CoreGraphics and says so in the pane rather than leaving a blank one.
+    public static var useMetalRenderer: Bool {
+        get { flag("useMetalRenderer", default: false) }
+        set { setFlag("useMetalRenderer", newValue, current: useMetalRenderer) }
+    }
+
     /// A tile polling behind a hidden window burns battery to update pixels nobody can see.
     public static var pausePollingWhenOccluded: Bool {
         get { flag("pausePollingWhenOccluded", default: true) }

@@ -33,8 +33,12 @@ enum ShellWorkspace {
         let workspaceID = document?.id ?? UUID()
 
         let theme = theme ?? Preferences.resolvedTheme()
+        // History is restored only for a workspace that is itself being restored. A fresh
+        // window opening on a project it has never opened has no panes to match, so there is
+        // nothing to hand back and nothing to prune.
         let factory = ShellPaneFactory(theme: theme, defaultDirectory: directory,
-                                       restoring: records)
+                                       restoring: records,
+                                       scrollback: ScrollbackStore())
 
         // Non-shell tiles. `injectIntoShell` is the shared "send to shell" verb: it targets
         // the focused pane when that pane IS a shell, and otherwise the first shell in the
