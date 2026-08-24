@@ -9,24 +9,48 @@
 # Nothing secret lives here. Credentials come from the environment, so this file is safe to
 # read, safe to commit, and safe to paste into a CI log:
 #
-#   DEVELOPER_ID   "Developer ID Application: Your Name (TEAMID)"
-#   NOTARY_PROFILE name of a notarytool keychain profile, created once with:
-#                  xcrun notarytool store-credentials NOTARY_PROFILE \
-#                      --apple-id you@example.com --team-id TEAMID --password APP_SPECIFIC_PW
+#   DEVELOPER_ID   "Developer ID Application: Your Name (TEAMID)".
+#                  Defaults to the first such identity in the keychain.
+#   NOTARY_PROFILE name of a notarytool keychain profile. Defaults to `ultra-notary`,
+#                  created once with:
+#                  xcrun notarytool store-credentials ultra-notary \
+#                      --key AuthKey_XXXX.p8 --key-id KEYID --issuer ISSUER
 #   SPARKLE_KEY    OPTIONAL path to an EdDSA private key file. Left unset, Sparkle uses the
 #                  key in your login keychain, which is where `generate_keys` puts it and the
 #                  safer default. Create it once:  .build/artifacts/.../bin/generate_keys
 #                  This is SEPARATE from Developer ID: Apple's signature says the APP is from
 #                  you, Sparkle's says the UPDATE is. Lose it and no existing install can ever
 #                  be updated again — it belongs in a password manager, not a folder.
-#   FEED_URL       where the appcast will live, e.g.
-#                  https://github.com/USER/REPO/releases/latest/download/appcast.xml
+#   FEED_URL       where the appcast will live. Defaults to this repository's own
+#                  releases/latest/download/appcast.xml, which works because the repo
+#                  is public.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-: "${DEVELOPER_ID:?set DEVELOPER_ID — see the header of this script}"
-: "${NOTARY_PROFILE:?set NOTARY_PROFILE — see the header of this script}"
-: "${FEED_URL:?set FEED_URL — see the header of this script}"
+# Credentials are looked up rather than demanded. Every one of these was already set up on
+# the machine that will run this, and a script that stops to ask for something it could have
+# found is a script nobody runs twice.
+DEVELOPER_ID="${DEVELOPER_ID:-$(security find-identity -v -p codesigning \
+  | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')}"
+: "${DEVELOPER_ID:?no Developer ID Application identity in the keychain}"
+
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+if [ -z "$NOTARY_PROFILE" ]; then
+  if xcrun notarytool history --keychain-profile ultra-notary >/dev/null 2>&1; then
+    NOTARY_PROFILE="ultra-notary"
+  else
+    echo "error: no notarytool keychain profile found (tried ultra-notary)." >&2
+    echo "       Create one with your App Store Connect key:" >&2
+    echo "         xcrun notarytool store-credentials ultra-notary \\" >&2
+    echo "             --key AuthKey_XXXX.p8 --key-id KEYID --issuer ISSUER" >&2
+    exit 1
+  fi
+fi
+
+# The repository is public, so its release assets are fetchable without a credential — which
+# is the whole reason the feed can live here at all. See the roadmap: an app cannot hold a
+# token for a private repo, because shipping one ships it to everybody.
+FEED_URL="${FEED_URL:-https://github.com/petit-software/ultra-swift/releases/latest/download/appcast.xml}"
 
 APP="Ultra.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
@@ -74,8 +98,29 @@ codesign --force --options runtime --timestamp \
 
 codesign --verify --strict --verbose=2 "$APP"
 
-echo "==> Packaging"
+# The app is notarized and stapled BEFORE it goes in the DMG, and the DMG is notarized after.
+# Two round trips, and both are needed.
+#
+# This script had only the DMG round trip, and that looked like it worked — the Clio release
+# found out otherwise. Gatekeeper accepted the app inside the image, but `stapler validate`
+# on that app said it had no ticket stapled to it. It passed only because the Mac checking
+# could reach Apple and look the record up online. Copy the app out of the DMG and open it
+# offline for the first time, and the same bundle is "damaged". The ticket has to be IN the
+# app, not only in the image it arrived in.
+echo "==> Notarizing the app (this waits on Apple, typically a minute or two)"
 mkdir -p "$OUT"
+ZIP="$OUT/Ultra-$VERSION-app.zip"
+rm -f "$ZIP"
+# ditto, not zip: it preserves the symlinks and extended attributes a signed bundle is made
+# of. A plain zip can invalidate the very signature it is carrying.
+/usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+rm -f "$ZIP"
+
+xcrun stapler staple "$APP"
+xcrun stapler validate "$APP"
+
+echo "==> Packaging"
 rm -f "$DMG"
 STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
@@ -84,12 +129,16 @@ hdiutil create -volname "Ultra $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$
 rm -rf "$STAGE"
 codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
 
-echo "==> Notarizing (this waits on Apple)"
+echo "==> Notarizing the disk image"
 xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-# Stapled so a first launch works without a network round-trip — and so it works at all for
-# someone offline, who otherwise sees "Ultra is damaged".
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
+
+echo "==> Verifying the way a downloader's Mac will"
+# The check that matters: everything above can pass while the thing someone actually
+# downloads is refused. A local build carries no quarantine flag, so nothing on this Mac
+# exercises Gatekeeper until this line.
+spctl --assess --type open --context context:primary-signature -vv "$DMG"
 
 echo "==> Appcast"
 GEN="$(find .build/artifacts -name generate_appcast -type f | head -1)"
