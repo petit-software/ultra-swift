@@ -2,6 +2,7 @@ import SwiftUI
 import UltraCanvas
 import UltraCore
 import UltraLayout
+import UltraTiles
 
 /// Every pane verb, declared once.
 ///
@@ -12,7 +13,7 @@ import UltraLayout
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + paneKinds
+                                 + paneKinds + folders
 
     /// Opening and switching pane kinds. Palette-only: seven kinds times two verbs is
     /// fourteen bindings nobody would remember, and the three that earn a shortcut declare
@@ -38,6 +39,51 @@ enum PaneCommands {
                 ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
             }
         }
+
+    /// Pointing a tile at a different folder, without the pointer.
+    ///
+    /// The footer's folder menu is the discoverable path; these are the same four verbs on
+    /// the menu bar, so they reach a tile while a full-screen TUI owns the keyboard. No
+    /// default bindings: four more chords for a control most panes do not have would be four
+    /// chords nobody remembers — the palette is how these are found.
+    static let folders: [AppCommand] = [
+        AppCommand(id: "pane.folder.choose", title: "Set Pane Folder…",
+                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+            guard let root = ShellWorkspace.tileRoot(store.tree.focused, in: store),
+                  let url = chooseTileFolder(title: "Pane Folder", directory: root) else { return }
+            ShellWorkspace.setFolder(url, of: store.tree.focused, in: store)
+        },
+        AppCommand(id: "pane.folder.up", title: "Pane Folder: Go Up",
+                   menuPath: ["Pane", "Folder"],
+                   isEnabled: { store in
+                       guard canRetargetFocused(store),
+                             let root = ShellWorkspace.tileRoot(store.tree.focused, in: store)
+                       else { return false }
+                       return root.deletingLastPathComponent().path != root.path
+                   }) { store in
+            guard let root = ShellWorkspace.tileRoot(store.tree.focused, in: store) else { return }
+            ShellWorkspace.setFolder(root.deletingLastPathComponent(),
+                                     of: store.tree.focused, in: store)
+        },
+        AppCommand(id: "pane.folder.shell", title: "Pane Folder: Follow Shell",
+                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+            let shell = ShellWorkspace.Registry
+                .workingDirectory(in: store.workspaceID,
+                                  fallback: ShellWorkspace.projectFolder(of: store))
+            ShellWorkspace.setFolder(shell, of: store.tree.focused, in: store)
+        },
+        AppCommand(id: "pane.folder.project", title: "Pane Folder: Project Folder",
+                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+            ShellWorkspace.setFolder(ShellWorkspace.projectFolder(of: store),
+                                     of: store.tree.focused, in: store)
+        },
+    ]
+
+    /// Dimmed rather than hidden on a pane with no folder of its own — a command that
+    /// vanishes is a command nobody learns.
+    private static let canRetargetFocused: @MainActor (LayoutStore) -> Bool = { store in
+        ShellWorkspace.canSetFolder(store.tree.focused, in: store)
+    }
 
     static let splits: [AppCommand] = [
         AppCommand(id: "pane.split.right", title: "Split Right", menuPath: ["Pane", "Split"],
@@ -135,6 +181,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Resize") {
                 ForEach(PaneCommands.resizes) { item($0) }
+            }
+            Menu("Folder") {
+                ForEach(PaneCommands.folders) { item($0) }
             }
         }
     }

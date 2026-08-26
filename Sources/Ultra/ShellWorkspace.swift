@@ -41,13 +41,17 @@ enum ShellWorkspace {
                                        scrollback: ScrollbackStore())
 
         // Non-shell tiles. `injectIntoShell` is the shared "send to shell" verb: it targets
-        // the focused pane when that pane IS a shell, and otherwise the first shell in the
-        // layout — a file tree cannot type into itself.
+        // the shell the user was last working in — a file tree cannot type into itself.
+        //
+        // Scoped to THIS workspace, by id. These closures used to read whichever store the
+        // Registry dictionary happened to hand back first, so with two tabs open a tile
+        // could type into a shell in the other one.
         let root = URL(fileURLWithPath: directory)
         let tiles = TileFactory(context: TileContext(
             root: root,
             injectIntoShell: { [weak factory] text in
-                guard let factory, let target = Registry.injectionTarget else { return }
+                guard let factory,
+                      let target = Registry.injectionTarget(in: workspaceID) else { return }
                 // Trailing space: sends are meant to COMPOSE at the prompt — two paths in a
                 // row must not arrive as one glued-together argument.
                 let separated = text.hasSuffix(" ") ? text : text + " "
@@ -59,9 +63,9 @@ enum ShellWorkspace {
             shellPIDs: { [weak factory] in
                 Set(factory?.shells.values.compactMap(\.processID) ?? [])
             },
-            currentDirectory: { Registry.workingDirectory(fallback: root) },
+            currentDirectory: { Registry.workingDirectory(in: workspaceID, fallback: root) },
             openInEditor: { url in
-                guard let store = Registry.stores.values.first else { return }
+                guard let store = Registry.stores[workspaceID] else { return }
                 openEditor(on: url, in: store)
             }),
             restoring: records)
@@ -84,6 +88,24 @@ enum ShellWorkspace {
         store.workspaceSubtitle = document?.subtitle ?? ShellPaneFactory.abbreviate(directory)
         store.workspaceDirectory = directory
         store.windowFrame = document?.windowFrame?.rect
+
+        // A tile was pointed at a different folder: rebuild it there. See
+        // `TileFactory.retarget`.
+        tiles.onRootChange = { [weak store] paneID, _ in
+            // Next turn of the run loop, because the retarget almost always comes from a
+            // click INSIDE the tile being replaced, and tearing a view down while it is
+            // still handling its own event is how a click ends up delivered to a
+            // deallocated view.
+            DispatchQueue.main.async {
+                guard let store else { return }
+                store.replaceContent(of: paneID)
+                // Build it now rather than waiting for the layout pass, so the pane header
+                // and the tab say the new folder immediately.
+                _ = store.surfaces.surfaceRecord(for: paneID)
+                store.refreshWindowTitle()
+                store.persist()
+            }
+        }
 
         // Closing a pane is the only thing that kills its PTY.
         store.surfaces.onRelease = { [weak factory, weak tiles] paneID in
@@ -119,7 +141,7 @@ enum ShellWorkspace {
             // The socket serves off its own queue; anything that touches panes has to be on
             // the main actor, and the agent is told what happened either way.
             MainActor.assumeIsolated {
-                perform(request, in: root)
+                perform(request, in: root, workspace: workspaceID)
             }
         }
         if channel.start() {
@@ -153,43 +175,37 @@ enum ShellWorkspace {
             }
         }
 
-        /// Where a new tile should point: the focused pane's directory when it has one,
-        /// else any pane's, else the workspace's own. Pane records carry the LIVE cwd —
-        /// a shell reports its directory as it changes — so this follows `cd`.
-        @MainActor static func workingDirectory(fallback: URL) -> URL {
-            for store in stores.values {
-                // The focused pane when it is itself a shell — that is the one the user is
-                // working in. Otherwise the FIRST shell in the layout, which is the pane a
-                // project is usually opened into. A tile has no directory of its own to
-                // offer, so a focused tile falls through rather than answering.
-                let focused = store.tree.focused
-                if let record = store.surfaces.records[focused],
-                   record.kind == .shell, let cwd = record.cwd {
-                    return URL(fileURLWithPath: cwd)
-                }
-                for paneID in store.tree.paneIDs {
-                    if let record = store.surfaces.records[paneID],
-                       record.kind == .shell, let cwd = record.cwd {
-                        return URL(fileURLWithPath: cwd)
-                    }
-                }
-            }
-            return fallback
+        /// Where a new tile should point: the working directory of the shell a tile would
+        /// type into. Pane records carry the LIVE cwd — a shell reports its directory as it
+        /// changes — so this follows `cd`.
+        @MainActor static func workingDirectory(in workspaceID: UUID, fallback: URL) -> URL {
+            guard let store = stores[workspaceID],
+                  let target = injectionTarget(in: workspaceID),
+                  let cwd = store.surfaces.records[target]?.cwd
+            else { return fallback }
+            return URL(fileURLWithPath: cwd)
         }
 
-        /// The pane a tile's "send to shell" should type into: the focused pane when it is
-        /// itself a shell, otherwise the first shell in the layout. Nil when the workspace
-        /// holds no shell at all, in which case the verb is a no-op rather than a guess.
-        @MainActor static var injectionTarget: PaneID? {
-            for (id, store) in stores {
-                guard let factory = factories[id] else { continue }
-                let focused = store.tree.focused
-                if factory.shells[focused] != nil { return focused }
-                if let any = store.tree.paneIDs.first(where: { factory.shells[$0] != nil }) {
-                    return any
-                }
+        /// The pane a tile's "send to shell" should type into, within ONE workspace.
+        ///
+        /// The focused pane when it is itself a shell; otherwise the shell the user was last
+        /// working in, because pressing a control in a tile focuses that tile and the answer
+        /// has to survive that; otherwise the first shell in the layout, for a workspace
+        /// where no shell has been focused yet. Nil when there is no shell at all, in which
+        /// case the verb is a no-op rather than a guess.
+        @MainActor static func injectionTarget(in workspaceID: UUID) -> PaneID? {
+            guard let store = stores[workspaceID], let factory = factories[workspaceID] else {
+                return nil
             }
-            return nil
+            let focused = store.tree.focused
+            if factory.shells[focused] != nil { return focused }
+            // Validated, not trusted: the remembered pane may have been closed or converted
+            // into something that is no longer a shell.
+            if let last = store.lastFocusedShell, factory.shells[last] != nil,
+               store.tree.contains(last) {
+                return last
+            }
+            return store.tree.paneIDs.first { factory.shells[$0] != nil }
         }
     }
 
@@ -253,7 +269,8 @@ enum ShellWorkspace {
 
     /// Carry out one agent request, or say why not.
     @MainActor
-    static func perform(_ request: AgentRequest, in root: URL) -> AgentResponse {
+    static func perform(_ request: AgentRequest, in root: URL,
+                        workspace workspaceID: UUID) -> AgentResponse {
         let resolved: ResolvedAgentRequest
         do {
             resolved = try request.resolve(in: root)
@@ -262,7 +279,9 @@ enum ShellWorkspace {
         } catch {
             return .failure("\(error)")
         }
-        guard let store = Registry.stores.values.first else {
+        // This workspace's own window. The socket lives in the project, so a request that
+        // arrived on it belongs to the project — not to whichever tab was opened first.
+        guard let store = Registry.stores[workspaceID] else {
             return .failure("no window open")
         }
         switch resolved.verb {
@@ -281,6 +300,31 @@ enum ShellWorkspace {
     /// immediately rather than up to one tick later.
     static func updateSleepGuard() {
         AgentMonitor.shared.sample()
+    }
+
+    // MARK: Folders
+
+    /// Whether this pane is a tile that means something different in another folder — a
+    /// file tree or a Git tile. False for shells, which change folder by `cd`, and for the
+    /// tiles that are not scoped to a path at all.
+    static func canSetFolder(_ paneID: PaneID, in store: LayoutStore) -> Bool {
+        Registry.tiles[store.workspaceID]?.canRetarget(paneID) ?? false
+    }
+
+    /// Which folder a tile pane is currently showing.
+    static func tileRoot(_ paneID: PaneID, in store: LayoutStore) -> URL? {
+        Registry.tiles[store.workspaceID]?.root(of: paneID)
+    }
+
+    /// The project this workspace was opened on — where "Project Folder" sends a tile back to.
+    static func projectFolder(of store: LayoutStore) -> URL {
+        URL(fileURLWithPath: store.workspaceDirectory ?? NSHomeDirectory())
+    }
+
+    /// Point a tile pane at a different folder. The one verb behind the footer's folder
+    /// menu, the file tree's `..` row, and the Pane ▸ Folder commands.
+    static func setFolder(_ url: URL, of paneID: PaneID, in store: LayoutStore) {
+        Registry.tiles[store.workspaceID]?.retarget(paneID, to: url)
     }
 
     /// Turn an existing pane into a different kind, in place.

@@ -6,8 +6,14 @@ import Foundation
 /// previewed, and unit-tested, by passing an inert context. See docs/03-TILES.md.
 @MainActor
 public struct TileContext {
-    /// The project root this pane belongs to.
+    /// The folder THIS PANE is pointed at.
+    ///
+    /// Not necessarily the project's: a Git tile can be aimed at a sibling checkout and a
+    /// file tree at a folder above the project, which is what `setRoot` is for.
     public var root: URL
+    /// The project the workspace was opened on, whatever this pane is currently showing.
+    /// The "Project Folder" a retargeted tile can be sent back to.
+    public var projectRoot: URL
     /// Type text at the focused shell's prompt WITHOUT submitting it, so the user can add
     /// to it before running. The shared verb behind "send to shell" in every tile.
     public var injectIntoShell: (String) -> Void
@@ -26,19 +32,28 @@ public struct TileContext {
     public var currentDirectory: () -> URL
     /// Open a file in a new editor pane. The file tree's reason to exist beyond `ls`.
     public var openInEditor: (URL) -> Void
+    /// Point this pane at a different folder.
+    ///
+    /// The pane keeps its id, its position and its size; only what it is looking at changes.
+    /// Its record follows, so the header, the tab, and the restored workspace all agree with
+    /// what is on screen. A no-op for tiles that are not folder-scoped.
+    public var setRoot: (URL) -> Void
 
     public init(root: URL,
                 injectIntoShell: @escaping (String) -> Void = { _ in },
                 revealInFinder: @escaping (URL) -> Void = { _ in },
                 shellPIDs: @escaping () -> Set<Int32> = { [] },
                 currentDirectory: (() -> URL)? = nil,
-                openInEditor: @escaping (URL) -> Void = { _ in }) {
+                openInEditor: @escaping (URL) -> Void = { _ in },
+                setRoot: @escaping (URL) -> Void = { _ in }) {
         self.root = root
+        self.projectRoot = root
         self.injectIntoShell = injectIntoShell
         self.revealInFinder = revealInFinder
         self.shellPIDs = shellPIDs
         self.currentDirectory = currentDirectory ?? { root }
         self.openInEditor = openInEditor
+        self.setRoot = setRoot
     }
 
     /// A context that does nothing, for previews and tests.

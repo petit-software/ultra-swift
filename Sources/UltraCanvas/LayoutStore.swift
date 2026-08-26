@@ -66,6 +66,18 @@ public final class LayoutStore {
     /// Last known window frame, so a window reopens where it was.
     @ObservationIgnored public var windowFrame: CGRect?
 
+    /// The shell pane the user was last working in.
+    ///
+    /// `tree.focused` cannot answer this on its own: pressing a control in a TILE focuses
+    /// that tile, so by the time a tile's "send to shell" runs, the focused pane is the tile
+    /// doing the sending. Falling back to "the first shell in the layout" from there meant
+    /// every send landed in the same pane forever, whichever one the user was actually
+    /// typing in.
+    ///
+    /// Nil until a shell has been focused at least once, and never validated here — a pane
+    /// can close, so the reader checks that it still exists.
+    @ObservationIgnored public private(set) var lastFocusedShell: PaneID?
+
     /// Called when the tree changes, after persistence has been scheduled.
     @ObservationIgnored public var onChange: ((LayoutTree) -> Void)?
     /// Called once geometry has stopped moving — a divider drag committed, a window resize
@@ -171,9 +183,21 @@ public final class LayoutStore {
     /// restored window came back focused on the wrong pane.
     public func focus(_ paneID: PaneID) {
         guard tree.contains(paneID), paneID != tree.focused else { return }
+        // The pane being LEFT counts too. A restored window opens focused on a shell without
+        // anyone clicking it, so the first thing that ever moves focus — pressing a control
+        // in a tile — is also the only chance to record which shell was being worked in.
+        noteShellFocus(tree.focused)
         tree.focused = paneID   // not a structural change: no undo entry
+        noteShellFocus(paneID)
         refreshWindowTitle()
         persist()
+    }
+
+    /// Remember a focused SHELL, so a tile knows where to type. A pane with no surface yet
+    /// has no record to read, which is why this is a no-op rather than a guess.
+    private func noteShellFocus(_ paneID: PaneID) {
+        guard surfaces.records[paneID]?.kind == .shell else { return }
+        lastFocusedShell = paneID
     }
 
     /// Re-read the window title from the focused pane.

@@ -21,6 +21,44 @@ into the same `PaneSurfaceStore` and are laid out by the same code.
 
 ---
 
+## 0. Where a tile points, and where it types
+
+Two questions every tile asks, and both used to be answered by "whichever pane happened to be
+first".
+
+**Where it types.** `injectIntoShell` targets the focused pane when that pane is itself a shell;
+otherwise the shell the user was last working in; otherwise the first shell in the layout.
+The middle step is the load-bearing one: pressing a control inside a tile focuses the TILE, so
+`tree.focused` is the sending tile by the time the send runs. `LayoutStore.lastFocusedShell`
+remembers the shell being left as well as the one being entered, because a restored window opens
+focused on a shell that nobody ever clicked. Resolution is scoped to ONE workspace by id — with
+two tabs open, a tile must not type into the other tab's shell.
+
+**Where it points.** A tile is created on the working directory of the shell it would type into,
+which follows `cd`. From then on it is the pane's own folder, recorded in its `PaneRecord.cwd`,
+so a restored tile comes back where it was rather than where the project is.
+
+`TileContext.setRoot` moves it. `TileFactory.folderScoped` lists the kinds this applies to —
+File Tree and Git — and every other kind ignores it: Ports and Resources attribute by process
+ancestry rather than by path, and Todo and Context already have a "where is this list stored"
+control that would be a second, disagreeing answer to the same question.
+
+A retarget REBUILDS the tile on the new folder rather than mutating it in place. A Git tile aimed
+at another repository shares nothing with the one it was showing — not its branch, not its diffs,
+not its expanded folders — and a tile that kept half of the old state would be showing two
+repositories at once. The pane keeps its id, its position and its size; only its contents change,
+through the same path a pane conversion takes.
+
+Three ways in, one verb behind all of them:
+
+- the folder icon in the footer (`TileFolderMenu`): choose a folder, go up, follow the shell,
+  back to the project — greyed rather than hidden when a destination would not move the tile;
+- the file tree's `..` row, and "Show Only This Folder" on a directory;
+- `Pane ▸ Folder` on the main menu, and so the command palette. Nothing here has a default key
+  binding: four chords for a control most panes do not have is four chords nobody remembers.
+
+---
+
 ## 1. Shell
 
 The primary tile. A login shell, usually with an agent CLI running in it.

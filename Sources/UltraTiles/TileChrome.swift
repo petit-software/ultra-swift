@@ -38,3 +38,25 @@ public func chooseTileFile(title: String,
     panel.canCreateDirectories = true
     return panel.runModal() == .OK ? panel.url : nil
 }
+
+/// Ask the user which folder a tile should be pointed at.
+///
+/// An open panel restricted to directories — the counterpart to `chooseTileFile`, which
+/// picks where a file goes. "Choose" rather than "Open" as the button, because nothing is
+/// opened: a pane is aimed somewhere else.
+@MainActor
+public func chooseTileFolder(title: String, directory: URL) -> URL? {
+    let panel = NSOpenPanel()
+    panel.title = title
+    panel.prompt = "Choose"
+    panel.message = title
+    panel.directoryURL = directory
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    panel.canCreateDirectories = false
+    // Dotfile-heavy work is the norm here: a `.git` or a `.build` has to be selectable, and
+    // a panel that hides them makes a project's most interesting folders unreachable.
+    panel.showsHiddenFiles = true
+    return panel.runModal() == .OK ? panel.url : nil
+}

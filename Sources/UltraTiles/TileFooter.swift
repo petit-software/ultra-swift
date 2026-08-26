@@ -114,6 +114,57 @@ public struct TileStoreMenu: View {
     }
 }
 
+/// The "which folder is this tile looking at" control, shared by every folder-scoped tile.
+///
+/// A tile is created pointing at the shell's folder, and that is right until it isn't: a
+/// repository is a sibling of the project, a file tree wants the directory ABOVE the one it
+/// opened in, a second Git tile watches a worktree. Before this, the only way to move a tile
+/// was to close it, `cd` in a shell, and open a new one.
+///
+/// The four destinations are the ones that actually come up — an arbitrary folder, one level
+/// up, wherever the shell is now, and back to the project. Each is greyed rather than hidden
+/// when it would not move the tile, so the menu's shape is the same every time it opens.
+public struct TileFolderMenu: View {
+    let context: TileContext
+    /// What the chooser panel is asking for, in this tile's words.
+    let title: String
+
+    public init(context: TileContext, title: String) {
+        self.context = context
+        self.title = title
+    }
+
+    private var parent: URL? {
+        let up = context.root.deletingLastPathComponent().standardizedFileURL
+        return up.path == context.root.standardizedFileURL.path ? nil : up
+    }
+
+    public var body: some View {
+        let help = "Folder — " + TileFactory.abbreviate(context.root.path)
+        return ChromeMenuButton(symbol: "folder", help: help) {
+            let here = context.root.standardizedFileURL.path
+            let shell = context.currentDirectory().standardizedFileURL
+            let project = context.projectRoot.standardizedFileURL
+            return [
+                .caption(TileFactory.abbreviate(context.root.path)),
+                .separator,
+                .item(title: "Choose Folder…", symbol: "folder.badge.gearshape", action: choose),
+                .item(title: "Go Up", symbol: "arrow.up",
+                      isEnabled: parent != nil) { if let parent { context.setRoot(parent) } },
+                .item(title: "Follow Shell", symbol: "apple.terminal",
+                      isEnabled: shell.path != here) { context.setRoot(shell) },
+                .item(title: "Project Folder", symbol: "house",
+                      isEnabled: project.path != here) { context.setRoot(project) },
+            ]
+        }
+    }
+
+    private func choose() {
+        guard let url = chooseTileFolder(title: title, directory: context.root) else { return }
+        context.setRoot(url)
+    }
+}
+
 public extension View {
     /// Floats a tile's footer over its content, with the content able to scroll beneath.
     ///

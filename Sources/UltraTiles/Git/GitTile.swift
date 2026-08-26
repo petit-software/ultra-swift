@@ -38,9 +38,21 @@ public struct GitTile: View {
                 // Say WHICH directory was checked. "Not a git repository" on its own reads
                 // as the tile being broken; naming the path shows it is pointed somewhere
                 // the user did not expect, which is the actual problem.
-                EmptyTileState(icon: "arrow.trianglehead.branch",
-                               title: "No repository here",
-                               detail: TileFactory.abbreviate(context.root.path))
+                VStack(spacing: 10) {
+                    EmptyTileState(icon: "arrow.trianglehead.branch",
+                                   title: "No repository here",
+                                   detail: TileFactory.abbreviate(context.root.path))
+                    // The fix for the state the user is looking at, offered where they are
+                    // looking. The same verb as the footer's folder menu.
+                    Button("Choose Folder…") {
+                        guard let url = chooseTileFolder(title: "Repository Folder",
+                                                         directory: context.root) else { return }
+                        context.setRoot(url)
+                    }
+                    .buttonStyle(.plain)
+                    .font(Token.Type_.monoSmall)
+                    .foregroundStyle(Token.Colour.accent)
+                }
             }
         }
         .tileFooter { footer }
@@ -61,6 +73,10 @@ public struct GitTile: View {
 
     private var footer: some View {
         TileFooter(summary: summary) {
+            // Which repository this tile is staging in, and how to point it at another one.
+            // A Git tile follows the shell it was opened beside, and that shell may never
+            // have been in the repository the user wants.
+            TileFolderMenu(context: context, title: "Repository Folder")
             TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
                              isEnabled: !model.isRefreshing) {
                 Task { await model.refresh() }
