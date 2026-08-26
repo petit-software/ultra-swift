@@ -58,6 +58,7 @@ struct UltraApp: App {
 /// on `App` is shared by every window, so every tab would have shown the same panes.
 struct WorkspaceWindow: View {
     @State private var model = WorkspaceModel()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         RootView(store: model.store, ui: model.ui)
@@ -70,6 +71,9 @@ struct WorkspaceWindow: View {
                 // Settings only reach panes that already exist because of this.
                 PreferenceBridge.start()
                 MenuBarItem.shared.syncWithPreference()
+                // `openWindow` only exists in a SwiftUI environment; the menu bar item
+                // needs it to recreate a window every user has closed.
+                MenuBarItem.shared.openWorkspace = { openWindow(id: UltraApp.workspaceWindowID) }
                 Updater.shared.startIfUpdatable()
             }
             .onDisappear {

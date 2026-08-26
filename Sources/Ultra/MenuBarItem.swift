@@ -8,13 +8,22 @@ import UltraDesign
 /// buried — which is exactly the situation an agent runs in. It shows the running count and
 /// opens the windows again.
 @MainActor
-final class MenuBarItem {
+final class MenuBarItem: NSObject {
     static let shared = MenuBarItem()
 
     private var item: NSStatusItem?
     private var observer: NSObjectProtocol?
 
-    private init() {}
+    /// Recreate a workspace window from the AppKit side.
+    ///
+    /// `openWindow` is a SwiftUI environment value, so a live window hands its own down
+    /// when it starts (`WorkspaceWindow`); until one has, the standard tab action stands
+    /// in, which makes a window when there is none to tab into.
+    var openWorkspace: () -> Void = {
+        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
+    }
+
+    private override init() { super.init() }
 
     /// Create or tear down the item to match the preference, and follow it when it changes.
     func syncWithPreference() {
@@ -51,9 +60,9 @@ final class MenuBarItem {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        let open = NSMenuItem(title: "Open Ultra", action: #selector(NSApplication.unhide(_:)),
+        let open = NSMenuItem(title: "Open Ultra", action: #selector(openUltra(_:)),
                               keyEquivalent: "")
-        open.target = NSApp
+        open.target = self
         menu.addItem(open)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Ultra", action: #selector(NSApplication.terminate(_:)),
@@ -61,6 +70,27 @@ final class MenuBarItem {
         quit.target = NSApp
         menu.addItem(quit)
         return menu
+    }
+
+    /// Bring the app to the front and its windows back into view.
+    ///
+    /// The original was `NSApplication.unhide(_:)`, which reverses exactly one state: an
+    /// explicit `hide(_:)`. In every other state a window can be in — visible but the app
+    /// backgrounded, minimised, or closed — it is a no-op, so the item was a click that
+    /// does nothing.
+    @objc private func openUltra(_ sender: Any?) {
+        NSApp.activate(ignoringOtherApps: true)
+        var raised = false
+        // Registry entries outlive their windows (a strong reference is kept), so only
+        // touch windows the app still has; the rest are closed scenes to recreate.
+        for window in ShellWorkspace.Registry.windows.values
+            where NSApp.windows.contains(window) {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            raised = true
+        }
+        // Every window closed: AppKit cannot bring a closed scene back, only SwiftUI can.
+        if !raised { openWorkspace() }
     }
 
     /// The mark, as a template image.
