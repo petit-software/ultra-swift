@@ -84,7 +84,8 @@ private struct GeneralSettings: View {
                                         { Preferences.audibleBell = $0 }))
                 Text("Lets a shell ring the system alert sound. Off by default because "
                      + "agents ring it constantly — on tool calls, on prompts, on finishing "
-                     + "— and several agent panes ring it several times over.")
+                     + "— and several agent panes ring it several times over. When it is on, "
+                     + "a burst of bells is collapsed into a single ring.")
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
 

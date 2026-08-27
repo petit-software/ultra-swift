@@ -327,9 +327,13 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     ///
     /// Read live rather than cached: a shell can ring at any moment, and a bell that stays
     /// audible until the pane is restarted is not what unticking a box means.
+    ///
+    /// Rate-limited through `TerminalBell` rather than beeping straight from here. An agent
+    /// rings `BEL` many times a minute, and one `NSSound.beep()` per ring is one CoreAudio
+    /// stream opened and torn down per ring.
     public func bell(source: TerminalView) {
         guard Preferences.audibleBell else { return }
-        NSSound.beep()
+        TerminalBell.ring()
     }
 
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {

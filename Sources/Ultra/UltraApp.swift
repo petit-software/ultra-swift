@@ -334,30 +334,6 @@ struct RootView: View {
             // a toolbar item gets the standard Liquid Glass treatment automatically, which
             // is the same glass Finder's toolbar buttons wear. Nothing to style by hand.
             .toolbar {
-                // Every pane kind, one click from the window itself. Buried in a menu bar
-                // submenu they may as well not exist — this is where someone looks for
-                // "another pane", and it is the only place the full list is discoverable.
-                // `.navigation` is the toolbar's LEADING slot, so it sits with the traffic
-                // lights rather than among the pane verbs on the right.
-                ToolbarItem(placement: .navigation) {
-                    Menu {
-                        Section("New Pane") {
-                            Button("Shell") { ShellWorkspace.openShell(in: store) }
-                            ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
-                                Button(entry.title) {
-                                    ShellWorkspace.openTile(entry.kind, in: store)
-                                }
-                            }
-                        }
-                        // Dimmed rather than silent: with the canvas full, every one of
-                        // these can only beep.
-                        .disabled(!ShellWorkspace.canOpenNewPane(in: store))
-                    } label: {
-                        Label("Add Pane", systemImage: "plus")
-                    }
-                    .help("New pane")
-                }
-
                 // `.principal` is the toolbar's centre slot — the same one Mail and Notes
                 // use for a title, so it stays centred as the window resizes.
                 ToolbarItem(placement: .principal) {
@@ -379,6 +355,33 @@ struct RootView: View {
                 // icon. The palette stays: it is the one item here about the window.
                 // Both remain on their keyboard shortcuts and in the menu bar.
                 ToolbarItemGroup(placement: .primaryAction) {
+                    // Every pane kind, one click from the window itself. Buried in a menu
+                    // bar submenu they may as well not exist — this is where someone looks
+                    // for "another pane", and it is the only place the full list is
+                    // discoverable.
+                    //
+                    // Beside Commands rather than in `.navigation`. It sat with the traffic
+                    // lights, which is where macOS puts BACK — a place for getting out of
+                    // where you are, not for making something new. The two things this
+                    // window offers at the top level are "run a command" and "add a pane",
+                    // and a pair of verbs reads as a pair when it is together.
+                    Menu {
+                        Section("New Pane") {
+                            Button("Shell") { ShellWorkspace.openShell(in: store) }
+                            ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
+                                Button(entry.title) {
+                                    ShellWorkspace.openTile(entry.kind, in: store)
+                                }
+                            }
+                        }
+                        // Dimmed rather than silent: with the canvas full, every one of
+                        // these can only beep.
+                        .disabled(!ShellWorkspace.canOpenNewPane(in: store))
+                    } label: {
+                        Label("Add Pane", systemImage: "plus")
+                    }
+                    .help("New pane")
+
                     Button { ui.isPaletteShown = true } label: {
                         Label("Commands", systemImage: "command")
                     }
