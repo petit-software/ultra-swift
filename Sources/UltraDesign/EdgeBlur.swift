@@ -28,27 +28,26 @@ public final class EdgeBlurView: NSView {
     /// title legible in both cases, and it is the part that still shows under Reduce
     /// Transparency, where the blur is dropped.
     private let tint = CAGradientLayer()
+    private let edge: Edge
+    private let observers = ObserverBox()
 
     public init(edge: Edge) {
+        self.edge = edge
         super.init(frame: .zero)
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
 
         guard let layer else { return }
         layer.masksToBounds = true
-
-        if !Token.Environment_.reduceTransparency,
-           let blur = CIFilter(name: "CIGaussianBlur",
-                               parameters: [kCIInputRadiusKey: Token.Space.headerBlurRadius]) {
-            layer.backgroundFilters = [blur]
-        }
+        applyBlur()
 
         // Layer coordinates put y = 0 at the BOTTOM, so a header ramps clear → full going up
         // and a footer runs the other way. Everything else about the two is identical.
+        //
+        // The MASK is black at both stops because a mask reads alpha only — its colour is
+        // meaningless and must not follow the appearance.
         let clear = NSColor.black.withAlphaComponent(0).cgColor
         let solid = NSColor.black.cgColor
-        let tintClear = NSColor.black.withAlphaComponent(0).cgColor
-        let tintSolid = NSColor.black.withAlphaComponent(Token.Space.headerTintOpacity).cgColor
 
         ramp.colors = edge == .top ? [clear, solid] : [solid, clear]
         ramp.startPoint = CGPoint(x: 0.5, y: 0)
@@ -58,14 +57,61 @@ public final class EdgeBlurView: NSView {
         ramp.locations = edge == .top ? [0, 0.85] : [0.15, 1]
         layer.mask = ramp
 
-        tint.colors = edge == .top ? [tintClear, tintSolid] : [tintSolid, tintClear]
         tint.startPoint = CGPoint(x: 0.5, y: 0)
         tint.endPoint = CGPoint(x: 0.5, y: 1)
         layer.addSublayer(tint)
+        applyTint()
+
+        // Its own observer, for the same reason `WindowSurfaceView` has one: this is a leaf
+        // nobody holds, so nothing can push a changed radius or tint down to it.
+        observers.add(NotificationCenter.default.addObserver(
+            forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.applyBlur()
+                    self?.applyTint()
+                }
+            })
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// A radius of zero means no filter at all rather than a filter doing nothing — an
+    /// identity `CIGaussianBlur` still costs a render pass per frame.
+    private func applyBlur() {
+        let radius = Token.Space.headerBlurRadius
+        guard !Token.Environment_.reduceTransparency, radius > 0,
+              let blur = CIFilter(name: "CIGaussianBlur",
+                                  parameters: [kCIInputRadiusKey: radius])
+        else {
+            layer?.backgroundFilters = []
+            return
+        }
+        layer?.backgroundFilters = [blur]
+    }
+
+    /// The tint's colour is the one thing here that has an appearance: it darkens a header
+    /// in dark appearance and lightens one in light. A flat black ramp put a smudge under
+    /// every title in Light mode, which is the opposite of the separation it exists for.
+    ///
+    /// Re-resolved rather than set once, because `CGColor` cannot be dynamic — the value on
+    /// the layer is whatever the appearance was when it was last asked for.
+    private func applyTint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            let base = Token.Colour.headerTint
+            let clear = base.withAlphaComponent(0).cgColor
+            let solid = base.withAlphaComponent(Token.Space.headerTintOpacity).cgColor
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            tint.colors = edge == .top ? [clear, solid] : [solid, clear]
+            CATransaction.commit()
+        }
+    }
+
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyTint()
+    }
 
     public override func layout() {
         super.layout()

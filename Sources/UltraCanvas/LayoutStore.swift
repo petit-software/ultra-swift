@@ -15,7 +15,15 @@ public final class LayoutStore {
     public var metrics: LayoutMetrics
     /// Chrome follows the terminal theme, so the window reads as ONE surface rather than
     /// light chrome bolted to a dark terminal. See docs/02-DESIGN-LANGUAGE.md.
-    public var theme: TerminalTheme
+    ///
+    /// Writing it is what a theme change IS: the window's pinned appearance reads it, and
+    /// the pane surfaces are pushed from it here, so no caller has to remember to do both.
+    public var theme: TerminalTheme {
+        didSet {
+            guard theme != oldValue else { return }
+            surfaces.apply(theme: theme)
+        }
+    }
     /// What this window is. Shown in the window bar.
     /// The PROJECT's name. Persisted, and what a workspace is called in recents.
     public var workspaceTitle: String = "Ultra" {
@@ -96,6 +104,9 @@ public final class LayoutStore {
         self.metrics = metrics
         self.theme = theme
         self.surfaces = PaneSurfaceStore(make: makeSurface)
+        // `didSet` does not run during init, and a pane built before the first theme change
+        // would otherwise wear the store's default rather than this window's.
+        self.surfaces.apply(theme: theme)
         // Header controls call exactly the same verbs as the menu and the palette.
         surfaces.actions.split = { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) }
         surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }

@@ -105,17 +105,17 @@ extension Token.Space {
     /// cleanly — the system arc is never reached and never shows. A *smaller* radius pokes
     /// outside the mask, which is what produced the two-concentric-arcs glitch this file
     /// used to warn about. Increasing is safe; decreasing below 15.5 is not.
-    public static let windowRadius: CGFloat = 24
+    public static var windowRadius: CGFloat { Appearance.windowRadius }
 
     /// The window's edge stroke. Thicker than a hairline so the window still has a defined
     /// boundary once its surface is dark glass over an arbitrary desktop.
-    public static let windowBorderWidth: CGFloat = 1.5
+    public static var windowBorderWidth: CGFloat { Appearance.windowBorderWidth }
 
     /// Pane corner radius. Deliberately NOT `systemWindowRadius - canvasPadding` (which
     /// would be 3.5pt and look mean): with a 12pt gutter the panes are visually separate
     /// surfaces floating on the material, not nested containers, so strict concentricity
     /// does not apply and a generous radius does more for the look.
-    public static let paneRadius: CGFloat = 18
+    public static var paneRadius: CGFloat { Appearance.paneRadius }
     /// Matches the AppKit titlebar of a `.titled` window, so the window bar sits exactly
     /// in the transparent titlebar and the panes below it never collide with it.
     /// Matches a `.unified` NSToolbar titlebar. The toolbar is what makes AppKit lay the
@@ -125,15 +125,15 @@ extension Token.Space {
 
     /// Gaussian radius behind a pane's title. Large enough that text passing under the
     /// header genuinely dissolves rather than looking merely soft.
-    public static let headerBlurRadius: CGFloat = 14
+    public static var headerBlurRadius: CGFloat { Appearance.headerBlurRadius }
     /// How much the header darkens at its top edge. Blur separates a title from a busy
     /// backdrop; over a near-uniform one this is what does the work.
-    public static let headerTintOpacity: CGFloat = 0.28
+    public static var headerTintOpacity: CGFloat { Appearance.headerTintOpacity }
 
     /// How far a pane lifts off the material behind it. Depth, not borders, is what makes
     /// a grid of panes read as separate surfaces rather than as drawn rectangles.
-    public static let paneShadowRadius: CGFloat = 10
-    public static let paneShadowOpacity: Float = 0.28
+    public static var paneShadowRadius: CGFloat { Appearance.paneShadowRadius }
+    public static var paneShadowOpacity: Float { Float(Appearance.paneShadowOpacity) }
 }
 
 extension Token.Type_ {

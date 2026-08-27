@@ -66,24 +66,57 @@ struct PreferenceApplyTests {
             let shell = try! #require(factory.shells[paneID])
             #expect(!shell.spec.theme.isDark)
             #expect(abs(shell.spec.theme.backgroundOpacity - 0.75) < 0.0001)
-            // SwiftTerm carries the opacity in the background colour's alpha.
-            #expect(abs(shell.nativeBackgroundColor.alphaComponent - 0.75) < 0.01)
+            // The COLOURS reach the terminal; the opacity does not, and must not — see
+            // `terminalPaintsNoBackgroundOfItsOwn`.
+            #expect(shell.nativeForegroundColor.usingColorSpace(.sRGB)?.brightnessComponent
+                    ?? 1 < 0.5, "a light theme is dark text")
             factory.release(paneID)
         }
     }
 
-    @Test("a zero-opacity theme leaves the terminal painting no background at all")
-    func zeroOpacityIsFullyTransparent() {
+    /// The pane paints the background, ONCE, for every kind of pane. This is the assertion
+    /// that stops the double-composite coming back: the wrapper filled the padding and
+    /// SwiftTerm filled the grid, both translucent, so a terminal at 50% showed 50% in its
+    /// margins and 75% behind its text — a visible frame of its own background.
+    @Test("the terminal paints no background of its own, at any opacity")
+    func terminalPaintsNoBackgroundOfItsOwn() {
         let name = "ultra.tests.apply.\(UUID().uuidString)"
         let suite = UserDefaults(suiteName: name)!
         defer { suite.removePersistentDomain(forName: name) }
         Preferences.withStore(suite) {
             let (factory, paneID) = factoryWithOneShell()
-            factory.apply(theme: Preferences.resolvedTheme())
-
             let shell = try! #require(factory.shells[paneID])
-            #expect(shell.nativeBackgroundColor.alphaComponent < 0.01,
-                    "at 0 the pane's glass IS the shell's surface")
+
+            for opacity in [CGFloat(0), 0.5, 1] {
+                Preferences.terminalBackgroundOpacity = opacity
+                factory.apply(theme: Preferences.resolvedTheme())
+                #expect(shell.nativeBackgroundColor.alphaComponent < 0.01,
+                        "the pane's surface IS the shell's surface, at \(opacity)")
+            }
+            factory.release(paneID)
+        }
+    }
+
+    /// The RGB still has to be right even though the alpha is zero: SwiftTerm hands it to
+    /// the engine as `terminal.backgroundColor`, which is what reverse video draws with.
+    @Test("the theme's background colour still reaches the terminal engine")
+    func backgroundColourStillReachesTheEngine() {
+        let name = "ultra.tests.apply.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) }
+        Preferences.withStore(suite) {
+            let (factory, paneID) = factoryWithOneShell()
+
+            Preferences.themeMode = .light
+            factory.apply(theme: Preferences.resolvedTheme())
+            let shell = try! #require(factory.shells[paneID])
+            let light = try! #require(shell.nativeBackgroundColor.usingColorSpace(.sRGB))
+            #expect(light.brightnessComponent > 0.8, "a light theme is a light background")
+
+            Preferences.themeMode = .dark
+            factory.apply(theme: Preferences.resolvedTheme())
+            let dark = try! #require(shell.nativeBackgroundColor.usingColorSpace(.sRGB))
+            #expect(dark.brightnessComponent < 0.2, "a dark theme is a dark background")
             factory.release(paneID)
         }
     }

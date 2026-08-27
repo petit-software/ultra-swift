@@ -112,9 +112,14 @@ public enum Preferences {
         set { setNumber("terminalFontSize", newValue, current: terminalFontSize, in: 8...32) }
     }
 
-    /// How opaque a shell's own background is. 0 means the pane's glass IS the shell's
-    /// surface — which is the current design, and the reason a shell's header has nothing
-    /// but the desktop to blur.
+    /// How opaque a PANE's own background is. 0 means the pane's glass IS its surface —
+    /// which is the current design, and the reason a pane's header has nothing but the
+    /// desktop to blur.
+    ///
+    /// Named for the terminal because that is where it started, and it is the stored key —
+    /// renaming it would silently reset the setting for everyone who has one. What changed
+    /// is its REACH: it used to be painted only under shells, so a window of a shell and
+    /// three tiles answered the slider on one pane out of four.
     public static var terminalBackgroundOpacity: CGFloat {
         get { number("terminalBackgroundOpacity", default: 0, in: 0...1) }
         set { setNumber("terminalBackgroundOpacity", newValue, current: terminalBackgroundOpacity, in: 0...1) }
@@ -255,18 +260,44 @@ public enum Preferences {
         switch themeMode {
         case .dark: theme = .dark
         case .light: theme = .light
-        case .system:
-            let isDark = NSApp?.effectiveAppearance
-                .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            theme = isDark ? .dark : .light
+        case .system: theme = systemPrefersDark ? .dark : .light
         }
         theme.backgroundOpacity = terminalBackgroundOpacity
         return theme
     }
 
+    /// Whether macOS ITSELF is in dark mode.
+    ///
+    /// Read from the system-wide `AppleInterfaceStyle`, deliberately NOT from
+    /// `NSApp.effectiveAppearance`. The app PINS its own appearance in the other two modes,
+    /// so asking the app hands back whatever we last wrote: switching from Dark to Follow
+    /// System on a light Mac resolved "dark", the chrome unpinned to light, and the window
+    /// ended up wearing two appearances at once. That is the glitch, and it is not a race —
+    /// it happens every time, because the question was being put to the wrong object.
+    ///
+    /// `.standard` rather than `store`: this is a system key, and a test suite pointing
+    /// preferences at its own domain has not moved the Mac into light mode.
+    public static var systemPrefersDark: Bool {
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle")?
+            .lowercased().contains("dark") ?? false
+    }
+
+    /// The appearance the app should wear, or nil in Follow System where it must wear none.
+    @MainActor
+    public static var appAppearance: NSAppearance? {
+        switch themeMode {
+        case .dark: NSAppearance(named: .darkAqua)
+        case .light: NSAppearance(named: .aqua)
+        case .system: nil
+        }
+    }
+
     /// Whether the window's appearance should be pinned. In `.system` it must not be —
     /// pinning it to a theme derived from the system appearance is a loop that never
     /// notices the system changing.
+    ///
+    /// The same rule `appAppearance` states by returning nil; this is the question asked
+    /// without needing the main actor to answer it.
     public static var pinsWindowAppearance: Bool { themeMode != .system }
 
     public static var terminalFont: NSFont {
@@ -283,8 +314,54 @@ public enum Preferences {
                     "defaultProjectFolder"] {
             store.removeObject(forKey: prefix + key)
         }
+        // The look is a preference too. Resetting everything except the thing the user was
+        // most likely experimenting with is the one case where this button has to be right.
+        // `clear()` rather than `reset()`: one reset is one announcement.
+        Appearance.clear()
         post()
     }
+
+    /// Thin wrappers over `PreferenceStore`, which holds the one implementation. They exist
+    /// only to save every property in this file repeating the key prefix.
+    private static func post() { PreferenceStore.post() }
+
+    private static func number(_ key: String, default fallback: CGFloat,
+                               in range: ClosedRange<CGFloat>) -> CGFloat {
+        PreferenceStore.number(prefix + key, default: fallback, in: range)
+    }
+
+    private static func setNumber(_ key: String, _ value: CGFloat, current: CGFloat,
+                                  in range: ClosedRange<CGFloat>) {
+        PreferenceStore.setNumber(prefix + key, value, current: current, in: range)
+    }
+
+    private static func flag(_ key: String, default fallback: Bool) -> Bool {
+        PreferenceStore.flag(prefix + key, default: fallback)
+    }
+
+    private static func setFlag(_ key: String, _ value: Bool, current: Bool) {
+        PreferenceStore.setFlag(prefix + key, value, current: current)
+    }
+
+    private static func string(_ key: String, default fallback: String) -> String {
+        PreferenceStore.string(prefix + key, default: fallback)
+    }
+
+    private static func setString(_ key: String, _ value: String, current: String) {
+        PreferenceStore.setString(prefix + key, value, current: current)
+    }
+}
+
+/// The one implementation of reading and writing a setting.
+///
+/// Shared by `Preferences` and `Appearance` rather than written twice. Two copies of
+/// "clamped on read as well as write" is two copies that can disagree, and the read clamp is
+/// the half that is easy to forget — it is what protects the app from a value that arrived
+/// through `defaults write` or from an older build and never passed through a control.
+///
+/// Keys arrive fully qualified. Each namespace owns its own prefix, and a storage layer that
+/// also owned one could only ever own the wrong one.
+enum PreferenceStore {
 
     /// Announced WITH the store that changed.
     ///
@@ -294,49 +371,46 @@ public enum Preferences {
     /// count-off-by-one about one run in ten, which reads like a broken assertion rather
     /// than like a race. The app has one store and observes with nil, so nothing changes
     /// there; anyone who needs to care now can.
-    private static func post() {
-        NotificationCenter.default.post(name: didChange, object: store)
+    static func post() {
+        NotificationCenter.default.post(name: Preferences.didChange, object: Preferences.store)
     }
 
-    /// Clamped on read as well as write — the same reasoning as `Appearance`: a value that
-    /// arrived through `defaults write` or an older build never passed through the control.
-    private static func number(_ key: String, default fallback: CGFloat,
-                               in range: ClosedRange<CGFloat>) -> CGFloat {
-        guard let raw = store.object(forKey: prefix + key) as? Double
-        else { return fallback }
+    static func number(_ key: String, default fallback: CGFloat,
+                       in range: ClosedRange<CGFloat>) -> CGFloat {
+        guard let raw = Preferences.store.object(forKey: key) as? Double else { return fallback }
         return min(max(CGFloat(raw), range.lowerBound), range.upperBound)
     }
 
     /// `current` is passed in rather than re-read with a sentinel default. A NaN sentinel
     /// looks natural here and is a trap: every comparison against NaN is false, so the
     /// no-op guard rejected every write and nothing could be set at all.
-    private static func setNumber(_ key: String, _ value: CGFloat, current: CGFloat,
-                                  in range: ClosedRange<CGFloat>) {
+    static func setNumber(_ key: String, _ value: CGFloat, current: CGFloat,
+                          in range: ClosedRange<CGFloat>) {
         let clamped = min(max(value, range.lowerBound), range.upperBound)
         guard abs(clamped - current) > 0.0001 else { return }
-        store.set(Double(clamped), forKey: prefix + key)
+        Preferences.store.set(Double(clamped), forKey: key)
         post()
     }
 
-    private static func flag(_ key: String, default fallback: Bool) -> Bool {
-        store.object(forKey: prefix + key) as? Bool ?? fallback
+    static func flag(_ key: String, default fallback: Bool) -> Bool {
+        Preferences.store.object(forKey: key) as? Bool ?? fallback
     }
 
-    private static func setFlag(_ key: String, _ value: Bool, current: Bool) {
+    static func setFlag(_ key: String, _ value: Bool, current: Bool) {
         guard value != current else { return }
-        store.set(value, forKey: prefix + key)
+        Preferences.store.set(value, forKey: key)
         post()
     }
 
-    private static func string(_ key: String, default fallback: String) -> String {
-        let stored = store.string(forKey: prefix + key) ?? ""
+    static func string(_ key: String, default fallback: String) -> String {
+        let stored = Preferences.store.string(forKey: key) ?? ""
         return stored.isEmpty ? fallback : stored
     }
 
-    private static func setString(_ key: String, _ value: String, current: String) {
+    static func setString(_ key: String, _ value: String, current: String) {
         let trimmed = value.trimmingCharacters(in: .whitespaces)
         guard trimmed != current else { return }
-        store.set(trimmed, forKey: prefix + key)
+        Preferences.store.set(trimmed, forKey: key)
         post()
     }
 }

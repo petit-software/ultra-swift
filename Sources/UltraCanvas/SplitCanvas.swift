@@ -116,11 +116,6 @@ public struct WindowChrome: NSViewRepresentable {
         }
     }
 
-    final class ObserverBox: @unchecked Sendable {
-        var tokens: [NSObjectProtocol] = []
-        deinit { tokens.forEach(NotificationCenter.default.removeObserver) }
-    }
-
     private func configure(_ window: NSWindow?) {
         guard let window else { return }
         // Titlebar, backdrop material, glass headers, menus and the palette all resolve
@@ -129,11 +124,16 @@ public struct WindowChrome: NSViewRepresentable {
         // In "Follow System" the appearance is deliberately NOT pinned: the theme is
         // derived FROM the system appearance, so pinning it back is a loop that never
         // notices the system changing.
-        let appearance = Preferences.pinsWindowAppearance
-            ? NSAppearance(named: theme.isDark ? .darkAqua : .aqua)
-            : nil
-        window.appearance = appearance
-        NSApp.appearance = appearance
+        //
+        // Guarded on a real change: `configure` runs on every `updateNSView`, and assigning
+        // an appearance forces the whole window tree to redraw whether or not it differs.
+        // Unguarded, that fired on every layout pass and showed up as the flicker.
+        // Compared by NAME rather than by identity — `NSAppearance(named:)` is not
+        // documented to vend a shared instance, and an identity check that is always false
+        // is a guard that never guards.
+        let appearance = Preferences.appAppearance
+        if window.appearance?.name != appearance?.name { window.appearance = appearance }
+        if NSApp.appearance?.name != appearance?.name { NSApp.appearance = appearance }
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -176,7 +176,6 @@ public struct WindowChrome: NSViewRepresentable {
 struct WindowSurface: NSViewRepresentable {
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = WindowSurfaceView()
-        view.material = .underWindowBackground
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
         return view
@@ -195,6 +194,30 @@ final class WindowSurfaceView: NSVisualEffectView {
     /// over its own layer's background, so a tint set there would simply not be visible.
     private let tint = CALayer()
 
+    /// Its own observer, deliberately.
+    ///
+    /// Everything else that follows a look setting is reachable from the store — the bridge
+    /// walks the panes and pushes. This view is not: it is a leaf inside a SwiftUI
+    /// background, with no owner holding a reference to it. Something has to tell it, and
+    /// the cheapest something is the notification it can subscribe to itself.
+    private let observers = ObserverBox()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = Appearance.windowMaterial.material
+        observers.add(NotificationCenter.default.addObserver(
+            forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.material = Appearance.windowMaterial.material
+                    self.needsLayout = true
+                }
+            })
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
     override func layout() {
         super.layout()
         wantsLayer = true
@@ -205,18 +228,37 @@ final class WindowSurfaceView: NSVisualEffectView {
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
         layer.borderWidth = Token.Space.windowBorderWidth
-        layer.borderColor = Token.Colour.windowBorder.cgColor
 
         if tint.superlayer == nil { layer.addSublayer(tint) }
         tint.frame = bounds
         tint.cornerRadius = Token.Space.windowRadius
         tint.cornerCurve = .continuous
-        tint.backgroundColor = Token.Colour.windowTint
-            .withAlphaComponent(Token.Colour.windowTintOpacity).cgColor
+        applyColours()
         CATransaction.commit()
         // The shadow is cast from the window's alpha, so it is recomputed whenever the
         // shape changes rather than following a stale rectangle through a resize.
         window?.invalidateShadow()
+    }
+
+    /// The border and the tint are both dynamic colours, and `NSColor.cgColor` is where a
+    /// dynamic colour COLLAPSES — against whatever appearance is current at that instant,
+    /// which outside a draw is the light one whatever the window is wearing.
+    private func applyColours() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            layer?.borderColor = Token.Colour.windowBorder.cgColor
+            tint.backgroundColor = Token.Colour.windowTint.cgColor
+        }
+    }
+
+    /// Both colours were flattened against the appearance that was current when they were
+    /// last set, so a theme change has to ask for them again. Nothing else invalidates
+    /// them: the bounds have not moved, so `layout()` is never called.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        applyColours()
+        CATransaction.commit()
     }
 }
 

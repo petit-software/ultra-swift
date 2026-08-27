@@ -4,9 +4,15 @@ import UltraDesign
 /// Gives a terminal breathing room inside its pane.
 ///
 /// SwiftTerm draws its grid flush to its own bounds and offers no content inset, so text
-/// would otherwise sit hard against the pane's rounded edge. The container paints the
-/// theme background across the full pane and insets the grid inside it, so the padding is
-/// part of the terminal rather than a gap showing the pane behind.
+/// would otherwise sit hard against the pane's rounded edge. This wrapper adds that inset
+/// and NOTHING else — it deliberately paints no background.
+///
+/// It used to paint the theme background across the full pane, while SwiftTerm painted the
+/// same translucent colour again across the grid inside it. Two fills over one another are
+/// not the fill the user asked for: at 50% the padding read 50% and the text read 75%, so
+/// every terminal wore a visible frame of its own background. The pane's surface
+/// (`PaneContainerView.theme`) is now the only thing that paints it, once, for every kind
+/// of pane alike.
 @MainActor
 public final class ShellPaneContainer: NSView {
     public let terminal: ShellTerminalView
@@ -20,9 +26,9 @@ public final class ShellPaneContainer: NSView {
     /// one line you always need to see. That is the opposite of a list, which fills from the
     /// top and is only ever interesting once it is long enough to scroll.
     ///
-    /// The header's blur is not lost by this: `backgroundOpacity` is 0 by default, so this
-    /// container is transparent and the pane's own glass is what shows through the header
-    /// band. The ramp still has a real surface to work on — just not the shell's text.
+    /// The header's blur is not lost by this: this container paints nothing, so what shows
+    /// through the header band is the pane's own surface. The ramp still has a real surface
+    /// to work on — just not the shell's text.
     public var contentInsets = NSEdgeInsets(top: Token.Space.tileHeaderHeight + 4,
                                             left: 10, bottom: 6, right: 10)
 
@@ -32,19 +38,12 @@ public final class ShellPaneContainer: NSView {
         wantsLayer = true
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         addSubview(terminal)
-        applyBackground()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     public override var isFlipped: Bool { true }
-
-    /// The pane's glass is the background. This wrapper only ever adds padding.
-    public func applyBackground() {
-        layer?.backgroundColor = NSColor(terminal.spec.theme.background)
-            .withAlphaComponent(terminal.spec.theme.backgroundOpacity).cgColor
-    }
 
     public override func layout() {
         super.layout()

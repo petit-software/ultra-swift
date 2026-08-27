@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Design tokens. No literal colour or spacing value may appear outside this file.
@@ -17,11 +18,12 @@ public enum Token {
         /// Wide enough that the frosted material between panes is actually visible.
         /// At 6pt the glass was there and invisible, which is the worst of both.
         public static let canvasPadding: CGFloat = 8
-        public static let gutter: CGFloat = 12
+        /// Now a setting — see `Appearance.paneGutter`. The default is still 12.
+        public static var gutter: CGFloat { Appearance.paneGutter }
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
         public static let tileHeaderHeight: CGFloat = 36
-        public static let focusRingWidth: CGFloat = 2
+        public static var focusRingWidth: CGFloat { Appearance.focusRingWidth }
         /// How far in from the pane's edge the ring sits. ZERO — flush.
         ///
         /// It was 1.5 while the ring appeared at full strength no matter what alpha it
@@ -62,18 +64,47 @@ public enum Token {
         /// The same idea, but for something the pointer is actively over — a drop target.
         public static var accentWashStrong: Color { accent.opacity(0.24) }
 
-        /// The window's own surface: a dark tint laid over the backdrop material at 30%,
-        /// so the glass reads as smoked rather than as clear frost.
-        public static let windowTintOpacity: CGFloat = 0.30
-        public static let windowTint = NSColor.black
+        /// The window's own surface: a tint laid over the backdrop material so the glass
+        /// reads as smoked rather than as clear frost.
+        ///
+        /// DYNAMIC, and that is the whole point. It was `NSColor.black` at 30% flat, which
+        /// is right in dark appearance and simply wrong in light: the light theme's own
+        /// surface sat under a third of a black veil, so Light mode was a dimmer dark mode
+        /// rather than a light one. Light appearance lifts instead of darkens.
+        ///
+        /// The alpha is carried IN the colour rather than applied by the call site, so the
+        /// two appearances can want different amounts of it — and they do; white needs more
+        /// to read as a surface than black needs to read as smoke.
+        public static var windowTint: NSColor {
+            // Both amounts are read INSIDE the resolver, so a change to either reaches a
+            // colour that has already been handed out.
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.black.withAlphaComponent(Appearance.windowTintDark)
+                    : NSColor.white.withAlphaComponent(Appearance.windowTintLight)
+            }
+        }
+
+        /// What a pane header's ramp darkens — or lightens — with. Same reasoning as
+        /// `windowTint`: a black veil under a title is separation in dark appearance and a
+        /// smudge in light one.
+        public static var headerTint: NSColor {
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.black
+                    : NSColor.white
+            }
+        }
 
         /// The window's edge. Light in dark appearance, dark in light — it separates the
         /// window from the desktop in both directions.
         public static var windowBorder: NSColor {
             NSColor(name: nil) { appearance in
-                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    ? NSColor.white.withAlphaComponent(0.22)
-                    : NSColor.black.withAlphaComponent(0.18)
+                let strength = Appearance.windowBorderStrength
+                return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.white.withAlphaComponent(strength)
+                    // Dark-on-light needs a little less of itself to read as the same edge.
+                    : NSColor.black.withAlphaComponent(strength * 0.82)
             }
         }
 
@@ -83,7 +114,7 @@ public enum Token {
         /// added later cannot drift into two different ideas of "quieter". Named for what it
         /// does rather than for its value — it was `accentHalf` at 0.5 for about an hour,
         /// and a token whose name states a number is a token that will eventually lie.
-        public static let accentMutedStrength: Double = 0.25
+        public static var accentMutedStrength: Double { Double(Appearance.focusRingStrength) }
 
         /// The accent, held back. TRANSLUCENT on purpose.
         ///

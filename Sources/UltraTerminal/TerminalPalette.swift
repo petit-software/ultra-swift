@@ -35,12 +35,20 @@ public enum TerminalPalette {
     public static func apply(_ theme: TerminalTheme, to view: TerminalView) {
         view.installColors(ansi(theme))
         view.nativeForegroundColor = NSColor(theme.foreground)
-        // Alpha-bearing background: SwiftTerm renders the default background translucently
-        // and leaves text, caret, selection and explicitly-coloured cells opaque. At 0 the
-        // terminal paints no background at all and the pane's glass shows through.
-        view.nativeBackgroundColor = NSColor(theme.background)
-            .withAlphaComponent(theme.backgroundOpacity)
-        view.backgroundOpacity = theme.backgroundOpacity
+        // The theme's background RGB, at ZERO alpha — the terminal paints no default
+        // background of its own, and the pane's surface shows through the cells.
+        //
+        // Deliberate, and the fix for a real artefact rather than a style choice. The pane
+        // wrapper fills the padding around the grid and SwiftTerm filled the grid, both
+        // with the same translucent colour, so the two composited and a terminal at 50%
+        // opacity showed 50% in its margins and 75% behind its text. One pane, one fill:
+        // `PaneContainerView.theme` owns it now, which is also what lets a Todo or a file
+        // tree answer to the same slider.
+        //
+        // The RGB still matters and is still sent: SwiftTerm hands it to the engine as
+        // `terminal.backgroundColor`, which is what reverse video and OSC 11 report.
+        view.nativeBackgroundColor = NSColor(theme.background).withAlphaComponent(0)
+        view.backgroundOpacity = 0
         view.caretColor = NSColor(theme.cursor)
         view.selectedTextBackgroundColor = NSColor(theme.selection)
     }

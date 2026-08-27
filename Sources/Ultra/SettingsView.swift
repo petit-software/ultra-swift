@@ -8,9 +8,10 @@ struct UltraSettings: View {
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
+            Tab("Appearance", systemImage: "paintbrush") { AppearanceSettings() }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
-        .frame(width: 460)
+        .frame(width: 480)
     }
 }
 
@@ -20,27 +21,6 @@ private struct GeneralSettings: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Accent", selection: prefs.accent()) {
-                    ForEach(Preferences.AccentColour.allCases) { choice in
-                        Label {
-                            Text(choice.title)
-                        } icon: {
-                            Circle().fill(choice.color).frame(width: 12, height: 12)
-                        }
-                        .tag(choice)
-                    }
-                }
-            } header: {
-                Text("Colour")
-            } footer: {
-                Text("One colour, used everywhere the app tints something — focus rings, "
-                     + "checkboxes, drop targets, selected rows. Changing it changes all of "
-                     + "them; there is no second accent to fall out of step.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-            }
-
             Section("Terminal") {
                 LabeledContent("Font size") {
                     HStack {
@@ -54,30 +34,6 @@ private struct GeneralSettings: View {
                             .frame(width: 46, alignment: .trailing)
                     }
                 }
-
-                Picker("Theme", selection: prefs.theme()) {
-                    ForEach(Preferences.ThemeMode.allCases) { Text($0.title).tag($0) }
-                }
-
-                LabeledContent("Background opacity") {
-                    HStack {
-                        Slider(value: prefs.number({ Preferences.terminalBackgroundOpacity },
-                                                   { Preferences.terminalBackgroundOpacity = $0 }),
-                               in: 0...1, step: 0.01)
-                            .frame(width: 180)
-                        Text("\(Int(Preferences.terminalBackgroundOpacity * 100))%")
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 46, alignment: .trailing)
-                    }
-                }
-                Text("""
-                     At 0% a shell has no surface of its own and the pane's glass shows \
-                     through the cells. Raising it makes shells opaque — and gives a \
-                     shell's header something to blur.
-                     """)
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
 
                 Toggle("Audible bell",
                        isOn: prefs.flag({ Preferences.audibleBell },

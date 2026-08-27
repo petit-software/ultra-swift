@@ -123,6 +123,44 @@ struct PreferencesTests {
         }
     }
 
+    /// The loop this closes. `resolvedTheme()` read `NSApp.effectiveAppearance` while the
+    /// app was PINNING that very property from the mode being left behind, so switching
+    /// from Dark to Follow System on a light Mac resolved "dark": the terminal stayed dark,
+    /// the chrome unpinned to light, and one window wore two appearances.
+    @Test("Follow System asks the OS, not the appearance the app just pinned")
+    @MainActor
+    func systemModeIgnoresThePin() {
+        clean {
+            Preferences.themeMode = .system
+            let os = Preferences.systemPrefersDark
+            // `NSApplication.shared` rather than `NSApp`: this target has no app object
+            // until something asks for one, and `NSApp` is an implicitly-unwrapped nil
+            // until then — so the test crashed when run on its own and passed when run
+            // after a suite that happened to make a window.
+            let app = NSApplication.shared
+            let original = app.appearance
+            defer { app.appearance = original }
+
+            app.appearance = NSAppearance(named: .darkAqua)
+            #expect(Preferences.resolvedTheme().isDark == os)
+            app.appearance = NSAppearance(named: .aqua)
+            #expect(Preferences.resolvedTheme().isDark == os)
+        }
+    }
+
+    @Test("the app's appearance follows the mode, and Follow System wears none")
+    @MainActor
+    func appAppearanceFollowsTheMode() {
+        clean {
+            Preferences.themeMode = .dark
+            #expect(Preferences.appAppearance?.name == .darkAqua)
+            Preferences.themeMode = .light
+            #expect(Preferences.appAppearance?.name == .aqua)
+            Preferences.themeMode = .system
+            #expect(Preferences.appAppearance == nil)
+        }
+    }
+
     /// Pinning the window's appearance to a theme that was DERIVED from the window's
     /// appearance is a loop that never notices the system changing.
     @Test("Follow System does not pin the window appearance")
@@ -160,8 +198,13 @@ struct PreferencesTests {
     func notifies() {
         clean {
             var count = 0
+            // Scoped to THIS suite's store. `object: nil` means "any sender", so an
+            // unscoped observer also counts writes made by every other test target in the
+            // process — which is a flake that reads like a broken assertion. See
+            // `PreferenceStore.post()`, which posts the store precisely so this can be done.
             let token = NotificationCenter.default.addObserver(
-                forName: Preferences.didChange, object: nil, queue: nil) { _ in count += 1 }
+                forName: Preferences.didChange, object: Preferences.store,
+                queue: nil) { _ in count += 1 }
             defer { NotificationCenter.default.removeObserver(token) }
 
             Preferences.terminalFontSize = 16

@@ -15,7 +15,6 @@ final class DropHighlightView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         addSubview(glass)
-        glass.cornerRadius = Token.Space.paneRadius
         refreshTint()
     }
 
@@ -26,16 +25,28 @@ final class DropHighlightView: NSView {
     /// highlight becomes a solid high-contrast fill instead of disappearing — the one state
     /// where a drop target that is merely suggested would be no target at all.
     func refreshTint() {
-        if Token.Environment_.reduceTransparency {
-            glass.isHidden = true
-            layer?.backgroundColor = Token.Colour.accent.nsColor.withAlphaComponent(0.55).cgColor
-            layer?.cornerRadius = Token.Space.paneRadius
-            layer?.borderWidth = 2
-            layer?.borderColor = Token.Colour.accent.nsColor.cgColor
-        } else {
-            glass.isHidden = false
-            glass.tintColor = Token.Colour.accent.nsColor.withAlphaComponent(0.28)
+        // `NSColor.cgColor` is where a dynamic accent — System Accent is one — collapses,
+        // and it collapses against whatever appearance is current rather than this view's.
+        glass.cornerRadius = Token.Space.paneRadius
+        glass.style = Appearance.glassStyle.style
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            if Token.Environment_.reduceTransparency {
+                glass.isHidden = true
+                layer?.backgroundColor = Token.Colour.accent.nsColor
+                    .withAlphaComponent(0.55).cgColor
+                layer?.cornerRadius = Token.Space.paneRadius
+                layer?.borderWidth = 2
+                layer?.borderColor = Token.Colour.accent.nsColor.cgColor
+            } else {
+                glass.isHidden = false
+                glass.tintColor = Token.Colour.accent.nsColor.withAlphaComponent(0.28)
+            }
         }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refreshTint()
     }
 
     override func layout() {

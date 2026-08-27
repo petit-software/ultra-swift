@@ -13,7 +13,6 @@ import UltraLayout
 @MainActor
 public final class ShellPaneFactory {
     public private(set) var shells: [PaneID: ShellTerminalView] = [:]
-    private var containers: [PaneID: ShellPaneContainer] = [:]
     private var restored: [PaneID: PaneRecord]
     private var pendingAgent: AgentDefinition?
     public var theme: TerminalTheme
@@ -103,7 +102,6 @@ public final class ShellPaneFactory {
         }
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)
-        containers[paneID] = container
 
         // Deferred one runloop turn so the view has a real size first — starting a PTY at
         // 0×0 makes the shell paint its first prompt into a one-column terminal. Tests
@@ -134,7 +132,6 @@ public final class ShellPaneFactory {
     /// was in it. Keeping it would also mean a "close" that quietly leaves the session's
     /// output on disk, which is not what the word means.
     public func release(_ paneID: PaneID) {
-        containers.removeValue(forKey: paneID)
         shells.removeValue(forKey: paneID)?.stop()
         pendingHistory.removeValue(forKey: paneID)
         scrollback?.discard(for: paneID)
@@ -176,7 +173,6 @@ public final class ShellPaneFactory {
     public func apply(theme: TerminalTheme) {
         self.theme = theme
         for shell in shells.values { shell.apply(theme: theme) }
-        for container in containers.values { container.applyBackground() }
     }
 
     /// Type text into a pane's prompt without submitting it.

@@ -16,8 +16,8 @@ public struct TerminalPlaceholderView: View {
 
     public var body: some View {
         ZStack(alignment: .topLeading) {
-            theme.background.opacity(theme.backgroundOpacity)
-
+            // No fill of its own: the PANE paints the theme background now, once, for every
+            // kind of pane. Painting it again here composited it against itself.
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(Array(transcript.lines.enumerated()), id: \.offset) { _, line in
                     line.view(theme: theme)

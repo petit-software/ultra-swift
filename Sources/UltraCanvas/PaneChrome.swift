@@ -54,15 +54,38 @@ public final class PaneActions {
 /// The focused pane's ring, as a view so it can sit above the pane's header.
 @MainActor
 final class PaneRingView: NSView {
+    /// The tint is kept as an `NSColor` and resolved on every application, because
+    /// `NSColor.cgColor` is WHERE a dynamic colour resolves — and it resolves against
+    /// whatever appearance happens to be current, which outside a draw is the light one.
+    /// Resolving here rather than at the call site means the ring cannot be handed a colour
+    /// that was already flattened against the wrong theme.
     var tint: NSColor = .clear {
-        didSet { layer?.borderColor = tint.cgColor }
+        didSet { applyTint() }
+    }
+
+    private func applyTint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            layer?.borderColor = tint.cgColor
+        }
+    }
+
+    /// The theme changed under a ring that had already flattened its colour.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyTint()
     }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.borderWidth = Token.Space.focusRingWidth
         layer?.cornerCurve = .continuous
+        applyMetrics()
+    }
+
+    /// Re-read the ring's shape. Both numbers are settings now, so setting them once in
+    /// `init` would freeze the ring at whatever the app launched with.
+    func applyMetrics() {
+        layer?.borderWidth = Token.Space.focusRingWidth
         // Concentric with the pane: the radius follows the inset, or the ring bulges at the
         // corners against the rounding it is meant to trace.
         layer?.cornerRadius = max(0, Token.Space.paneRadius - Token.Space.focusRingInset)
@@ -301,6 +324,51 @@ public final class PaneContainerView: NSView {
         didSet { guard isFocused != oldValue else { return }; refresh() }
     }
 
+    /// The pane's surface colour, and the ONE place background opacity is painted.
+    ///
+    /// It used to be painted by the shell — `ShellPaneContainer` under the grid and
+    /// SwiftTerm's own layer over it, which double-composited the grid against its own
+    /// padding — and by nothing else at all, so the setting simply did not exist for a
+    /// Todo, a file tree, a Git pane or an editor. Here it is one fill under one pane, so
+    /// every pane answers to the slider and answers to it identically.
+    public var theme: TerminalTheme {
+        didSet { guard theme != oldValue else { return }; applyBackdrop() }
+    }
+
+    /// Inside the glass, under everything: `clip` is the glass's content view, so its own
+    /// background sits above the material and below the pane's content.
+    private func applyBackdrop() {
+        clip.layer?.backgroundColor = NSColor(theme.background)
+            .withAlphaComponent(theme.backgroundOpacity).cgColor
+    }
+
+    /// Every look setting a pane draws with, in one re-runnable place.
+    ///
+    /// The corner radius, the shadow and the glass itself were all set once in `init` back
+    /// when they were constants. They are settings now, and a setting that only applies to
+    /// panes opened afterwards is the exact bug the theme had.
+    ///
+    /// The three glass properties are assigned unconditionally but read cheaply; the
+    /// shadow's opacity is left to `applyLayerState`, which also knows about focus.
+    private func applyAppearance() {
+        let radius = Token.Space.paneRadius
+        clip.layer?.cornerRadius = radius
+        glass.cornerRadius = radius
+        glass.style = Appearance.glassStyle.style
+        // Resolved inside the view's appearance: the accent can be System Accent, which is
+        // dynamic, and `tintColor` is handed a resolved colour rather than a promise.
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            glass.tintColor = switch Appearance.glassTint {
+            case .off: nil
+            case .accent: Token.Colour.accent.nsColor
+                .withAlphaComponent(Appearance.glassTintStrength)
+            }
+        }
+        layer?.shadowRadius = Token.Space.paneShadowRadius
+        ring.applyMetrics()
+        needsLayout = true
+    }
+
 
     /// The close control disappears when a pane is the last one — there is nothing to
     /// close back to.
@@ -309,7 +377,8 @@ public final class PaneContainerView: NSView {
     }
 
     public init(paneID: PaneID, descriptor: PaneDescriptor, kind: PaneRecord.Kind?,
-                content: NSView, actions: PaneActions) {
+                content: NSView, actions: PaneActions, theme: TerminalTheme = .dark) {
+        self.theme = theme
         self.kind = kind
         self.paneID = paneID
         self.descriptor = descriptor
@@ -325,14 +394,11 @@ public final class PaneContainerView: NSView {
         // so the outer one lifts the pane off the material and the inner one rounds it.
         wantsLayer = true
         layer?.masksToBounds = false
-        layer?.shadowRadius = Token.Space.paneShadowRadius
-        layer?.shadowOpacity = Token.Space.paneShadowOpacity
         layer?.shadowOffset = CGSize(width: 0, height: 2)
         layer?.shadowColor = NSColor.black.cgColor
 
         clip.wantsLayer = true
         clip.layerContentsRedrawPolicy = .onSetNeedsDisplay
-        clip.layer?.cornerRadius = Token.Space.paneRadius
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
 
@@ -340,8 +406,10 @@ public final class PaneContainerView: NSView {
 
         // The tile's content lives INSIDE the glass, which is what `NSGlassEffectView`
         // expects — the material is the pane's surface, not a layer stacked behind it.
-        glass.cornerRadius = Token.Space.paneRadius
         glass.contentView = clip
+
+        applyBackdrop()
+        applyAppearance()
 
         header.focusRingType = .none
         addSubview(glass)
@@ -420,6 +488,7 @@ public final class PaneContainerView: NSView {
 
     private func refresh() {
         rebuildHeader()
+        applyAppearance()
         applyLayerState()
     }
 
@@ -436,12 +505,9 @@ public final class PaneContainerView: NSView {
 
     /// Colours that live on layers. Cheap, idempotent, and safe to re-run on every redraw.
     private func applyLayerState() {
-        // The ring, resolved INSIDE the view's own appearance. `NSColor.cgColor` on a
-        // dynamic colour resolves against whatever appearance happens to be current, which
-        // outside a draw is the light one.
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            ring.tint = Token.Colour.focusBorder.nsColor
-        }
+        // Handed the accent as an `NSColor`, still dynamic: `PaneRingView` resolves it
+        // against its OWN appearance, which is the only one that can be right for it.
+        ring.tint = Token.Colour.focusBorder.nsColor
         ring.isHidden = !isFocused
         // Colour never carries a signal alone here: the focused pane also lifts, which is
         // what keeps focus legible for anyone who cannot separate the accent from grey.
@@ -453,6 +519,10 @@ public final class PaneContainerView: NSView {
     /// What this pane's header was handed. Test seam: an empty kind list renders a menu
     /// that simply never opens, with no error anywhere.
     public var headerActionsForTesting: PaneActions { actions }
+
+    /// What the pane is actually painting. Test seam: the opacity setting is only real if
+    /// it is on the layer, and every pane's layer, not merely in the theme value.
+    public var backdropColourForTesting: CGColor? { clip.layer?.backgroundColor }
 
     /// Where this pane sits in reading order, 1-based, or nil before layout has said.
     ///
@@ -498,6 +568,13 @@ public final class PaneContainerView: NSView {
 
     /// Re-read the accent and repaint. See `PaneSurfaceStore.refreshChrome`.
     public func refreshChrome() { refresh() }
+
+    /// Follow System flipped, or the app repinned itself. Layer colours were resolved once
+    /// against the old appearance and will not re-resolve on their own.
+    public override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyLayerState()
+    }
 
     /// A shell renames its own pane as it runs — a new cwd, a new foreground process.
     public func update(descriptor: PaneDescriptor) {

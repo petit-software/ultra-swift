@@ -1,5 +1,6 @@
 import AppKit
 import UltraCore
+import UltraDesign
 import UltraLayout
 
 /// A pane's content plus the metadata its chrome needs.
@@ -42,6 +43,10 @@ public final class PaneSurfaceStore {
     /// — from M2, a PTY — can tear it down. This is the ONLY place a pane dies.
     public var onRelease: ((PaneID) -> Void)?
 
+    /// The surface colour every pane wears. Held here as well as pushed, so a pane built
+    /// AFTER a theme change does not open in the theme the window launched with.
+    public private(set) var theme: TerminalTheme = .dark
+
     public init(make: @escaping (PaneID) -> PaneContent) {
         self.make = make
     }
@@ -55,7 +60,8 @@ public final class PaneSurfaceStore {
         records[paneID] = content.record
         let container = PaneContainerView(paneID: paneID, descriptor: content.descriptor,
                                           kind: content.record.kind,
-                                          content: content.view, actions: actions)
+                                          content: content.view, actions: actions,
+                                          theme: theme)
         containers[paneID] = container
         return container
     }
@@ -107,6 +113,15 @@ public final class PaneSurfaceStore {
     /// a layer, set once — a changed accent reaches it only if it is pushed.
     public func refreshChrome() {
         for container in containers.values { container.refreshChrome() }
+    }
+
+    /// Push a theme to every live pane. EVERY pane — a Todo and a shell are one surface
+    /// each, and background opacity that reached only the shells was the setting looking
+    /// broken on three panes out of four.
+    public func apply(theme: TerminalTheme) {
+        guard theme != self.theme else { return }
+        self.theme = theme
+        for container in containers.values { container.theme = theme }
     }
 
     /// The last remaining pane hides its close control — there is nothing to close back to.

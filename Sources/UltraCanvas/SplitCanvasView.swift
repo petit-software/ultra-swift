@@ -36,6 +36,23 @@ public final class SplitCanvasView: NSView {
     /// a great many updates.
     var dropHighlight: DropHighlightView?
 
+    /// Optional `NSGlassEffectContainerView` around every pane's glass.
+    ///
+    /// Apple's documented way to make many sibling glass views cheap: it batches them into
+    /// one render pass instead of one pass each, which is exactly this canvas's shape — one
+    /// glass view per pane. It is OFF by default all the same, because the same view also
+    /// merges neighbours within `spacing` and elevates its descendants' z-order, and both
+    /// change how the canvas COMPOSITES rather than only how fast it draws.
+    ///
+    /// The host inside it is flipped, so a pane's frame means the same thing in either
+    /// parent and `layout()` does not have to know which one is in use.
+    private let glassContainer = NSGlassEffectContainerView()
+    private let glassHost = FlippedView()
+    private let observers = ObserverBox()
+
+    /// Where panes are added. The host when merging is on, the canvas itself otherwise.
+    private var paneParent: NSView { Appearance.mergesPaneGlass ? glassHost : self }
+
     public init(store: LayoutStore) {
         self.store = store
         self.overlay = DividerOverlayView()
@@ -43,7 +60,20 @@ public final class SplitCanvasView: NSView {
         wantsLayer = true
         overlay.canvas = self
         overlay.autoresizingMask = [.width, .height]
+        glassContainer.contentView = glassHost
+        glassContainer.autoresizingMask = [.width, .height]
+        glassHost.autoresizingMask = [.width, .height]
         addSubview(overlay)
+        applyGlassContainer()
+        // Its own observer: a look setting does not touch the store, so nothing upstream
+        // would drive a sync when the container is switched on or off.
+        observers.add(NotificationCenter.default.addObserver(
+            forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.applyGlassContainer()
+                    self?.sync()
+                }
+            })
         setAccessibilityElement(true)
         setAccessibilityRole(.splitGroup)
         setAccessibilityLabel("Pane canvas")
@@ -174,6 +204,8 @@ public final class SplitCanvasView: NSView {
             store.surfaces.existingSurface(for: paneID)?.isHidden = true
         }
         overlay.frame = bounds
+        glassContainer.frame = bounds
+        glassHost.frame = bounds
         CATransaction.commit()
 
         store.surfaces.setFocused(displayTree.focused)
@@ -185,12 +217,37 @@ public final class SplitCanvasView: NSView {
     /// appeared or disappeared. A resize or a sibling split touches nothing.
     private func reconcile() {
         let live = Set(displayTree.paneIDs)
-        for paneID in live where store.surfaces.existingSurface(for: paneID)?.superview !== self {
+        let parent = paneParent
+        for paneID in live where store.surfaces.existingSurface(for: paneID)?.superview !== parent {
             let surface = store.surfaces.surface(for: paneID)
-            addSubview(surface, positioned: .below, relativeTo: overlay)
+            // Below the divider overlay when the canvas is the parent; inside the glass
+            // host there is nothing to order against, and the overlay is not its sibling.
+            if parent === self {
+                addSubview(surface, positioned: .below, relativeTo: overlay)
+            } else {
+                parent.addSubview(surface)
+            }
         }
         store.surfaces.prune(keeping: live)
         NSAccessibility.post(element: self, notification: .layoutChanged)
+    }
+
+    /// Install or remove the glass container, and keep its merge distance current.
+    ///
+    /// Switching it re-parents every pane, which `reconcile()` does on the next `sync()`.
+    /// The panes themselves are untouched — a surface is never rebuilt, so a live PTY does
+    /// not notice that its view moved to a different superview.
+    private func applyGlassContainer() {
+        glassContainer.spacing = Appearance.glassMergeSpacing
+        let wanted = Appearance.mergesPaneGlass
+        guard wanted != (glassContainer.superview === self) else { return }
+        if wanted {
+            glassContainer.frame = bounds
+            glassHost.frame = bounds
+            addSubview(glassContainer, positioned: .below, relativeTo: overlay)
+        } else {
+            glassContainer.removeFromSuperview()
+        }
     }
 
     // MARK: - Pointer
