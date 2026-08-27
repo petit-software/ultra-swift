@@ -103,24 +103,39 @@ private struct ContextRow: View {
                 .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.accent)
                 .frame(width: 14)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
-                    .strikethrough(item.isMissing)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if item.isMissing {
-                    Text("missing")
-                        .font(Token.Type_.monoSmall)
-                        .foregroundStyle(.orange)
-                } else {
-                    Text("~\(item.tokens / 1000 > 0 ? "\(item.tokens / 1000)k" : "\(item.tokens)")")
-                        .font(Token.Type_.monoSmall)
-                        .foregroundStyle(Token.Colour.tertiaryLabel)
+            Text(item.name)
+                .font(Token.Type_.tileSubtitle)
+                .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
+                .strikethrough(item.isMissing)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer(minLength: 8)
+
+            // Opposite side rather than underneath, and the same size as the name — a file
+            // and its weight are one fact, and setting the weight in small type made every
+            // row read as a title with a caption. Only colour separates them now.
+            //
+            // "missing" keeps its warning colour: that is a STATE, not the secondary half of
+            // anything, and it is the one thing in this tile worth interrupting a scan for.
+            if !isHovering {
+                Group {
+                    if item.isMissing {
+                        Text("missing")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("~\(item.tokens / 1000 > 0 ? "\(item.tokens / 1000)k" : "\(item.tokens)")")
+                            .foregroundStyle(Token.Colour.tertiaryLabel)
+                    }
                 }
+                .font(Token.Type_.tileSubtitle.monospacedDigit())
+                .lineLimit(1)
+                // Never the side that truncates. Two flexible labels in one row shrink
+                // together, and "~12k" losing its tail is a number that now reads wrong
+                // rather than one that reads clipped — the name gives up the space instead,
+                // which is what its middle truncation is already there to do.
+                .layoutPriority(1)
             }
-            Spacer(minLength: 0)
 
             if item.isPinned {
                 Image(systemName: "pin.fill")

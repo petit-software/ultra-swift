@@ -41,6 +41,47 @@ struct LivePTYTests {
         return (store, canvas, factory, window)
     }
 
+    /// The header a user reads, all the way from a real `cd` in a real shell.
+    ///
+    /// Every link below this had a test and the chain still did not work: no shell on a
+    /// stock macOS emits OSC 7, so nothing ever CALLED the code that renames a pane, and a
+    /// header sat on the folder the pane was opened in for the entire session. This asserts
+    /// the whole chain, from the shell moving to the words in the pane's chrome.
+    @Test("a cd in a real shell renames the pane the user is looking at")
+    func headerFollowsCd() {
+        let factory = ShellPaneFactory(theme: .dark, defaultDirectory: NSTemporaryDirectory())
+        let store = LayoutStore(tree: LayoutTree(single: PaneID())) { paneID in
+            let content = factory.makeContent(for: paneID)
+            return PaneContent(view: content.view, record: content.record)
+        }
+        factory.onDescriptorChange = { [weak store] paneID, record in
+            store?.surfaces.updateRecord(record, for: paneID)
+        }
+        let paneID = store.tree.focused
+        let surface = store.surfaces.surface(for: paneID)
+        factory.startPendingShells()
+        defer { store.surfaces.release(paneID) }
+
+        let destination = "/usr/lib"
+        #expect(store.surfaces.surfaceRecord(for: paneID).title != destination,
+                "the pane did not already start where this test cd's to")
+
+        let shell = try! #require(factory.shells[paneID])
+        shell.inject("cd \(destination)", submit: true)
+        let moved = poll(upTo: 5) {
+            shell.processID.flatMap { ForegroundProcess.workingDirectory(ofProcess: $0) }
+                == destination
+        }
+        #expect(moved, "the shell never cd'd — the rest of this test proves nothing")
+        // By hand: the probe is debounced onto a runloop this test does not own.
+        shell.probeDirectory()
+
+        #expect(store.surfaces.surfaceRecord(for: paneID).title == destination,
+                "the pane still names the folder it was opened in")
+        #expect(surface.accessibilityLabel()?.contains(destination) == true,
+                "and VoiceOver reads the old folder too")
+    }
+
     /// The second half of M3's acceptance criterion: "no PTY is killed by a tab switch."
     ///
     /// A tab here is a whole second workspace — its own `LayoutStore`, its own factory, its

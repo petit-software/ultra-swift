@@ -66,4 +66,50 @@ struct ForegroundProcessTests {
     func emptyAgentListMatchesNothing() {
         #expect(!ForegroundProcess.isAgent("claude", in: []))
     }
+
+    // MARK: - Working directory
+
+    @Test("our own process reports the directory we are actually in")
+    func readsOwnWorkingDirectory() {
+        let reported = ForegroundProcess.workingDirectory(ofProcess: getpid())
+        #expect(reported != nil)
+        // /tmp and /var are symlinks on macOS and the kernel answers with the resolved path,
+        // so the two sides are resolved before comparing rather than compared as typed.
+        let actual = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .resolvingSymlinksInPath().path
+        #expect(reported.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path } == actual)
+    }
+
+    /// The whole point: a shell that has cd'd reports where it went, with no OSC 7 and no
+    /// cooperation from the shell's configuration.
+    @Test("a child that has cd'd reports its new directory, not the one it was launched in")
+    func followsAChildsCd() throws {
+        let launched = FileManager.default.temporaryDirectory
+        let moved = URL(fileURLWithPath: "/usr/lib")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "cd \(moved.path) && sleep 5"]
+        process.currentDirectoryURL = launched
+        try process.run()
+        defer { process.terminate() }
+
+        // The `cd` happens in the child's own time; poll rather than guess a sleep long
+        // enough, so a loaded machine does not fail this for being slow.
+        var reported: String?
+        for _ in 0..<100 {
+            reported = ForegroundProcess.workingDirectory(ofProcess: process.processIdentifier)
+            if reported == moved.path { break }
+            usleep(20_000)
+        }
+        #expect(reported == moved.path)
+    }
+
+    /// Panes are probed while they are being torn down, so a dead or impossible pid has to
+    /// answer nil rather than trap or hand back a half-filled path.
+    @Test("a pid that cannot exist reports no directory")
+    func unknownPidHasNoDirectory() {
+        #expect(ForegroundProcess.workingDirectory(ofProcess: pid_t(Int32.max)) == nil)
+        #expect(ForegroundProcess.workingDirectory(ofProcess: 0) == nil)
+        #expect(ForegroundProcess.workingDirectory(ofProcess: -1) == nil)
+    }
 }

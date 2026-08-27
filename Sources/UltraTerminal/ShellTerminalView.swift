@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftTerm
+import UltraCore
 import UltraDesign
 
 /// How a shell pane was started, and where.
@@ -77,6 +78,7 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     private var process: LocalProcess!
     private var coalescer = ResizeCoalescer()
     private var pendingFinalResize: DispatchWorkItem?
+    private var pendingDirectoryProbe: DispatchWorkItem?
 
     /// Extra environment for the spawned shell, on top of the login shell's own.
     public var extraEnvironment: [String: String] = [:]
@@ -124,6 +126,8 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
 
     public func stop() {
         pendingFinalResize?.cancel()
+        pendingDirectoryProbe?.cancel()
+        pendingDirectoryProbe = nil
         guard isRunning else { return }
         process.terminate()
         isRunning = false
@@ -272,13 +276,61 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         shellDelegate?.shellDirectoryChanged(self, directory: path)
     }
 
+    /// Ask the kernel where the shell is, because it will not tell us itself.
+    ///
+    /// `hostCurrentDirectoryUpdate` above is the right channel and it never fires on a stock
+    /// macOS — see `ForegroundProcess.workingDirectory(ofProcess:)` for why. This is the
+    /// fallback that makes a pane's header true: it reads the same fact from the kernel and
+    /// hands it to the same delegate, so headers, tabs, "Follow Shell", and what a restored
+    /// pane reopens in all follow a `cd` without the shell's cooperation.
+    ///
+    /// Driven by OUTPUT rather than by a timer. A directory only changes because the shell
+    /// did something, and anything the shell does reprints a prompt — so arriving output is
+    /// exactly when there is a new answer to read, and an idle pane costs nothing at all.
+    ///
+    /// Output arrives in bursts, and a burst is not a burst of `cd`s. A probe already
+    /// scheduled is therefore LEFT ALONE rather than pushed back: one syscall per 0.15s of
+    /// noisy output, and one allocation to schedule it, instead of one of each per chunk on
+    /// the path that carries every byte the terminal ever draws. Leaving it also means a
+    /// script that cd's while printing is still followed, which resetting the timer on every
+    /// chunk would have postponed until the output stopped.
+    private func scheduleDirectoryProbe() {
+        guard pendingDirectoryProbe == nil else { return }
+        let work = DispatchWorkItem { [weak self] in self?.probeDirectory() }
+        pendingDirectoryProbe = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    /// Driven directly by tests, which do not own a pumped runloop for the debounce above.
+    func probeDirectory() {
+        pendingDirectoryProbe = nil
+        guard isRunning, let processID,
+              let path = ForegroundProcess.workingDirectory(ofProcess: processID) else { return }
+        // Compared canonically, and only compared. The kernel answers with the fully resolved
+        // path, so a pane opened at `/tmp/x` or through any symlinked project root would
+        // otherwise report a move on its very first prompt and rewrite its own header into a
+        // spelling the user never typed. The pane has not gone anywhere; it is the same
+        // directory said a different way.
+        guard WorkspaceDocument.canonical(path)
+                != spec.cwd.map(WorkspaceDocument.canonical) else { return }
+        spec.cwd = path
+        shellDelegate?.shellDirectoryChanged(self, directory: path)
+    }
+
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         process.send(data: data)
     }
 
     public func scrolled(source: TerminalView, position: Double) {}
     public func rangeChanged(source: TerminalView, startY: Int, endY: Int) {}
-    public func bell(source: TerminalView) { NSSound.beep() }
+    /// Silent unless the user has asked for it — see `Preferences.audibleBell`.
+    ///
+    /// Read live rather than cached: a shell can ring at any moment, and a bell that stays
+    /// audible until the pane is restarted is not what unticking a box means.
+    public func bell(source: TerminalView) {
+        guard Preferences.audibleBell else { return }
+        NSSound.beep()
+    }
 
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         guard let url = URL(string: link), let scheme = url.scheme?.lowercased(),
@@ -306,6 +358,8 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     // reorders its own output is worse than one that blocks.
 
     public func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
+        pendingDirectoryProbe?.cancel()
+        pendingDirectoryProbe = nil
         isRunning = false
         processID = nil
         shellDelegate?.shellTerminated(self, exitCode: exitCode)
@@ -313,6 +367,7 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
 
     public func dataReceived(slice: ArraySlice<UInt8>) {
         feed(byteArray: slice)
+        scheduleDirectoryProbe()
     }
 
     public func getWindowSize() -> winsize {

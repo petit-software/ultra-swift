@@ -50,6 +50,35 @@ public enum ForegroundProcess {
         return name.isEmpty ? nil : name
     }
 
+    /// Where a process actually is, read from the kernel rather than from the shell.
+    ///
+    /// OSC 7 is the well-behaved way to learn this, and on a stock macOS nothing emits it:
+    /// the hook that does lives in `/etc/zshrc_Apple_Terminal`, and `/etc/zshrc` sources it
+    /// only when `$TERM_PROGRAM` is `Apple_Terminal`. So a pane's header froze at the
+    /// directory it was launched in and stayed there for the whole session, however far the
+    /// user cd'd. Claiming to be Terminal.app to unlock the hook would put a lie in the
+    /// environment of every process the pane ever spawns, to fix a header.
+    ///
+    /// The kernel already knows. `proc_pidinfo` reads the process's own current directory,
+    /// which needs no cooperation from zsh, bash, fish, or anything else the user runs.
+    /// Nil for a pid that has exited, or one we may not look at.
+    public static func workingDirectory(ofProcess pid: pid_t) -> String? {
+        guard pid > 0 else { return nil }
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        let written = withUnsafeMutablePointer(to: &info) {
+            proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, $0, size)
+        }
+        // A short read means the struct was not filled in — a partially populated path is
+        // not a directory anyone should be shown.
+        guard written == size else { return nil }
+        var path = info.pvi_cdir.vip_path
+        let cwd = withUnsafeBytes(of: &path) { raw in
+            raw.baseAddress.map { String(cString: $0.assumingMemoryBound(to: CChar.self)) } ?? ""
+        }
+        return cwd.isEmpty ? nil : cwd
+    }
+
     /// What this terminal is doing, classified against the agents that are known.
     ///
     /// Matching is on the executable's NAME, because that is all the tty can offer, and it is

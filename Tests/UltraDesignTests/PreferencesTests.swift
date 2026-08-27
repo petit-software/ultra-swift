@@ -32,6 +32,36 @@ struct PreferencesTests {
             #expect(Preferences.gitInterval == 3)
             #expect(Preferences.pausePollingWhenOccluded)
             #expect(Preferences.defaultTodoPath == ".ultra/todo.md")
+            #expect(!Preferences.audibleBell,
+                    "an agent rings BEL as a progress signal — the default cannot be audible")
+        }
+    }
+
+    @Test("the start folder is unset by default, round-trips, and resets")
+    func defaultProjectFolder() {
+        clean {
+            #expect(Preferences.defaultProjectFolder.isEmpty,
+                    "unset means 'keep guessing', which is what the ladder already did")
+            Preferences.defaultProjectFolder = "/Users/x/Projects/thing"
+            #expect(Preferences.defaultProjectFolder == "/Users/x/Projects/thing")
+
+            Preferences.reset()
+            #expect(Preferences.defaultProjectFolder.isEmpty)
+        }
+    }
+
+    /// The bell is the one default here that deliberately departs from every other terminal,
+    /// so it is asserted on its own rather than left to a list: a well-meaning "match
+    /// Terminal.app" change would otherwise flip it back and pass.
+    @Test("the audible bell round-trips, and resets to silent")
+    func audibleBell() {
+        clean {
+            #expect(!Preferences.audibleBell)
+            Preferences.audibleBell = true
+            #expect(Preferences.audibleBell)
+
+            Preferences.reset()
+            #expect(!Preferences.audibleBell, "reset left the bell ringing")
         }
     }
 

@@ -129,9 +129,21 @@ enum PaneCommands {
     }
 
     static let others: [AppCommand] = [
+        // Enabled even on the LAST pane, where it closes the window instead.
+        //
+        // The alternative was to dim it there, and that makes ⌘W a dead key on exactly the
+        // window a new user starts with — the one-pane one. Closing the smallest thing you
+        // are inside is what ⌘W means everywhere else, and when the pane IS the window, the
+        // window is the smallest thing. `performClose` rather than a direct close, so the
+        // window still runs its own teardown: scrollback saved, layout persisted.
         AppCommand(id: "pane.close", title: "Close Pane", menuPath: ["Pane"],
-                   binding: KeyBinding("w", [.command]),
-                   isEnabled: { $0.tree.paneCount > 1 }) { $0.closeFocused() },
+                   binding: KeyBinding("w", [.command])) { store in
+            guard store.tree.paneCount > 1 else {
+                ShellWorkspace.Registry.windows[store.workspaceID]?.performClose(nil)
+                return
+            }
+            store.closeFocused()
+        },
         AppCommand(id: "pane.zoom", title: "Toggle Zoom", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.toggleZoom() },

@@ -159,6 +159,22 @@ public enum Preferences {
         }
     }
 
+    /// Let a shell ring the system alert with `BEL`.
+    ///
+    /// OFF, which is the opposite of every other terminal's default, and the reason is what
+    /// this app is FOR. An agent uses `BEL` as a progress signal — it rings on a tool call,
+    /// on a permission prompt, on finishing a turn — so a pane running one does not go
+    /// "ding" occasionally, it goes "ding" continuously, and a window of four agent panes
+    /// does it four times over. A terminal built to hold agents cannot ship the default a
+    /// terminal built to hold a shell prompt gets away with.
+    ///
+    /// Nothing else about the bell changes: the escape is still parsed, and turning this on
+    /// gives the ordinary Terminal.app behaviour back.
+    public static var audibleBell: Bool {
+        get { flag("audibleBell", default: false) }
+        set { setFlag("audibleBell", newValue, current: audibleBell) }
+    }
+
     public static var showsHiddenFiles: Bool {
         get { flag("showsHiddenFiles", default: true) }
         set { setFlag("showsHiddenFiles", newValue, current: showsHiddenFiles) }
@@ -200,6 +216,21 @@ public enum Preferences {
     public static var pausePollingWhenOccluded: Bool {
         get { flag("pausePollingWhenOccluded", default: true) }
         set { setFlag("pausePollingWhenOccluded", newValue, current: pausePollingWhenOccluded) }
+    }
+
+    /// The folder new windows open on, when the launch itself has no opinion.
+    ///
+    /// Empty by default, which means "keep guessing" — the most recent project, then home.
+    /// That guess is right until the recents stop changing, and then it is wrong every
+    /// single launch, which is the whole reason this exists: one project stays at the front
+    /// of the list forever and the app opens there whatever the user is actually doing.
+    ///
+    /// Stored as a plain path rather than a bookmark. Ultra is unsandboxed, so it can open
+    /// the folder without one, and a path is legible in `defaults read` and survives being
+    /// edited by hand — a security-scoped bookmark is neither.
+    public static var defaultProjectFolder: String {
+        get { store.string(forKey: prefix + "defaultProjectFolder") ?? "" }
+        set { setString("defaultProjectFolder", newValue, current: defaultProjectFolder) }
     }
 
     /// The path a project's Todo file takes when it has not been chosen explicitly.
@@ -246,9 +277,10 @@ public enum Preferences {
 
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
-                    "notifiesOnAgentCompletion", "showsMenuBarIcon",
+                    "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
-                    "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath"] {
+                    "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
+                    "defaultProjectFolder"] {
             store.removeObject(forKey: prefix + key)
         }
         post()

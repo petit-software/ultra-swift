@@ -105,6 +105,7 @@ final class WorkspaceModel {
     /// opened — Open Folder every single time, which is not a feature, it is a chore.
     static var startDirectory: String {
         WorkspaceLaunch.directory(cwd: FileManager.default.currentDirectoryPath,
+                                  preferred: Preferences.defaultProjectFolder,
                                   recents: RecentProjects.list,
                                   home: NSHomeDirectory(),
                                   exists: { FileManager.default.fileExists(atPath: $0) })
@@ -256,7 +257,31 @@ struct WorkspaceCommands: Commands {
             .disabled(store == nil)
         }
 
-        CommandGroup(after: .saveItem) {
+        // ⌘W belongs to the PANE here, the way it does in every terminal — and taking it
+        // requires REPLACING this group rather than rebinding anything.
+        //
+        // AppKit's stock File ▸ Close owns ⌘W, and the File menu is searched before Pane, so
+        // `pane.close` never had the key to begin with: SwiftUI saw the duplicate and dropped
+        // the shortcut, leaving Pane ▸ Close Pane showing no binding at all while ⌘W quietly
+        // closed the window — and with it the app, since closing the last window quits.
+        //
+        // Closing a window is still one keystroke away, just the shifted one, which is the
+        // arrangement Terminal and iTerm both settled on.
+        CommandGroup(replacing: .saveItem) {
+            Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+            // `windows` includes panels and the offscreen ones AppKit keeps around, so this
+            // asks each whether it is a real, visible window before closing it — and closes
+            // through `performClose` so each still gets to save its scrollback and layout.
+            Button("Close All Windows") {
+                for window in NSApp.windows where window.isVisible && window.canBecomeMain {
+                    window.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: [.command, .option])
+
+            Divider()
+
             Button("Save Layout Now") { store?.persistNow() }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(store == nil)
@@ -378,3 +403,4 @@ private struct TileShortcut: ViewModifier {
         }
     }
 }
+

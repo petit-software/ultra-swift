@@ -1,6 +1,7 @@
 import SwiftUI
 import UltraDesign
 import UltraTerminal
+import UltraTiles
 
 /// The Settings window (⌘,).
 struct UltraSettings: View {
@@ -78,12 +79,47 @@ private struct GeneralSettings: View {
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
 
+                Toggle("Audible bell",
+                       isOn: prefs.flag({ Preferences.audibleBell },
+                                        { Preferences.audibleBell = $0 }))
+                Text("Lets a shell ring the system alert sound. Off by default because "
+                     + "agents ring it constantly — on tool calls, on prompts, on finishing "
+                     + "— and several agent panes ring it several times over.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+
                 Toggle("Draw terminals on the GPU",
                        isOn: prefs.flag({ Preferences.useMetalRenderer },
                                         { Preferences.useMetalRenderer = $0 }))
                 Text("Moves glyph drawing to Metal, which mainly shows up in fast-scrolling "
                      + "output. Off by default because it can fail to start on some "
                      + "hardware — a pane that cannot use it says so and keeps drawing.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Section {
+                LabeledContent("New windows open in") {
+                    HStack(spacing: 6) {
+                        Text(startFolderLabel)
+                            .font(.callout)
+                            .foregroundStyle(Preferences.defaultProjectFolder.isEmpty
+                                             ? .secondary : .primary)
+                            .lineLimit(1)
+                            .truncationMode(.head)
+                            .frame(maxWidth: 200, alignment: .trailing)
+                        Button("Choose…") { chooseStartFolder() }
+                        Button("Reset") { Preferences.defaultProjectFolder = "" }
+                            .disabled(Preferences.defaultProjectFolder.isEmpty)
+                    }
+                }
+            } header: {
+                Text("Startup")
+            } footer: {
+                Text("Left unset, Ultra reopens the project you used most recently — which "
+                     + "is right until you stop opening new ones, and then it is the same "
+                     + "folder every launch. Naming one here settles it. Launching from a "
+                     + "terminal still wins: that is a choice about one launch.")
                     .font(.footnote)
                     .foregroundStyle(.tertiary)
             }
@@ -201,6 +237,22 @@ private struct GeneralSettings: View {
         .formStyle(.grouped)
         .padding(.vertical, 6)
         .frame(height: 560)
+    }
+
+    /// The stored folder, or what the app will actually do without one — never a blank
+    /// field, which reads as broken rather than as unset.
+    private var startFolderLabel: String {
+        _ = prefs.revision
+        let stored = Preferences.defaultProjectFolder
+        return stored.isEmpty ? "Most recent project" : ShellPaneFactory.abbreviate(stored)
+    }
+
+    private func chooseStartFolder() {
+        let current = Preferences.defaultProjectFolder
+        let start = URL(fileURLWithPath: current.isEmpty ? NSHomeDirectory() : current)
+        guard let url = chooseTileFolder(title: "Folder for New Windows", directory: start)
+        else { return }
+        Preferences.defaultProjectFolder = url.path
     }
 
     private func intervalRow(_ title: String,

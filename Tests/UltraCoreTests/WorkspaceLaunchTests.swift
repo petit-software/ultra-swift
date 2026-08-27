@@ -54,4 +54,44 @@ struct WorkspaceLaunchTests {
         #expect(WorkspaceLaunch.directory(cwd: "/p/gone", recents: ["/p/alpha"], home: home,
                                           exists: { $0 == "/p/alpha" }) == "/p/alpha")
     }
+
+    // MARK: - The chosen folder
+
+    /// The reason the setting exists: one project sits at the front of the recents forever,
+    /// so "most recent" stops being a guess and becomes the same answer every launch.
+    @Test("a chosen folder beats the most recent project")
+    func preferredBeatsRecents() {
+        #expect(WorkspaceLaunch.directory(cwd: "/", preferred: "/p/chosen",
+                                          recents: ["/p/alpha"], home: home,
+                                          exists: alwaysExists) == "/p/chosen")
+    }
+
+    /// Launching from a terminal is a decision about THIS launch; the setting is a decision
+    /// about launches in general. The specific one wins.
+    @Test("a real cwd still beats the chosen folder")
+    func cwdBeatsPreferred() {
+        #expect(WorkspaceLaunch.directory(cwd: "/p/gamma", preferred: "/p/chosen",
+                                          recents: [], home: home,
+                                          exists: alwaysExists) == "/p/gamma")
+    }
+
+    /// Unset is the default, and must mean "carry on guessing" rather than "open nothing".
+    @Test("no chosen folder leaves the old ladder exactly as it was")
+    func unsetChangesNothing() {
+        #expect(WorkspaceLaunch.directory(cwd: "/", preferred: "", recents: ["/p/alpha"],
+                                          home: home, exists: alwaysExists) == "/p/alpha")
+        #expect(WorkspaceLaunch.directory(cwd: "/", preferred: nil, recents: ["/p/alpha"],
+                                          home: home, exists: alwaysExists) == "/p/alpha")
+    }
+
+    /// Checked for existence like every other rung. A folder chosen last year and renamed
+    /// since must not open a window onto a path that is gone.
+    @Test("a chosen folder that no longer exists falls through")
+    func missingPreferredFallsThrough() {
+        #expect(WorkspaceLaunch.directory(cwd: "/", preferred: "/p/renamed",
+                                          recents: ["/p/alpha"], home: home,
+                                          exists: { $0 == "/p/alpha" }) == "/p/alpha")
+        #expect(WorkspaceLaunch.directory(cwd: "/", preferred: "/p/renamed", recents: [],
+                                          home: home, exists: { _ in false }) == home)
+    }
 }
