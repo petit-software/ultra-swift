@@ -68,6 +68,10 @@ struct WorkspaceWindow: View {
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
+                // Idempotent too, and started here for the same reason: a notification
+                // delivered before the last quit is still on screen, and this is the first
+                // moment the app can take it back.
+                AgentCompletionNotifier.shared.startClearingWhenActive()
                 // Settings only reach panes that already exist because of this.
                 PreferenceBridge.start()
                 MenuBarItem.shared.syncWithPreference()

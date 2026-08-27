@@ -84,6 +84,24 @@ struct ShellDirectoryTests {
         shell.start()
         defer { shell.stop() }
 
+        // Waited for, not assumed. A forked child carries the PARENT's working directory
+        // until the `chdir` immediately before its exec, so for a moment the kernel answers
+        // this pid with the TEST RUNNER's cwd — and probing there reported a move to the
+        // repository, then a second move back. Racy rather than wrong: it passed several
+        // runs before it lost.
+        //
+        // Production cannot reach that window, which is the point. The probe is driven by
+        // OUTPUT, and there is no output until the shell has exec'd and printed a prompt —
+        // by which time the chdir is long done. Only a test calling `probeDirectory()` by
+        // hand can get in early, so the test waits for the state production starts from.
+        let settled = poll(upTo: 5) {
+            shell.processID
+                .flatMap { ForegroundProcess.workingDirectory(ofProcess: $0) }
+                .map { WorkspaceDocument.canonical($0) == WorkspaceDocument.canonical(launched) }
+                ?? false
+        }
+        #expect(settled, "the shell never reached its launch directory")
+
         for _ in 0..<5 { shell.probeDirectory() }
         #expect(recorder.directories.isEmpty)
         #expect(shell.spec.cwd == launched)
