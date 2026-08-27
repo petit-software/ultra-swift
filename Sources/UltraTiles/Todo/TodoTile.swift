@@ -10,6 +10,11 @@ public struct TodoTile: View {
     @FocusState private var draftFocused: Bool
     /// The row a drag is currently over, so the insertion line follows the pointer.
     @State private var dropTarget: Int?
+    /// The task being edited, if any.
+    ///
+    /// Held HERE rather than in the row, so that opening one editor closes the last. Two
+    /// rows in edit mode at once is two drafts of a list that has one file behind it.
+    @State private var editingID: Int?
     private let context: TileContext
 
     public init(context: TileContext) {
@@ -60,9 +65,13 @@ public struct TodoTile: View {
                         ForEach(group.items) { item in
                             TodoRow(item: item,
                                     isDropTarget: dropTarget == item.id,
+                                    isEditing: editingID == item.id,
                                     toggle: { store.toggle(item.id) },
                                     send: { context.injectIntoShell(item.text) },
                                     delete: { store.removeItem(item.id) },
+                                    beginEdit: { editingID = item.id },
+                                    commitEdit: { text in commitEdit(text, for: item) },
+                                    cancelEdit: { editingID = nil },
                                     onDropBefore: { moved in
                                         dropTarget = nil
                                         store.move(moved, before: item.id)
@@ -150,6 +159,19 @@ public struct TodoTile: View {
         draftFocused = true
     }
 
+    /// Write an edited task back, and leave edit mode either way.
+    ///
+    /// An empty result REVERTS rather than deleting. Deleting is a separate verb with its own
+    /// button, and clearing a field is far more often a slip on the way to retyping than it
+    /// is a decision to throw the task away — one that a list backed by a file in the repo
+    /// has no undo for.
+    private func commitEdit(_ text: String, for item: TodoDocument.Item) {
+        editingID = nil
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, trimmed != item.text else { return }
+        store.setText(trimmed, for: item.id)
+    }
+
     private func noticeBar(_ notice: TodoStore.Notice) -> some View {
         HStack(spacing: 6) {
             Image(systemName: notice == .reloadedFromDisk
@@ -178,17 +200,40 @@ private struct TodoRow: View {
     /// A line is drawn where the task would land. An insertion point, not a highlight on the
     /// row: "before this one" is the thing being chosen, and a filled row cannot say that.
     let isDropTarget: Bool
+    let isEditing: Bool
     let toggle: () -> Void
     let send: () -> Void
     let delete: () -> Void
+    let beginEdit: () -> Void
+    let commitEdit: (String) -> Void
+    let cancelEdit: () -> Void
     let onDropBefore: (Int) -> Void
     let onDragOver: (Bool) -> Void
     @State private var isHovering = false
-
-    @State private var dropTarget: Int?
+    /// The text being edited. Seeded from the task when the field appears and thrown away
+    /// with it, so a cancelled edit leaves nothing behind to leak into the next one.
+    @State private var draft = ""
+    @FocusState private var isFieldFocused: Bool
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        // While editing, the row must NOT be draggable: the field owns the pointer, and a
+        // drag that begins on a text selection would carry the task away mid-edit.
+        if isEditing {
+            row
+        } else {
+            // The whole row is the handle. A todo list is short and the rows are small; a
+            // separate grip would be a smaller target for no gain.
+            row.draggable(TodoDragPayload(id: item.id)) {
+                Text(item.text)
+                    .font(Token.Type_.tileSubtitle)
+                    .padding(6)
+                    .background(Token.Colour.tileBackground)
+            }
+        }
+    }
+
+    private var row: some View {
+        HStack(alignment: isEditing ? .center : .firstTextBaseline, spacing: 7) {
             Button(action: toggle) {
                 Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
@@ -196,16 +241,46 @@ private struct TodoRow: View {
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)
+            .disabled(isEditing)
 
-            Text(item.text)
-                .font(Token.Type_.tileSubtitle)
-                .foregroundStyle(item.isDone ? Token.Colour.tertiaryLabel : Token.Colour.label)
-                .strikethrough(item.isDone, color: Token.Colour.tertiaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
+            if isEditing {
+                // Deliberately the same font, colour and column as the label it replaces, so
+                // the row is edited in place rather than replaced by a form.
+                TextField("Task", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(Token.Type_.tileSubtitle)
+                    .foregroundStyle(Token.Colour.label)
+                    .focused($isFieldFocused)
+                    .onSubmit { commitEdit(draft) }
+                    // Escape abandons the edit. Without it the only way out of the field is
+                    // to accept whatever is in it, which makes a mistyped task a trap.
+                    .onExitCommand(perform: cancelEdit)
+                    .task {
+                        draft = item.text
+                        isFieldFocused = true
+                    }
+            } else {
+                Text(item.text)
+                    .font(Token.Type_.tileSubtitle)
+                    .foregroundStyle(item.isDone ? Token.Colour.tertiaryLabel : Token.Colour.label)
+                    .strikethrough(item.isDone, color: Token.Colour.tertiaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                    // Double-click to edit, the way a filename is renamed in Finder. The
+                    // pencil below is the discoverable route; this is the fast one.
+                    .onTapGesture(count: 2, perform: beginEdit)
+            }
 
             Spacer(minLength: 0)
 
-            if isHovering {
+            if isEditing {
+                Button { commitEdit(draft) } label: { Image(systemName: "return") }
+                    .foregroundStyle(Token.Colour.accent)
+                    .help("Save task")
+                    .pointerStyle(.link)
+            } else if isHovering {
+                Button(action: beginEdit) { Image(systemName: "pencil") }
+                    .help("Edit task")
+                    .pointerStyle(.link)
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send to shell")
                     .pointerStyle(.link)
@@ -227,14 +302,6 @@ private struct TodoRow: View {
                     .fill(Token.Colour.accent)
                     .frame(height: 2)
             }
-        }
-        // The whole row is the handle. A todo list is short and the rows are small; a
-        // separate grip would be a smaller target for no gain.
-        .draggable(TodoDragPayload(id: item.id)) {
-            Text(item.text)
-                .font(Token.Type_.tileSubtitle)
-                .padding(6)
-                .background(Token.Colour.tileBackground)
         }
         .dropDestination(for: TodoDragPayload.self) { payload, _ in
             guard let moved = payload.first?.id else { return false }
