@@ -34,33 +34,37 @@ public struct SplitCanvas: NSViewRepresentable {
 /// See docs/02-DESIGN-LANGUAGE.md.
 public struct CanvasSurface: View {
     private let store: LayoutStore
-    private let barActions: [WindowBarAction]
 
-    public init(store: LayoutStore, barActions: [WindowBarAction] = []) {
+    public init(store: LayoutStore) {
         self.store = store
-        self.barActions = barActions
     }
 
     public var body: some View {
         ZStack(alignment: .top) {
-            // No window-level material. A visual-effect view here would sit BEHIND the
-            // panes, and their glass would sample it instead of the desktop — which is
-            // what made the material read as flat grey. The panes ARE the glass; the
-            // window itself is clear, so they refract what is actually behind the window.
-            if Token.Environment_.reduceTransparency {
-                Token.Colour.tileBackground
-            } else {
-                WindowSurface()
-            }
-
+            // Rebuilt when the SESSION changes, and that is safe for exactly one reason:
+            // `PaneSurfaceStore` owns pane views above the view layer, so tearing this
+            // canvas down detaches the panes without releasing them — their processes
+            // keep running — and the next canvas re-adopts them in `reconcile()`.
+            //
+            // Rebinding a live `SplitCanvasView` to another store would be the
+            // alternative, and it is the one with somewhere for a PTY to get dropped:
+            // every cached frame, focus target and drag in flight belongs to the old
+            // tree. Identity is the blunter tool and the safer one.
             SplitCanvas(store: store)
+                .id(store.workspaceID)
         }
-        .ignoresSafeArea()
+        // The TOP edge only. Ignoring every edge is what put the canvas underneath the
+        // session sidebar: this is a `NavigationSplitView` detail column now, not the whole
+        // window, and a view that ignores its leading safe area in one slides straight under
+        // the column beside it. The top is still ignored so the backdrop runs behind the
+        // transparent titlebar, which is where the glass reading comes from.
+        .ignoresSafeArea(edges: .top)
         .background(WindowChrome(theme: store.theme,
                                  title: store.windowTitle) { store.noteWindowFrame($0) })
     }
-
 }
+
+
 
 /// Configures the host window once it exists: a transparent, full-size-content titlebar so
 /// the material is continuous from the very top of the window.
@@ -145,11 +149,11 @@ public struct WindowChrome: NSViewRepresentable {
         // what gives the tall Finder-style titlebar the traffic lights are placed in.
         window.toolbar?.showsBaselineSeparator = false
         window.toolbarStyle = .unified
-        // Native macOS tabs. `.preferred` is what makes a newly opened window join this one
-        // as a tab instead of floating on its own, and the shared identifier is what marks
-        // two windows as belonging to the same tab group.
-        window.tabbingMode = .preferred
-        window.tabbingIdentifier = "ultra.workspace"
+        // Native macOS tabs are OFF, because the window now has its own session sidebar and
+        // two tab systems in one window is worse than either. A native tab bar also hides
+        // itself at one tab, has room for a name only until there are about four, and lives
+        // in the one strip the traffic lights already own — see `SessionSidebar`.
+        window.tabbingMode = .disallowed
         // MUST stay titled. AppKit masks a titled window to its own corner radius —
         // measured at 15.5pt on macOS 26 — and there is no API to change it, so exceeding
         // that radius means an untitled window. An untitled window cannot become key
@@ -169,19 +173,26 @@ public struct WindowChrome: NSViewRepresentable {
 
 /// The window's own surface: ONE glass material running edge to edge, header included.
 ///
+/// Placed by the APP behind the whole window, not by `CanvasSurface` behind the canvas. It
+/// draws the window's rounded corner and its edge stroke, and once the window gained a
+/// sidebar the canvas stopped being the window — so a surface scoped to the canvas drew the
+/// window's border around the detail column, as a bordered card sitting next to the sidebar.
+///
 /// It spans the full window rather than stopping at the titlebar, which is what removes the
 /// separate dark block the header used to be — with `fullSizeContentView` and a transparent
 /// titlebar, this material is what shows through up there too. The tint is laid ON the
 /// material, not mixed into it, so 30% means 30% regardless of what is behind the window.
-struct WindowSurface: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
+public struct WindowSurface: NSViewRepresentable {
+    public init() {}
+
+    public func makeNSView(context: Context) -> NSVisualEffectView {
         let view = WindowSurfaceView()
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+    public func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.needsLayout = true
     }
 }

@@ -1,4 +1,4 @@
 - [ ] Move + button in top toolbar next to command button
-- [ ] todo panel, i cant edit added task
+- [x] todo panel, i cant edit added task
 - [ ] macOS audio graph constantly connecting and disconnecting while using an AI tool in the Command Line Interface the loop is caused by aggressive audio stream open/close cycles. can check if we have a problem?
 - [x] Changing theme doesn't work, make sure changing opacity affects all panes. right now it does not.

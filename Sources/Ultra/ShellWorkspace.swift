@@ -164,6 +164,28 @@ enum ShellWorkspace {
         return store
     }
 
+    /// Everything one session owned, let go of.
+    ///
+    /// Called when a session is CLOSED, which is the only time this is right — switching away
+    /// from one must leave its shells running, and that is the whole point of holding several.
+    /// The order matters: history is captured while the panes still exist, and the panes are
+    /// released before the factories that own them go.
+    static func tearDown(_ store: LayoutStore) {
+        let id = store.workspaceID
+        Registry.factories[id]?.saveScrollback()
+        store.persistNow()
+        // Releasing every pane is what stops the PTYs — `PaneSurfaceStore.release` is the one
+        // place a pane dies, and it calls back into both factories.
+        store.surfaces.prune(keeping: [])
+        Registry.channels[id]?.stop()
+        Registry.channels[id] = nil
+        Registry.factories[id] = nil
+        Registry.tiles[id] = nil
+        Registry.stores[id] = nil
+        Registry.windows[id] = nil
+        updateSleepGuard()
+    }
+
     /// The live factory, so menu commands can reach the shells.
     enum Registry {
         @MainActor static var factories: [UUID: ShellPaneFactory] = [:]

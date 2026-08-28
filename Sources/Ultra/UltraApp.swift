@@ -12,6 +12,7 @@ import UltraLayout
 /// to — a command must act on whichever tab has focus. These carry that focus to the menu.
 struct LayoutStoreKey: FocusedValueKey { typealias Value = LayoutStore }
 struct UIStateKey: FocusedValueKey { typealias Value = UIState }
+struct SessionListKey: FocusedValueKey { typealias Value = SessionList }
 
 extension FocusedValues {
     var layoutStore: LayoutStore? {
@@ -21,6 +22,12 @@ extension FocusedValues {
     var uiState: UIState? {
         get { self[UIStateKey.self] }
         set { self[UIStateKey.self] = newValue }
+    }
+    /// The focused WINDOW's sessions. Distinct from `layoutStore`, which is the one session
+    /// currently on screen — a command like "New Session" acts on the list, not on a canvas.
+    var sessionList: SessionList? {
+        get { self[SessionListKey.self] }
+        set { self[SessionListKey.self] = newValue }
     }
 }
 
@@ -61,7 +68,7 @@ struct WorkspaceWindow: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        RootView(store: model.store, ui: model.ui)
+        RootView(sessions: model.sessions, ui: model.ui)
             .task {
                 model.adoptWindow()
                 // Idempotent: every tab asks, one monitor runs. Started from a window
@@ -81,24 +88,27 @@ struct WorkspaceWindow: View {
                 Updater.shared.startIfUpdatable()
             }
             .onDisappear {
-                model.store.persistNow()
-                // Before the panes stop existing: nothing else captures their history, and
-                // a closed window is the common way this app is quit.
-                ShellWorkspace.Registry.factories[model.store.workspaceID]?.saveScrollback()
+                // EVERY session, not just the one on screen. A window holds several now, and
+                // the ones behind it have exactly as much unsaved history as the visible one.
+                for store in model.sessions.sessions {
+                    store.persistNow()
+                    ShellWorkspace.Registry.factories[store.workspaceID]?.saveScrollback()
+                }
             }
-            .focusedSceneValue(\.layoutStore, model.store)
+            .focusedSceneValue(\.layoutStore, model.sessions.selected)
+            .focusedSceneValue(\.sessionList, model.sessions)
             .focusedSceneValue(\.uiState, model.ui)
     }
 }
 
-/// Owns one tab's workspace. A plain box held by `@State` so the store survives redraws.
+/// Owns one WINDOW's sessions. A plain box held by `@State` so they survive redraws.
 @MainActor
 final class WorkspaceModel {
-    let store: LayoutStore
+    let sessions: SessionList
     let ui = UIState()
 
-    /// Only the first window of a launch restores the saved layout. A new tab is new work —
-    /// restoring into it would clone the panes the user already has open.
+    /// Only the first window of a launch reopens what the last run had. A second window is
+    /// new work — restoring into it would clone the sessions already on screen.
     private static var hasRestored = false
 
     /// Where the FIRST window of a launch opens.
@@ -123,15 +133,23 @@ final class WorkspaceModel {
     init() {
         let requested = WorkspaceModel.pendingDirectory
         WorkspaceModel.pendingDirectory = nil
+        sessions = SessionList(storage: WorkspaceStorage())
+
         // A window opened ON a project restores that project's layout even though it is not
-        // the first window of the launch. The "new tab is new work" rule exists to stop a
-        // tab cloning the panes already on screen; a different project's document cannot do
+        // the first window of the launch. The "new window is new work" rule exists to stop a
+        // window cloning what is already on screen; a different project's document cannot do
         // that, and refusing to restore it would throw the layout away instead.
-        let restore = requested != nil || !Self.hasRestored
+        let isFirst = !Self.hasRestored
         Self.hasRestored = true
-        store = ShellWorkspace.make(storage: WorkspaceStorage(),
-                                    directory: requested ?? Self.startDirectory,
-                                    restore: restore)
+
+        if let requested {
+            sessions.open(directory: requested, restore: true)
+            return
+        }
+        // The first window of a launch reopens every session the last run had, which is what
+        // makes a window of sessions worth arranging: it is still there tomorrow.
+        if isFirst, sessions.restoreSaved() { return }
+        sessions.open(directory: Self.startDirectory, restore: isFirst)
     }
 
     /// Put the window back where it was before it can be seen elsewhere. Only the restoring
@@ -139,8 +157,14 @@ final class WorkspaceModel {
     func adoptWindow() {
         NSApplication.shared.activate()
         let window = NSApp.windows.first { $0.isKeyWindow } ?? NSApp.windows.first
-        if let window { ShellWorkspace.Registry.windows[store.workspaceID] = window }
-        guard let frame = store.windowFrame else { return }
+        // Every session in this window lives in this window — the map is what lets "open a
+        // project already open" raise the right one rather than opening it twice.
+        if let window {
+            for store in sessions.sessions {
+                ShellWorkspace.Registry.windows[store.workspaceID] = window
+            }
+        }
+        guard let frame = sessions.selected?.windowFrame else { return }
         window?.setFrame(frame, display: false)
     }
 }
@@ -148,6 +172,7 @@ final class WorkspaceModel {
 /// Window- and tab-level verbs. Everything reaches the focused tab through `@FocusedValue`.
 struct WorkspaceCommands: Commands {
     @FocusedValue(\.layoutStore) private var store
+    @FocusedValue(\.sessionList) private var sessions
     @FocusedValue(\.uiState) private var ui
     @Environment(\.openWindow) private var openWindow
 
@@ -174,10 +199,22 @@ struct WorkspaceCommands: Commands {
     /// restore the same document id and both would persist to it, so whichever was touched
     /// last would silently overwrite the other's layout.
     private func open(directory: String) {
-        if let existing = ShellWorkspace.Registry.store(forDirectory: directory),
-           let window = ShellWorkspace.Registry.windows[existing.workspaceID] {
-            window.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate()
+        // Already open SOMEWHERE: raise it. Two sessions on one project would both restore
+        // the same document and both persist to it, so the last one touched would silently
+        // overwrite the other's layout — the rule that made two windows on one project a bug
+        // applies just as much to two sessions.
+        if let existing = ShellWorkspace.Registry.store(forDirectory: directory) {
+            if let window = ShellWorkspace.Registry.windows[existing.workspaceID] {
+                window.makeKeyAndOrderFront(nil)
+                NSApplication.shared.activate()
+            }
+            sessions?.select(existing.workspaceID)
+            return
+        }
+        // A SESSION in this window rather than another window. That is what the sidebar is
+        // for: projects side by side in one place, not a window each.
+        if let sessions {
+            sessions.open(directory: directory)
             return
         }
         RecentProjects.remember(directory)
@@ -211,10 +248,28 @@ struct WorkspaceCommands: Commands {
 
             Divider()
 
-            // ⌘T is the tab key on every other Mac app, so it is the tab key here. The
-            // pane verb it used to hold moved to ⌥⌘T, beside the other pane bindings.
-            Button("New Tab") { openWindow(id: UltraApp.workspaceWindowID) }
+            // ⌘T is the "another one of these" key on every Mac app, and a session is what
+            // this window now holds more than one of. It used to make a native window tab;
+            // those are off, because the sidebar replaced them.
+            Button("New Session…") { chooseFolder() }
                 .keyboardShortcut("t", modifiers: .command)
+
+            Button("New Window") { openWindow(id: UltraApp.workspaceWindowID) }
+                .keyboardShortcut("n", modifiers: .command)
+
+            Menu("Session") {
+                Button("Next Session") { sessions?.selectNext() }
+                    .keyboardShortcut("]", modifiers: [.command, .option])
+                Button("Previous Session") { sessions?.selectPrevious() }
+                    .keyboardShortcut("[", modifiers: [.command, .option])
+                Divider()
+                Button("Close Session") {
+                    if let id = sessions?.selectedID { sessions?.close(id) }
+                }
+                .keyboardShortcut("w", modifiers: [.command, .control, .shift])
+                .disabled(!(sessions?.canCloseSelected ?? false))
+            }
+            .disabled(sessions == nil)
 
             Button("New Shell Pane") {
                 guard let store else { return }
@@ -309,26 +364,87 @@ struct WorkspaceCommands: Commands {
 }
 
 struct RootView: View {
-    let store: LayoutStore
+    @Bindable var sessions: SessionList
     @Bindable var ui: UIState
+    /// Owned here so the system's own sidebar toggle has something to drive. Starting at
+    /// `.all` because a window whose session list is collapsed on first launch is a window
+    /// with a feature nobody discovers.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    /// The session on screen. Nil only for the instant before the first one exists.
+    private var store: LayoutStore? { sessions.selected }
 
     /// What the focused pane is right now, so File ▸ Change Pane To can dim the entry the
     /// user is already looking at.
     private var currentKind: PaneRecord.Kind? {
-        store.surfaces.records[store.tree.focused]?.kind
+        guard let store else { return nil }
+        return store.surfaces.records[store.tree.focused]?.kind
+    }
+
+    private func chooseSessionFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Open"
+        panel.message = "Choose a project folder"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        sessions.open(directory: url.path)
     }
 
     var body: some View {
         // Splitting and zoom belong to a PANE, and every pane header already carries them.
         // Duplicating them at window level meant two controls for one verb, and the window
-        // copy silently acted on whichever pane happened to be focused. The palette stays:
-        // it is the one control here that is about the window rather than a pane.
-        CanvasSurface(store: store, barActions: [
-            WindowBarAction(id: "app.palette", symbol: "command",
-                            help: "Command Palette (⇧⌘P)") { ui.isPaletteShown = true },
-        ])
+        // copy silently acted on whichever pane happened to be focused.
+        // `NavigationSplitView` rather than a hand-built column: the sidebar's width, its
+        // collapse, the traffic lights sitting over it, its material, and the toggle button
+        // in the toolbar are all things macOS already does. Rebuilding them out of an
+        // `HStack` and a spacer is how you end up maintaining a worse copy of AppKit.
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            SessionSidebar(sessions: sessions)
+                .toolbar {
+                    // The sidebar's OWN toolbar item, so it lands over the sidebar column
+                    // where every source list puts "add", rather than among the pane verbs.
+                    ToolbarItem {
+                        Menu {
+                            ForEach(RecentProjects.list, id: \.self) { path in
+                                Button(ShellPaneFactory.abbreviate(path)) {
+                                    sessions.open(directory: path)
+                                }
+                            }
+                            if !RecentProjects.list.isEmpty { Divider() }
+                            Button("Open Folder…") { chooseSessionFolder() }
+                        } label: {
+                            Label("New Session", systemImage: "plus")
+                        }
+                        .help("Open another project in this window (⌘T)")
+                    }
+                }
+        } detail: {
+            if let store {
+                CanvasSurface(store: store)
+            } else {
+                Color.clear
+            }
+        }
+        // The window's material, at WINDOW scope — behind the sidebar and the canvas alike.
+        //
+        // It used to live inside `CanvasSurface`, which was the whole window until the window
+        // grew a sidebar. Left there it drew the window's rounded corner and edge stroke
+        // around the DETAIL COLUMN, which reads as a bordered card parked beside the sidebar
+        // rather than as one window.
+        .background {
+            if Token.Environment_.reduceTransparency {
+                Token.Colour.tileBackground
+            } else {
+                WindowSurface()
+            }
+        }
+        .ignoresSafeArea()
             .sheet(isPresented: $ui.isPaletteShown) {
-                CommandPalette(store: store, isPresented: $ui.isPaletteShown)
+                if let store {
+                    CommandPalette(store: store, isPresented: $ui.isPaletteShown)
+                }
             }
             // In the real toolbar rather than drawn into the titlebar ourselves: on macOS 26
             // a toolbar item gets the standard Liquid Glass treatment automatically, which
@@ -367,16 +483,18 @@ struct RootView: View {
                     // and a pair of verbs reads as a pair when it is together.
                     Menu {
                         Section("New Pane") {
-                            Button("Shell") { ShellWorkspace.openShell(in: store) }
+                            Button("Shell") {
+                                if let store { ShellWorkspace.openShell(in: store) }
+                            }
                             ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
                                 Button(entry.title) {
-                                    ShellWorkspace.openTile(entry.kind, in: store)
+                                    if let store { ShellWorkspace.openTile(entry.kind, in: store) }
                                 }
                             }
                         }
                         // Dimmed rather than silent: with the canvas full, every one of
                         // these can only beep.
-                        .disabled(!ShellWorkspace.canOpenNewPane(in: store))
+                        .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
                     } label: {
                         Label("Add Pane", systemImage: "plus")
                     }
@@ -391,8 +509,14 @@ struct RootView: View {
     }
 }
 
-#Preview("Root — three across", traits: .fixedLayout(width: 1100, height: 700)) {
-    RootView(store: .placeholders(.threeAcross), ui: UIState())
+#Preview("Root — three sessions", traits: .fixedLayout(width: 1100, height: 700)) {
+    // Adopted rather than opened: a preview that called `ShellWorkspace.make` three times
+    // would start three real shells the moment the canvas appeared.
+    RootView(sessions: SessionList(storage: WorkspaceStorage(),
+                                   adopting: [.placeholders(.threeAcross),
+                                              .placeholders(.grid2x2),
+                                              .placeholders(.single)]),
+             ui: UIState())
 }
 
 
