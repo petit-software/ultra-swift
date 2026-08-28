@@ -197,7 +197,42 @@ struct PaneMenuCommands: Commands {
             Menu("Folder") {
                 ForEach(PaneCommands.folders) { item($0) }
             }
+            Divider()
+            // Editor commands are not in the command registry with everything else, and
+            // deliberately: every `AppCommand` acts on a `LayoutStore`, and these act on one
+            // pane's `EditorSessions`. Bending the registry to carry both would make every
+            // other command's signature pay for it.
+            Menu("Editor") { editorItems }
         }
+    }
+
+    /// Every one keeps ⌘, which is what makes them safe: `ReservedTerminalKeys` treats
+    /// anything with ⌘ as ours, and a shell pane keeps every ⌃ and ⌥ chord it expects.
+    ///
+    /// NOT ⌘W for closing. That already closes the pane — the arrangement Terminal and iTerm
+    /// settled on, with ⌘⇧W for the window — and quietly making it mean "close what is open,
+    /// unless it is the last one" is how a keystroke someone relies on starts doing something
+    /// else.
+    ///
+    /// The sidebar toggle is here rather than only in the footer for the reason the
+    /// `keyboard-first` skill gives: a control reachable only by pointer is an action this
+    /// app does not actually have.
+    @ViewBuilder private var editorItems: some View {
+        let sessions = store.flatMap(ShellWorkspace.editorSessions(in:))
+        Button("Next") { sessions?.selectNext() }
+            .keyboardShortcut("]", modifiers: [.command, .shift])
+            .disabled((sessions?.sessions.count ?? 0) < 2)
+        Button("Previous") { sessions?.selectPrevious() }
+            .keyboardShortcut("[", modifiers: [.command, .shift])
+            .disabled((sessions?.sessions.count ?? 0) < 2)
+        Divider()
+        Button("Toggle Sidebar") { sessions?.isSidebarVisible.toggle() }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(sessions?.isEmpty ?? true)
+        Divider()
+        Button("Close") { sessions?.closeSelected() }
+            .keyboardShortcut("w", modifiers: [.command, .control])
+            .disabled(sessions?.selected == nil)
     }
 }
 

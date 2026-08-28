@@ -1,28 +1,17 @@
 import SwiftUI
 import UltraDesign
 
-/// One file's diff, rendered in the pane.
+/// One file's diff, rendered in an editor session.
 ///
-/// In the pane rather than shelled out to a pager, because word-level highlighting inside a
+/// In the app rather than shelled out to a pager, because word-level highlighting inside a
 /// changed line is most of the value and a pager gives none of it.
+///
+/// It lives in the EDITOR now rather than replacing the Git tile's list. A pane is already
+/// as narrow as the user made it, and the old arrangement made the two mutually exclusive:
+/// looking at a diff meant losing the list of what else had changed. Side by side, the list
+/// stays a list and the diff gets the room it needs.
 struct DiffView: View {
-    let change: GitModel.Change
-    let sides: [DiffSide]
-    let load: (DiffSide) async -> FileDiff
-    let close: () -> Void
-
-    @State private var side: DiffSide
-    @State private var diff: FileDiff?
-    @State private var isLoading = true
-
-    init(change: GitModel.Change, sides: [DiffSide],
-         load: @escaping (DiffSide) async -> FileDiff, close: @escaping () -> Void) {
-        self.change = change
-        self.sides = sides
-        self.load = load
-        self.close = close
-        _side = State(initialValue: sides.first ?? .unstaged)
-    }
+    @Bindable var session: DiffSession
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,24 +19,22 @@ struct DiffView: View {
             Divider().opacity(0.4)
             content
         }
-        .task(id: side) { await reload() }
+        // Keyed on the side so switching it reloads, and `loadIfNeeded` covers the rest:
+        // a diff returned to after staging is marked stale and refetched, while one merely
+        // redrawn is not.
+        .task(id: session.side) { await session.loadIfNeeded() }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Button(action: close) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .help("Back to changes")
-
-            Text((change.path as NSString).lastPathComponent)
-                .font(Token.Type_.tileTitle)
+            // The path, not just the name — the sidebar already carries the name, and
+            // which of three `index.ts` this is remains the useful question.
+            Text(session.path)
                 .lineLimit(1)
                 .truncationMode(.head)
+                .foregroundStyle(Token.Colour.secondaryLabel)
 
-            if let diff, !diff.isEmpty, !diff.isBinary {
+            if let diff = session.diff, !diff.isEmpty, !diff.isBinary {
                 Text("+\(diff.additions)")
                     .foregroundStyle(.green)
                 Text("−\(diff.deletions)")
@@ -58,9 +45,9 @@ struct DiffView: View {
 
             // Only offered when a file genuinely has both: a file can be staged AND
             // modified, and one button cannot mean two things.
-            if sides.count > 1 {
-                Picker("", selection: $side) {
-                    ForEach(sides) { Text($0.title).tag($0) }
+            if session.sides.count > 1 {
+                Picker("", selection: $session.side) {
+                    ForEach(session.sides) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -74,9 +61,7 @@ struct DiffView: View {
 
     @ViewBuilder
     private var content: some View {
-        if isLoading {
-            EmptyTileState(icon: "clock", title: "Loading…")
-        } else if let diff {
+        if let diff = session.diff {
             if diff.isBinary {
                 EmptyTileState(icon: "doc.badge.gearshape", title: "Binary file")
             } else if diff.isEmpty {
@@ -94,14 +79,11 @@ struct DiffView: View {
                 }
             }
         } else {
-            EmptyTileState(icon: "exclamationmark.triangle", title: "Could not read the diff")
+            // Nothing loaded YET rather than nothing to load: the first fetch is the only
+            // time this shows, because a reload keeps the previous diff on screen while it
+            // runs rather than flashing the pane empty.
+            EmptyTileState(icon: "clock", title: "Loading…")
         }
-    }
-
-    private func reload() async {
-        isLoading = true
-        diff = await load(side)
-        isLoading = false
     }
 }
 

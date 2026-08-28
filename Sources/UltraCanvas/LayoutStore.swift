@@ -86,6 +86,14 @@ public final class LayoutStore {
     /// can close, so the reader checks that it still exists.
     @ObservationIgnored public private(set) var lastFocusedShell: PaneID?
 
+    /// The editor pane the user was last working in.
+    ///
+    /// Exactly the same problem `lastFocusedShell` solves, for exactly the same reason:
+    /// clicking a row in the Git tile focuses the GIT tile, so by the time "show this diff"
+    /// runs, the focused pane is the one doing the asking. Without this, every diff would
+    /// land in the first editor in the layout for the rest of the session.
+    @ObservationIgnored public private(set) var lastFocusedEditor: PaneID?
+
     /// Called when the tree changes, after persistence has been scheduled.
     @ObservationIgnored public var onChange: ((LayoutTree) -> Void)?
     /// Called once geometry has stopped moving — a divider drag committed, a window resize
@@ -207,8 +215,11 @@ public final class LayoutStore {
     /// Remember a focused SHELL, so a tile knows where to type. A pane with no surface yet
     /// has no record to read, which is why this is a no-op rather than a guess.
     private func noteShellFocus(_ paneID: PaneID) {
-        guard surfaces.records[paneID]?.kind == .shell else { return }
-        lastFocusedShell = paneID
+        switch surfaces.records[paneID]?.kind {
+        case .shell: lastFocusedShell = paneID
+        case .editor: lastFocusedEditor = paneID
+        default: break
+        }
     }
 
     /// Re-read the window title from the focused pane.

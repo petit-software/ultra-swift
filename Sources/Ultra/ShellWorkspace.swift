@@ -64,9 +64,9 @@ enum ShellWorkspace {
                 Set(factory?.shells.values.compactMap(\.processID) ?? [])
             },
             currentDirectory: { Registry.workingDirectory(in: workspaceID, fallback: root) },
-            openInEditor: { url in
+            openInEditor: { request in
                 guard let store = Registry.stores[workspaceID] else { return }
-                openEditor(on: url, in: store)
+                showInEditor(request, in: store)
             }),
             restoring: records)
 
@@ -105,6 +105,16 @@ enum ShellWorkspace {
                 store.refreshWindowTitle()
                 store.persist()
             }
+        }
+
+        // An editor switched tabs: the header should name the file it is now showing. A
+        // record change, NOT a rebuild — `onRootChange` tears the tile down and builds it
+        // again, which for an editor would throw away every open tab to relabel one.
+        tiles.onRecordChange = { [weak store] paneID, record in
+            guard let store else { return }
+            store.surfaces.updateRecord(record, for: paneID)
+            if store.tree.focused == paneID { store.refreshWindowTitle() }
+            store.persist()
         }
 
         // Closing a pane is the only thing that kills its PTY.
@@ -173,6 +183,28 @@ enum ShellWorkspace {
             return stores.values.first {
                 $0.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
             }
+        }
+
+        /// The editor pane something should open in, within ONE workspace.
+        ///
+        /// The focused pane when it is itself an editor; otherwise the editor the user was
+        /// last in, because clicking a row in the Git tile focuses the GIT tile and the
+        /// answer has to survive that; otherwise the first editor in the layout. Nil when
+        /// there is no editor at all, which is the caller's cue to make one.
+        @MainActor static func editorTarget(in workspaceID: UUID) -> PaneID? {
+            guard let store = stores[workspaceID], let tiles = tiles[workspaceID] else {
+                return nil
+            }
+            let editors = tiles.editorPanes()
+            let focused = store.tree.focused
+            if editors.contains(focused) { return focused }
+            // Validated, not trusted: the remembered pane may have been closed or converted
+            // into something that is no longer an editor.
+            if let last = store.lastFocusedEditor, editors.contains(last),
+               store.tree.contains(last) {
+                return last
+            }
+            return store.tree.paneIDs.first { editors.contains($0) }
         }
 
         /// Where a new tile should point: the working directory of the shell a tile would
@@ -249,15 +281,44 @@ enum ShellWorkspace {
         if !store.split(edge: edge) { stageTile(nil, for: store) }
     }
 
-    /// Open a new editor pane on a specific file.
-    static func openEditor(on file: URL, in store: LayoutStore) {
+    /// Show a file — or a file's diff — in an editor.
+    ///
+    /// Reuses an editor that is already open before it considers splitting a new pane, which
+    /// is the whole difference between "clicking four changed files" being four tabs and
+    /// being four panes on a canvas that has room for none of them. The same rule
+    /// `injectIntoShell` follows: find the pane the user is working in, and use it.
+    static func showInEditor(_ request: EditorRequest, in store: LayoutStore) {
+        if let target = Registry.editorTarget(in: store.workspaceID),
+           let session = Registry.tiles[store.workspaceID]?.editorSessions(for: target) {
+            session.open(request)
+            // Focused, because a tab that opens in a pane you are not looking at is a tab
+            // you have to go and find. The click came from another pane, so nothing else
+            // would move the focus there.
+            store.focus(target)
+            return
+        }
         guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
-        Registry.tiles[store.workspaceID]?.stage(file: file)
+        Registry.tiles[store.workspaceID]?.stage(open: request)
         stageTile(.editor, for: store)
         if !store.split(edge: edge) {
             stageTile(nil, for: store)
-            Registry.tiles[store.workspaceID]?.stage(file: nil)
+            Registry.tiles[store.workspaceID]?.stage(open: nil)
         }
+    }
+
+    /// The tabs of the editor a keystroke should act on, or nil when there is no editor.
+    ///
+    /// Same target as `showInEditor`, so the menu acts on the pane the click would have
+    /// filled. Nil rather than a guess: with no editor open there is no tab to switch to,
+    /// and the menu items say so by being dimmed.
+    static func editorSessions(in store: LayoutStore) -> EditorSessions? {
+        guard let target = Registry.editorTarget(in: store.workspaceID) else { return nil }
+        return Registry.tiles[store.workspaceID]?.editorSessions(for: target)
+    }
+
+    /// Open a new editor pane on a specific file. Kept for callers that mean a FILE.
+    static func openEditor(on file: URL, in store: LayoutStore) {
+        showInEditor(.file(file), in: store)
     }
 
     /// Open a new shell pane, optionally running an agent.

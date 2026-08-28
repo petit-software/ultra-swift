@@ -73,7 +73,7 @@ public struct FileTreeTile: View {
             // a 300pt pane is mostly indentation, and re-rooting buys the width back.
             Button("Show Only This Folder") { context.setRoot(node.url) }
         } else {
-            Button("Open in Editor") { context.openInEditor(node.url) }
+            Button("Open in Editor") { context.openInEditor(.file(node.url)) }
         }
         Button("Send Path to Shell") { send(node) }
         Button("Copy Path") {

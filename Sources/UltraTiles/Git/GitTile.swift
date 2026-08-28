@@ -9,8 +9,6 @@ import UltraDesign
 public struct GitTile: View {
     @State private var model: GitModel
     @State private var confirming: GitModel.Change?
-    /// The file whose diff is on screen, if any.
-    @State private var viewing: GitModel.Change?
     private let context: TileContext
 
     public init(context: TileContext) {
@@ -21,19 +19,18 @@ public struct GitTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             if model.isRepository {
-                // The diff REPLACES the list rather than sitting beside it. A pane is
-                // already as narrow as the user made it, and splitting it again would leave
-                // neither half readable; going back is one click.
-                if let viewing {
-                    DiffView(change: viewing,
-                             sides: model.availableSides(for: viewing),
-                             load: { await model.diff(for: viewing, side: $0) },
-                             close: { self.viewing = nil })
-                } else {
-                    header
-                    Divider().overlay(Token.Colour.divider)
-                    changeList
-                }
+                // The diff opens in the EDITOR, not here.
+                //
+                // It used to replace this list, on the reasoning that a pane is as narrow as
+                // the user made it and splitting it again would leave neither half readable.
+                // That is true, and the conclusion was still wrong: it made the list and the
+                // diff mutually exclusive, so reading a change meant losing sight of what
+                // else had changed — and reviewing four files meant four round trips through
+                // a back button. The editor already exists, it is where a file belongs, and
+                // it holds tabs; four clicks here now fill it with four diffs.
+                header
+                Divider().overlay(Token.Colour.divider)
+                changeList
             } else {
                 // Say WHICH directory was checked. "Not a git repository" on its own reads
                 // as the tile being broken; naming the path shows it is pointed somewhere
@@ -167,7 +164,7 @@ public struct GitTile: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(model.changes) { change in
                         ChangeRow(change: change,
-                                  open: { viewing = change },
+                                  open: { open(change) },
                                   stage: { Task { await model.stage(change) } },
                                   unstage: { Task { await model.unstage(change) } },
                                   discard: { confirming = change },
@@ -178,6 +175,17 @@ public struct GitTile: View {
             }
             .tileScrollBar()
         }
+    }
+
+    /// Show this file's diff in an editor pane.
+    ///
+    /// The available sides are worked out HERE, where the status is already in hand, so the
+    /// editor never has to ask git a question this tile has already answered — and never
+    /// offers a "Staged" tab for a file that has nothing staged.
+    private func open(_ change: GitModel.Change) {
+        context.openInEditor(.diff(DiffRequest(repositoryRoot: context.root,
+                                               change: change,
+                                               sides: model.availableSides(for: change))))
     }
 
     /// Polled, not watched. FSEvents would fire hundreds of times during a rebase or a

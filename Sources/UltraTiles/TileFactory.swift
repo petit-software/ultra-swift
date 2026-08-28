@@ -31,9 +31,30 @@ public final class TileFactory {
     /// "New File Tree" must not turn every later split into a file tree.
     public func stage(_ kind: PaneRecord.Kind?) { pendingKind = kind }
 
-    /// The file the next editor pane should open. Consumed once, like the kind.
-    private var pendingFile: URL?
-    public func stage(file: URL?) { pendingFile = file }
+    /// What the next editor pane should open on. Consumed once, like the kind.
+    private var pendingRequest: EditorRequest?
+    public func stage(open request: EditorRequest?) { pendingRequest = request }
+
+    /// The open tabs of each editor pane.
+    ///
+    /// Held HERE rather than in the view, for the same reason a shell's PTY is: a pane is
+    /// rebuilt whenever it is restored or converted, and a tab set living in `@State` would
+    /// take every open file with it. It is also the handle something outside the pane needs
+    /// — the Git tile, the file tree, an agent's `open` — to put a tab into an editor that
+    /// already exists instead of splitting another pane off a full canvas.
+    private var sessions: [PaneID: EditorSessions] = [:]
+
+    /// This pane's tabs, or nil for a pane that is not an editor.
+    public func editorSessions(for paneID: PaneID) -> EditorSessions? { sessions[paneID] }
+
+    /// Which panes are editors, so the app can find one to send a file to.
+    public func editorPanes() -> Set<PaneID> { Set(sessions.keys) }
+
+    /// A pane's description changed without the pane needing to be rebuilt — an editor
+    /// switched tabs, so its header should name the file it is now showing. Distinct from
+    /// `onRootChange`, which asks for a REBUILD because the tile is looking somewhere else
+    /// entirely.
+    public var onRecordChange: ((PaneID, PaneRecord) -> Void)?
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
     public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context]
@@ -56,12 +77,24 @@ public final class TileFactory {
         case .fileTree:
             view = NSHostingView(rootView: FileTreeTile(context: paneContext))
         case .editor:
-            // A staged file wins; a restored pane reopens whatever it had.
-            let file = pendingFile ?? records[paneID]?.command.map { URL(fileURLWithPath: $0) }
-            pendingFile = nil
-            view = NSHostingView(rootView: EditorTile(context: paneContext, file: file))
-            if let file {
-                let record = Self.record(for: kind, root: root, file: file)
+            // The sessions outlive the view: a pane rebuilt for any reason keeps what is open.
+            let open = sessions[paneID] ?? EditorSessions()
+            sessions[paneID] = open
+            open.onSelectionChange = { [weak self] path in
+                self?.noteEditorSelection(paneID, path: path, root: root)
+            }
+            // A staged request wins; a restored pane reopens whatever it had.
+            if let pendingRequest {
+                open.open(pendingRequest)
+            } else if open.isEmpty,
+                      let file = records[paneID]?.command.map({ URL(fileURLWithPath: $0) }) {
+                open.open(.file(file))
+            }
+            pendingRequest = nil
+            view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
+            if let path = open.selected?.path {
+                let record = Self.record(for: kind, root: root,
+                                         file: URL(fileURLWithPath: path))
                 records[paneID] = record
                 hosts[paneID] = view
                 return (view, record)
@@ -86,7 +119,29 @@ public final class TileFactory {
         return (view, record)
     }
 
-    public func release(_ paneID: PaneID) { hosts.removeValue(forKey: paneID) }
+    public func release(_ paneID: PaneID) {
+        hosts.removeValue(forKey: paneID)
+        sessions.removeValue(forKey: paneID)
+    }
+
+    /// Keep a pane's header on the tab that is showing.
+    ///
+    /// Only the SELECTED tab is persisted. A diff is a view of state that moves — restoring
+    /// one would mean reopening a diff of changes that may since have been committed — and
+    /// the record has one `command` field, not a list. What comes back is the file you were
+    /// last looking at, which is the tab you would have reopened first anyway.
+    private func noteEditorSelection(_ paneID: PaneID, path: String?, root: URL) {
+        let file = path.map { URL(fileURLWithPath: $0) }
+        let isDiff = sessions[paneID]?.selected?.isDiff ?? false
+        var record = Self.record(for: .editor, root: root, file: isDiff ? nil : file)
+        if isDiff, let file {
+            // Named for what it is, so a header does not claim a diff is an open document.
+            record.title = file.lastPathComponent
+            record.subtitle = "diff"
+        }
+        records[paneID] = record
+        onRecordChange?(paneID, record)
+    }
 
     /// Which folder a tile is pointed at, or nil for a pane this factory does not own.
     public func root(of paneID: PaneID) -> URL? {
@@ -128,6 +183,7 @@ public final class TileFactory {
     public func forget(_ paneID: PaneID) {
         hosts.removeValue(forKey: paneID)
         records.removeValue(forKey: paneID)
+        sessions.removeValue(forKey: paneID)
     }
 
     public static func record(for kind: PaneRecord.Kind,

@@ -30,8 +30,13 @@ public struct TileContext {
     /// the workspace root is $HOME — and a Git tile opened beside a repo would sit there
     /// truthfully reporting "not a repository", which reads as the tile being broken.
     public var currentDirectory: () -> URL
-    /// Open a file in a new editor pane. The file tree's reason to exist beyond `ls`.
-    public var openInEditor: (URL) -> Void
+    /// Show something in an editor pane — a file, or a file's diff.
+    ///
+    /// ONE verb for both, and it targets an editor that already exists before it considers
+    /// making another. That is what "click four changed files" has to mean: four tabs in one
+    /// pane. A per-caller verb that always split a new pane off is what made the file tree
+    /// and the Git tile feel like separate apps sharing a window.
+    public var openInEditor: (EditorRequest) -> Void
     /// Point this pane at a different folder.
     ///
     /// The pane keeps its id, its position and its size; only what it is looking at changes.
@@ -44,7 +49,7 @@ public struct TileContext {
                 revealInFinder: @escaping (URL) -> Void = { _ in },
                 shellPIDs: @escaping () -> Set<Int32> = { [] },
                 currentDirectory: (() -> URL)? = nil,
-                openInEditor: @escaping (URL) -> Void = { _ in },
+                openInEditor: @escaping (EditorRequest) -> Void = { _ in },
                 setRoot: @escaping (URL) -> Void = { _ in }) {
         self.root = root
         self.projectRoot = root
