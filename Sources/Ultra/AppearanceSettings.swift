@@ -120,6 +120,8 @@ struct AppearanceSettings: View {
                 pointRow("Corner radius", { Appearance.windowRadius },
                          { Appearance.windowRadius = $0 },
                          range: Token.Space.systemWindowRadius...44, step: 0.5)
+                pointRow("Inner padding", { Appearance.windowPadding },
+                         { Appearance.windowPadding = $0 }, range: 0...48)
                 pointRow("Border width", { Appearance.windowBorderWidth },
                          { Appearance.windowBorderWidth = $0 }, range: 0...4, step: 0.5)
                 percentRow("Border strength", { Appearance.windowBorderStrength },
@@ -136,6 +138,12 @@ struct AppearanceSettings: View {
                      \(Token.Space.systemWindowRadius, specifier: "%.1f")pt: macOS masks the \
                      window to that shape and a smaller radius draws a second arc inside the \
                      system's own.
+
+                     Inner padding holds the panes off the window's left, right and bottom \
+                     edges. The top is left to the toolbar, which already sets the panes \
+                     below it — padding there would read as a second gap rather than as \
+                     breathing room. At zero the panes run to the window's edge and the \
+                     backdrop is visible only in the gaps between them.
                      """)
                 .font(.footnote)
                 .foregroundStyle(.tertiary)

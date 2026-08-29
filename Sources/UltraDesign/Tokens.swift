@@ -96,6 +96,25 @@ public enum Token {
             }
         }
 
+        /// The wash behind a selected row in the session sidebar.
+        ///
+        /// A neutral veil rather than the accent. A list whose selection is a saturated
+        /// accent block fights the row's own colour: the session icon is user-chosen and can
+        /// be any of twelve hues, and half of them are unreadable sitting on a slab of a
+        /// thirteenth. Translucent white leaves the icon and the name as the only colour in
+        /// the row and lets the window's material show through.
+        ///
+        /// It inverts in light appearance for the obvious reason — translucent white on a
+        /// light sidebar is not a selection, it is nothing — and takes a little less of
+        /// itself there, the same correction `windowBorder` makes.
+        public static let sidebarSelection = Color(nsColor:
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.white.withAlphaComponent(0.16)
+                    : NSColor.black.withAlphaComponent(0.10)
+            }
+        )
+
         /// The window's edge. Light in dark appearance, dark in light — it separates the
         /// window from the desktop in both directions.
         public static var windowBorder: NSColor {

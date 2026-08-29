@@ -6,10 +6,11 @@ import UltraTerminal
 import UltraDesign
 import UltraLayout
 
-/// The focused tab's store and UI state.
+/// The focused window's store and UI state.
 ///
-/// SwiftUI menu commands are app-level, but with tabs there is no single store to bind them
-/// to — a command must act on whichever tab has focus. These carry that focus to the menu.
+/// SwiftUI menu commands are app-level, but with several windows open there is no single
+/// store to bind them to — a command must act on whichever window has focus. These carry
+/// that focus to the menu.
 struct LayoutStoreKey: FocusedValueKey { typealias Value = LayoutStore }
 struct UIStateKey: FocusedValueKey { typealias Value = UIState }
 struct SessionListKey: FocusedValueKey { typealias Value = SessionList }
@@ -42,6 +43,20 @@ struct UltraApp: App {
         // An SPM executable has no bundle, so it needs to ask for a regular app's
         // activation policy. The Xcode app target (M8) will not need this.
         NSApplication.shared.setActivationPolicy(.regular)
+        // Native window tabs are off APP-WIDE, not just per window.
+        //
+        // `WindowChrome.configure` already sets `tabbingMode = .disallowed` on every window,
+        // but that is only half the switch: while this class property stays true AppKit still
+        // treats Ultra as a tabbing app and injects the affordances — View ▸ Show Tab Bar and
+        // Show All Tabs, Window ▸ Merge All Windows, and the tab bar's own `+`. All of them
+        // act through `newWindowForTab:`, which on a `.disallowed` window cannot make a tab,
+        // so each one made a second WINDOW instead, and the tab bar it left behind was a
+        // strip no window was allowed to populate.
+        //
+        // Set before the first window exists, because AppKit decides whether to build those
+        // menu items once, when the main menu is assembled. The sidebar is the navigation
+        // (`SessionSidebar`); this is what stops a second, broken one appearing beside it.
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 
     var body: some Scene {
@@ -59,10 +74,11 @@ struct UltraApp: App {
     }
 }
 
-/// One window — which in AppKit is the same object as one TAB.
+/// One window, and everything scoped to it.
 ///
-/// The store is created HERE rather than on `App`, and that is what makes tabs real: state
-/// on `App` is shared by every window, so every tab would have shown the same panes.
+/// The store is created HERE rather than on `App`, and that is what makes a second window
+/// worth opening: state on `App` is shared, so every window would have shown the same
+/// panes.
 struct WorkspaceWindow: View {
     @State private var model = WorkspaceModel()
     @Environment(\.openWindow) private var openWindow
@@ -71,7 +87,7 @@ struct WorkspaceWindow: View {
         RootView(sessions: model.sessions, ui: model.ui)
             .task {
                 model.adoptWindow()
-                // Idempotent: every tab asks, one monitor runs. Started from a window
+                // Idempotent: every window asks, one monitor runs. Started from a window
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
@@ -127,7 +143,7 @@ final class WorkspaceModel {
 
     /// The project the NEXT window should open on. Consumed once, the same idiom as a
     /// staged tile: `openWindow` cannot carry a value through to `WorkspaceModel`, and a
-    /// value left standing would make every later tab inherit a project opened once.
+    /// value left standing would make every later window inherit a project opened once.
     @MainActor static var pendingDirectory: String?
 
     init() {
@@ -153,7 +169,7 @@ final class WorkspaceModel {
     }
 
     /// Put the window back where it was before it can be seen elsewhere. Only the restoring
-    /// tab has a saved frame; a new tab takes AppKit's cascade.
+    /// window has a saved frame; a new one takes AppKit's cascade.
     func adoptWindow() {
         NSApplication.shared.activate()
         let window = NSApp.windows.first { $0.isKeyWindow } ?? NSApp.windows.first
@@ -169,7 +185,8 @@ final class WorkspaceModel {
     }
 }
 
-/// Window- and tab-level verbs. Everything reaches the focused tab through `@FocusedValue`.
+/// Window- and session-level verbs. Everything reaches the focused window through
+/// `@FocusedValue`.
 struct WorkspaceCommands: Commands {
     @FocusedValue(\.layoutStore) private var store
     @FocusedValue(\.sessionList) private var sessions
@@ -254,8 +271,10 @@ struct WorkspaceCommands: Commands {
             Button("New Session…") { chooseFolder() }
                 .keyboardShortcut("t", modifiers: .command)
 
-            Button("New Window") { openWindow(id: UltraApp.workspaceWindowID) }
-                .keyboardShortcut("n", modifiers: .command)
+            // No "New Window" here: a `WindowGroup` already puts one at the top of File on
+            // ⌘N, and this group is appended AFTER it. Two identical items sat in one menu,
+            // and the duplicate ⌘N meant SwiftUI dropped the shortcut from one of them —
+            // the same collision documented on ⌘W below.
 
             Menu("Session") {
                 Button("Next Session") { sessions?.selectNext() }
@@ -263,6 +282,23 @@ struct WorkspaceCommands: Commands {
                 Button("Previous Session") { sessions?.selectPrevious() }
                     .keyboardShortcut("[", modifiers: [.command, .option])
                 Divider()
+                // The keyboard path to the sidebar's Customize popover. It is also on the
+                // row's context menu, and a command reachable ONLY from a context menu is
+                // the anti-pattern the `keyboard-first` skill names outright — a terminal
+                // user's hands are on the keys.
+                //
+                // ⌃⌘ because it is the safest of the four app-command modifier sets: ⌃I
+                // alone is Tab to readline, and ⌘I is Get Info in half the apps on the
+                // machine. Nothing in the reserved terminal table uses ⌃⌘I.
+                Button("Customize Session…") { ui?.isCustomizingSession = true }
+                    .keyboardShortcut("i", modifiers: [.control, .command])
+                    // Dims rather than vanishing: a command that disappears is a command
+                    // nobody learns. A session with no project folder has nowhere to file
+                    // an icon, so there is nothing for the popover to save.
+                    .disabled(store?.workspaceDirectory == nil)
+
+                Divider()
+
                 Button("Close Session") {
                     if let id = sessions?.selectedID { sessions?.close(id) }
                 }
@@ -401,25 +437,21 @@ struct RootView: View {
         // in the toolbar are all things macOS already does. Rebuilding them out of an
         // `HStack` and a spacer is how you end up maintaining a worse copy of AppKit.
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            SessionSidebar(sessions: sessions)
-                .toolbar {
-                    // The sidebar's OWN toolbar item, so it lands over the sidebar column
-                    // where every source list puts "add", rather than among the pane verbs.
-                    ToolbarItem {
-                        Menu {
-                            ForEach(RecentProjects.list, id: \.self) { path in
-                                Button(ShellPaneFactory.abbreviate(path)) {
-                                    sessions.open(directory: path)
-                                }
-                            }
-                            if !RecentProjects.list.isEmpty { Divider() }
-                            Button("Open Folder…") { chooseSessionFolder() }
-                        } label: {
-                            Label("New Session", systemImage: "plus")
-                        }
-                        .help("Open another project in this window (⌘T)")
-                    }
-                }
+            // "Add" lives at the BOTTOM of the sidebar now, in `SessionSidebar` itself.
+            // As a toolbar item it sat in the titlebar strip the traffic lights own — a
+            // long way from the list it adds to, and in the row macOS reserves for what
+            // acts on the window. Every source list on this platform — Finder's sidebar,
+            // Mail's mailboxes, Xcode's navigator — puts it under the list instead.
+            SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
+                // The window's title, which macOS draws beside the sidebar toggle whenever
+                // a `NavigationSplitView` has one. With nothing set, SwiftUI supplies the
+                // app's name — so "Ultra" sat next to the toggle saying which app you are
+                // in, in the app's own window, while the toolbar's centre already carries
+                // the one title that means something: the session.
+                //
+                // Removed rather than blanked. An empty `navigationTitle` still reserves
+                // the slot, which leaves the toggle offset by the width of nothing.
+                .toolbar(removing: .title)
         } detail: {
             if let store {
                 CanvasSurface(store: store)
@@ -453,9 +485,21 @@ struct RootView: View {
                 // `.principal` is the toolbar's centre slot — the same one Mail and Notes
                 // use for a title, so it stays centred as the window resizes.
                 ToolbarItem(placement: .principal) {
-                    Text("Ultra")
+                    // The SESSION's name — whatever the sidebar row says, which is either
+                    // the name the user typed in Customize or the project folder's own.
+                    // A literal "Ultra" told the user something they already knew (which
+                    // app they are in, in the app's own window) and left the one question a
+                    // title is for — which project is this? — to the sidebar alone.
+                    //
+                    // Falls back to the app's name only for the instant before the first
+                    // session exists, where there is genuinely nothing else to say.
+                    Text(store?.workspaceTitle ?? "Ultra")
                         .font(.system(size: 17, weight: .bold, design: .default))
                         .foregroundStyle(Token.Colour.label)
+                        // Long project names must not push the toolbar's buttons off the
+                        // right of a narrow window.
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
                 // A name is a label, not a control — the shared glass capsule macOS 26 puts
                 // behind toolbar items made it read as a button you could press.

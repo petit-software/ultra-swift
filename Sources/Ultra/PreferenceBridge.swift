@@ -81,11 +81,16 @@ enum PreferenceBridge {
         // "changing the theme does nothing" actually was.
         for store in ShellWorkspace.Registry.stores.values {
             store.theme = theme
-            // The gutter is the one look setting the LAYOUT owns rather than a view: it is
-            // what decides how much of the window's material is visible between panes, so
-            // changing it has to re-run the layout, not just repaint.
-            if store.metrics.gutter != Appearance.paneGutter {
-                store.metrics.gutter = Appearance.paneGutter
+            // The gutter and the window padding are the look settings the LAYOUT owns
+            // rather than a view: they decide how much of the window's material is visible
+            // between the panes and around them, so changing either has to re-run the
+            // layout, not just repaint.
+            //
+            // Guarded, because this fires on EVERY preference write — assigning `metrics`
+            // re-lays out the whole canvas, and doing that for a setting no pane cares
+            // about is a visible hitch in a window with a lot of panes.
+            if !store.metrics.matchesSettings {
+                store.metrics.applySettings()
             }
             // A CGColor on a layer, set once: the accent reaches a live pane only if it is
             // pushed. Cheap and idempotent, so it rides along with every write.

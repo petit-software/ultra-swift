@@ -50,6 +50,14 @@ public final class SplitCanvasView: NSView {
     private let glassHost = FlippedView()
     private let observers = ObserverBox()
 
+    /// Its own token rather than a slot in `observers`: it is re-registered on every move to
+    /// a window, and the box has no way to drop just one of what it holds.
+    private var keyObserver: (any NSObjectProtocol)? {
+        willSet {
+            if let keyObserver { NotificationCenter.default.removeObserver(keyObserver) }
+        }
+    }
+
     /// Where panes are added. The host when merging is on, the canvas itself otherwise.
     private var paneParent: NSView { Appearance.mergesPaneGlass ? glassHost : self }
 
@@ -95,7 +103,7 @@ public final class SplitCanvasView: NSView {
 
     /// Model focus drives AppKit focus, never the other way round — two sources of truth
     /// for "what does a keystroke act on" is a bug factory.
-    private func focusFirstResponder() {
+    func focusFirstResponder() {
         guard let window, window.isKeyWindow,
               let content = store.surfaces.content(for: displayTree.focused),
               let target = Self.keyboardTarget(in: content) else { return }
@@ -136,9 +144,47 @@ public final class SplitCanvasView: NSView {
         return clipped.isNull || clipped.height < 1 ? bounds : clipped
     }
 
+    /// The last `LayoutStore.focusRevision` acted on, so a re-assert happens once per
+    /// request rather than on every `updateNSView` — SwiftUI runs those constantly, and one
+    /// that grabbed the keyboard every time would make the sidebar impossible to click.
+    private var lastFocusRevision = 0
+
+    /// Put the caret back in the focused pane, one turn of the run loop from now.
+    ///
+    /// Deferred on purpose. The callers are all UI that has just been clicked — a sidebar
+    /// row, a toolbar menu — and AppKit sets ITS first responder as part of finishing that
+    /// click. Re-asserting synchronously means racing that; doing it a turn later means
+    /// arriving after it.
+    /// For the test that holds the once-per-request rule. Not `@testable`-only state: the
+    /// property it exposes is private for a reason, and a read-only window onto it is
+    /// cheaper than making the whole thing internal.
+    var lastFocusRevisionForTesting: Int { lastFocusRevision }
+
+    public func reclaimKeyboardFocus(revision: Int) {
+        guard revision != lastFocusRevision else { return }
+        lastFocusRevision = revision
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.focusFirstResponder() }
+        }
+    }
+
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         registerForDraggedTypes([PaneDragType.pasteboard])
+        // A window that was not key when the canvas last synced never got its first
+        // responder set — `focusFirstResponder` bails on exactly that condition — and
+        // nothing re-ran it when the window came forward. AppKit then restores whatever it
+        // had, which for a window that never had one is the window itself: a terminal on
+        // screen with the caret nowhere, and keystrokes going into the void.
+        //
+        // Scoped to THIS window, and re-registered every time the view moves, so a canvas
+        // that changes windows does not keep listening to the old one.
+        keyObserver = window.map { window in
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { _ in
+                    MainActor.assumeIsolated { [weak self] in self?.focusFirstResponder() }
+                }
+        }
         contentRectObservation = window?.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }

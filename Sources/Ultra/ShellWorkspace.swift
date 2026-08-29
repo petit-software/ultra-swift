@@ -71,6 +71,11 @@ enum ShellWorkspace {
             restoring: records)
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),
+                                // The look settings, not `LayoutMetrics.default`. A window
+                                // used to open with the stock 12pt gutter and stock window
+                                // padding whatever the user had chosen, and only picked the
+                                // real values up when the next preference write pushed them.
+                                metrics: .fromSettings,
                                 theme: theme,
                                 workspaceID: workspaceID,
                                 storage: storage) { paneID in

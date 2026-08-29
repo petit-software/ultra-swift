@@ -33,10 +33,11 @@ struct AppearanceTests {
             #expect(Appearance.focusRingWidth == 2)
             #expect(Appearance.focusRingStrength == 0.25)
 
-            #expect(Appearance.windowMaterial == .underWindowBackground)
+            #expect(Appearance.windowMaterial == .hudWindow)
             #expect(Appearance.windowTintDark == 0.30)
             #expect(Appearance.windowTintLight == 0.45)
             #expect(Appearance.windowRadius == 24)
+            #expect(Appearance.windowPadding == 8)
             #expect(Appearance.windowBorderWidth == 1.5)
             #expect(Appearance.windowBorderStrength == 0.22)
 
@@ -120,10 +121,14 @@ struct AppearanceTests {
             Appearance.paneGutter = 36
             Appearance.focusRingWidth = 6
             Appearance.focusRingStrength = 0.9
-            Appearance.windowMaterial = .hudWindow
+            // NOT `.hudWindow` — that is the default now, and the setter skips a write
+            // that would not change anything, so this test would leave the key empty and
+            // then fail on its own guard.
+            Appearance.windowMaterial = .popover
             Appearance.windowTintDark = 0.9
             Appearance.windowTintLight = 0.1
             Appearance.windowRadius = 40
+            Appearance.windowPadding = 40
             Appearance.windowBorderWidth = 4
             Appearance.windowBorderStrength = 0.9
             Appearance.headerBlurRadius = 35
@@ -143,7 +148,7 @@ struct AppearanceTests {
             }
             #expect(Appearance.glassStyle == .regular)
             #expect(Appearance.paneRadius == 18)
-            #expect(Appearance.windowMaterial == .underWindowBackground)
+            #expect(Appearance.windowMaterial == .hudWindow)
         }
     }
 

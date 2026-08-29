@@ -162,6 +162,27 @@ public enum Appearance {
         set { PreferenceStore.setNumber(key("paneGutter"), newValue, current: paneGutter, in: 0...40) }
     }
 
+    /// How far the panes sit from the WINDOW's edges — the frame of material around the
+    /// whole canvas, as opposed to `paneGutter`, which is the space between panes.
+    ///
+    /// One knob where the layout has two. `LayoutMetrics` splits the same three edges into
+    /// `padding` and `edgeInset` and adds them together in `contentRect`, so a user-facing
+    /// pair would be two sliders that do the identical thing. The app puts the whole inset
+    /// in `padding` and zeroes `edgeInset`.
+    ///
+    /// 8pt, which is 4 tighter than the 8 + 4 the two internal fields shipped with. The
+    /// window's own frame of material was reading as wider than the gutters between the
+    /// panes, so the outer edge drew more attention than the divisions that carry meaning.
+    ///
+    /// The LEADING, TRAILING and BOTTOM edges only. The top is the toolbar's: its content
+    /// layout rect already holds the panes off the window's top edge, and adding to it there
+    /// reads as a second gap under the toolbar rather than as breathing room.
+    public static var windowPadding: CGFloat {
+        get { PreferenceStore.number(key("windowPadding"), default: 8, in: 0...48) }
+        set { PreferenceStore.setNumber(key("windowPadding"), newValue,
+                                        current: windowPadding, in: 0...48) }
+    }
+
     public static var focusRingWidth: CGFloat {
         get { PreferenceStore.number(key("focusRingWidth"), default: 2, in: 0...6) }
         set { PreferenceStore.setNumber(key("focusRingWidth"), newValue,
@@ -178,8 +199,15 @@ public enum Appearance {
 
     // MARK: - Window
 
+    /// `.hudWindow` rather than `.underWindowBackground`, which the app shipped with.
+    ///
+    /// The HUD material is darker and less transparent, and that is what a window full of
+    /// terminals wants: `.underWindowBackground` is tuned for a document window sitting over
+    /// a desktop, so whatever happened to be behind Ultra came through the gutters and read
+    /// as noise between the panes rather than as one surface. The rest of the list is still
+    /// there to be compared against it.
     public static var windowMaterial: WindowMaterial {
-        get { choice("windowMaterial", default: .underWindowBackground) }
+        get { choice("windowMaterial", default: .hudWindow) }
         set { setChoice("windowMaterial", newValue, current: windowMaterial) }
     }
 
@@ -264,7 +292,7 @@ public enum Appearance {
         "glassStyle", "glassTint", "glassTintStrength", "mergesPaneGlass", "glassMergeSpacing",
         "paneRadius", "paneShadowRadius", "paneShadowOpacity", "paneGutter",
         "focusRingWidth", "focusRingStrength",
-        "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius",
+        "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",
         "windowBorderWidth", "windowBorderStrength",
         "headerBlurRadius", "headerTintOpacity",
     ]

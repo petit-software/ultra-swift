@@ -24,6 +24,10 @@ public struct SplitCanvas: NSViewRepresentable {
         // Registers the dependency that makes a pane conversion redraw.
         _ = store.surfaceRevision
         view.sync()
+        // Separate from `sync`, which re-asserts focus only as a side effect of the model
+        // having changed. This is the model asking for it directly — see
+        // `LayoutStore.reclaimKeyboardFocus`.
+        view.reclaimKeyboardFocus(revision: store.focusRevision)
     }
 }
 

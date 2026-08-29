@@ -72,6 +72,24 @@ final class SessionList {
         return store
     }
 
+    /// Rename a session.
+    ///
+    /// The title is a field of the WORKSPACE DOCUMENT — the same one `ShellWorkspace` reads
+    /// back on restore — so persisting is the whole of the work; there is no second copy to
+    /// keep in step. Debounced through `persist()` rather than written on every keystroke,
+    /// because the field applies as you type and a synchronous write per character would hit
+    /// the disk a dozen times for one rename.
+    ///
+    /// A blank name is refused rather than corrected here: the field that offers one already
+    /// falls back to the folder's name when it loses focus, and a store that silently
+    /// rewrites what it is handed makes that fallback impossible to reason about.
+    func rename(_ id: UUID, to title: String) {
+        guard let store = sessions.first(where: { $0.workspaceID == id }),
+              !title.isEmpty, store.workspaceTitle != title else { return }
+        store.workspaceTitle = title
+        store.persist()
+    }
+
     func select(_ id: UUID) {
         guard selectedID != id, sessions.contains(where: { $0.workspaceID == id }) else { return }
         selectedID = id

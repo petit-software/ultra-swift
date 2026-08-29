@@ -16,12 +16,15 @@ final class MenuBarItem: NSObject {
 
     /// Recreate a workspace window from the AppKit side.
     ///
-    /// `openWindow` is a SwiftUI environment value, so a live window hands its own down
-    /// when it starts (`WorkspaceWindow`); until one has, the standard tab action stands
-    /// in, which makes a window when there is none to tab into.
-    var openWorkspace: () -> Void = {
-        NSApp.sendAction(#selector(NSWindow.newWindowForTab(_:)), to: nil, from: nil)
-    }
+    /// `openWindow` is a SwiftUI environment value, so a live window hands its own down when
+    /// it starts (`WorkspaceWindow`) — and it always has by the time this item exists, since
+    /// the item is created from that same window's `task`.
+    ///
+    /// The placeholder used to be `newWindowForTab(_:)`, borrowed for the window it makes
+    /// when there is no tab group to join. Native tabbing is off app-wide now
+    /// (`UltraApp.init`), so that selector is a tab verb in an app with no tabs; activating
+    /// is the honest stand-in for the moment before a window has handed its opener over.
+    var openWorkspace: () -> Void = { NSApp.activate(ignoringOtherApps: true) }
 
     private override init() { super.init() }
 

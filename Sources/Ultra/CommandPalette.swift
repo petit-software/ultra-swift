@@ -6,6 +6,13 @@ import UltraDesign
 @Observable
 final class UIState {
     var isPaletteShown = false
+    /// Whether the SELECTED session's customise popover is open.
+    ///
+    /// Window state rather than row state, because the popover has two ways in — the row's
+    /// context menu and File ▸ Session ▸ Customize Session… — and a flag owned by the row
+    /// could only be reached by the first. A context menu is a *view* of the command
+    /// registry, never the only way to do something; see the `keyboard-first` skill.
+    var isCustomizingSession = false
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding

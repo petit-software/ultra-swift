@@ -197,11 +197,34 @@ public final class LayoutStore {
         apply("Close Pane") { $0.close(paneID) }
     }
 
+    /// Ask the canvas to put the caret back in the focused pane.
+    ///
+    /// The model is the only source of truth for "what does a keystroke act on", and the
+    /// canvas re-asserts AppKit's first responder from it whenever the model changes. The
+    /// hole that leaves is everything that takes first responder WITHOUT changing the model:
+    /// clicking a sidebar row, opening a toolbar menu, dismissing a popover. Focus then sits
+    /// outside the canvas with nothing to bring it back, which is a terminal you cannot type
+    /// into.
+    ///
+    /// A counter rather than a call, because the canvas is an `NSView` the store must not
+    /// hold: this is observed, so bumping it drives `updateNSView` exactly like a tree
+    /// change does.
+    public private(set) var focusRevision = 0
+
+    public func reclaimKeyboardFocus() { focusRevision &+= 1 }
+
     /// The one place focus changes. Every other focus entry point funnels through here, so
     /// there is no way to move focus without it being persisted — that gap is why a
     /// restored window came back focused on the wrong pane.
     public func focus(_ paneID: PaneID) {
-        guard tree.contains(paneID), paneID != tree.focused else { return }
+        guard tree.contains(paneID) else { return }
+        // Focusing the pane that is ALREADY focused is not a no-op: it is what ⌘1 does when
+        // the caret has been left in the sidebar, and answering "you are already there" is
+        // how the one keyboard route back from a lost first responder does nothing.
+        guard paneID != tree.focused else {
+            reclaimKeyboardFocus()
+            return
+        }
         // The pane being LEFT counts too. A restored window opens focused on a shell without
         // anyone clicking it, so the first thing that ever moves focus — pressing a control
         // in a tile — is also the only chance to record which shell was being worked in.
