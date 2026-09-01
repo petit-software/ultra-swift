@@ -74,13 +74,61 @@ struct FocusReclaimTests {
         let revision = store.focusRevision
 
         view.reclaimKeyboardFocus(revision: revision)
+        #expect(view.pendingFocusRevisionForTesting == revision)
+        view.noteFocusAttempt(landed: true)
         #expect(view.lastFocusRevisionForTesting == revision)
+        #expect(view.pendingFocusRevisionForTesting == nil)
+
         // Same revision again — SwiftUI re-running `updateNSView` for an unrelated change.
         view.reclaimKeyboardFocus(revision: revision)
-        #expect(view.lastFocusRevisionForTesting == revision)
+        #expect(view.pendingFocusRevisionForTesting == nil,
+                "a request already satisfied must not queue a second grab")
 
         store.reclaimKeyboardFocus()
         view.reclaimKeyboardFocus(revision: store.focusRevision)
+        view.noteFocusAttempt(landed: true)
         #expect(view.lastFocusRevisionForTesting == store.focusRevision)
+    }
+
+    /// The session-switch bug, as a rule.
+    ///
+    /// SwiftUI calls `updateNSView` on a brand-new representable BEFORE putting its view in
+    /// the window, so the reclaim that comes with a switched-to canvas fires with nothing to
+    /// focus. Spending the revision on that attempt left the request looking satisfied and
+    /// nothing ever tried again — on launch the window's `didBecomeKey` hid it, but a switch
+    /// inside a window that is already key has no second chance, and the shell could not be
+    /// typed into.
+    @Test("a reclaim that could not land is kept, not spent")
+    func failedAttemptIsRetried() {
+        let (store, _) = makeStore()
+        let view = SplitCanvasView(store: store)
+        store.reclaimKeyboardFocus()
+        let revision = store.focusRevision
+
+        view.reclaimKeyboardFocus(revision: revision)
+        // The canvas is not in a window yet — exactly the state SwiftUI hands it in.
+        view.noteFocusAttempt(landed: false)
+
+        #expect(view.pendingFocusRevisionForTesting == revision,
+                "a switch that lost the race must still be owed the keyboard")
+        #expect(view.lastFocusRevisionForTesting != revision,
+                "an attempt that did nothing must not count as the request being met")
+
+        // The next chance — `viewDidMoveToWindow`, or the window becoming key.
+        view.noteFocusAttempt(landed: true)
+        #expect(view.lastFocusRevisionForTesting == revision)
+        #expect(view.pendingFocusRevisionForTesting == nil)
+    }
+
+    /// Landing without a request outstanding must not rewrite the revision — otherwise an
+    /// ordinary focus assert would swallow the NEXT reclaim's guard.
+    @Test("focusing with nothing pending changes no bookkeeping")
+    func landingWithoutRequestIsInert() {
+        let (store, _) = makeStore()
+        let view = SplitCanvasView(store: store)
+        let before = view.lastFocusRevisionForTesting
+        view.noteFocusAttempt(landed: true)
+        #expect(view.lastFocusRevisionForTesting == before)
+        #expect(view.pendingFocusRevisionForTesting == nil)
     }
 }

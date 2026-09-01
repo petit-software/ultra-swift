@@ -98,17 +98,21 @@ public final class SplitCanvasView: NSView {
     public func sync() {
         reconcile()
         needsLayout = true
-        focusFirstResponder()
+        assertKeyboardFocus()
     }
 
     /// Model focus drives AppKit focus, never the other way round — two sources of truth
     /// for "what does a keystroke act on" is a bug factory.
-    func focusFirstResponder() {
+    ///
+    /// Returns whether the caret ENDED UP in the focused pane, which is what tells a
+    /// pending reclaim whether it has been satisfied or has to be tried again.
+    @discardableResult
+    func focusFirstResponder() -> Bool {
         guard let window, window.isKeyWindow,
               let content = store.surfaces.content(for: displayTree.focused),
-              let target = Self.keyboardTarget(in: content) else { return }
-        guard window.firstResponder !== target else { return }
-        window.makeFirstResponder(target)
+              let target = Self.keyboardTarget(in: content) else { return false }
+        guard window.firstResponder !== target else { return true }
+        return window.makeFirstResponder(target)
     }
 
     /// The view that should actually receive keystrokes for a pane.
@@ -144,28 +148,60 @@ public final class SplitCanvasView: NSView {
         return clipped.isNull || clipped.height < 1 ? bounds : clipped
     }
 
-    /// The last `LayoutStore.focusRevision` acted on, so a re-assert happens once per
-    /// request rather than on every `updateNSView` — SwiftUI runs those constantly, and one
-    /// that grabbed the keyboard every time would make the sidebar impossible to click.
+    /// The last `LayoutStore.focusRevision` this canvas has SATISFIED — not merely been
+    /// asked for. A re-assert then happens once per request rather than on every
+    /// `updateNSView`: SwiftUI runs those constantly, and one that grabbed the keyboard
+    /// every time would make the sidebar impossible to click.
     private var lastFocusRevision = 0
+
+    /// A request that has been made and has NOT landed yet.
+    ///
+    /// The distinction is the whole fix for a session switch losing the keyboard. SwiftUI
+    /// calls `updateNSView` on a brand-new representable BEFORE inserting its view into the
+    /// window — measured at ~60ms before, which the one-turn deferral below loses by — so
+    /// the reclaim that arrives with the new canvas fires while `window` is still nil and
+    /// `focusFirstResponder` can do nothing. Spending the revision on that attempt made the
+    /// request indistinguishable from a satisfied one, and nothing ever tried again: on
+    /// launch the window's `didBecomeKey` covered it, but switching sessions in a window
+    /// that is ALREADY key has no such second chance, so the shell could not be typed into.
+    ///
+    /// Kept pending instead, so every later opportunity — gaining a window, the window
+    /// becoming key, the next sync — retries it.
+    private var pendingFocusRevision: Int?
+
+    /// For the tests that hold the once-per-request and retry-until-landed rules. Not
+    /// `@testable`-only state: the properties they expose are private for a reason, and a
+    /// read-only window onto them is cheaper than making the whole thing internal.
+    var lastFocusRevisionForTesting: Int { lastFocusRevision }
+    var pendingFocusRevisionForTesting: Int? { pendingFocusRevision }
 
     /// Put the caret back in the focused pane, one turn of the run loop from now.
     ///
     /// Deferred on purpose. The callers are all UI that has just been clicked — a sidebar
     /// row, a toolbar menu — and AppKit sets ITS first responder as part of finishing that
     /// click. Re-asserting synchronously means racing that; doing it a turn later means
-    /// arriving after it.
-    /// For the test that holds the once-per-request rule. Not `@testable`-only state: the
-    /// property it exposes is private for a reason, and a read-only window onto it is
-    /// cheaper than making the whole thing internal.
-    var lastFocusRevisionForTesting: Int { lastFocusRevision }
-
+    /// arriving after it. A turn is not always ENOUGH, which is what `pendingFocusRevision`
+    /// is for.
     public func reclaimKeyboardFocus(revision: Int) {
         guard revision != lastFocusRevision else { return }
-        lastFocusRevision = revision
+        pendingFocusRevision = revision
         DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated { self?.focusFirstResponder() }
+            MainActor.assumeIsolated { self?.assertKeyboardFocus() }
         }
+    }
+
+    /// Try to take the keyboard, and spend a pending request only if it actually landed.
+    /// The single entry point for every route back to the terminal.
+    func assertKeyboardFocus() {
+        noteFocusAttempt(landed: focusFirstResponder())
+    }
+
+    /// The bookkeeping half of `assertKeyboardFocus`, separated so a test can hold the rule
+    /// without needing a key window — which a test process does not get.
+    func noteFocusAttempt(landed: Bool) {
+        guard landed, let pending = pendingFocusRevision else { return }
+        pendingFocusRevision = nil
+        lastFocusRevision = pending
     }
 
     public override func viewDidMoveToWindow() {
@@ -182,9 +218,15 @@ public final class SplitCanvasView: NSView {
         keyObserver = window.map { window in
             NotificationCenter.default.addObserver(
                 forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { _ in
-                    MainActor.assumeIsolated { [weak self] in self?.focusFirstResponder() }
+                    MainActor.assumeIsolated { [weak self] in self?.assertKeyboardFocus() }
                 }
         }
+        // Arriving in a window is the OTHER moment a canvas can act, and for a session
+        // switch it is the only one: the window is already key, so `didBecomeKey` above
+        // will never fire, and `updateNSView` ran before this view had a window at all.
+        // Without this line the caret is left outside the canvas — see
+        // `pendingFocusRevision`.
+        if window != nil { assertKeyboardFocus() }
         contentRectObservation = window?.observe(\.contentLayoutRect, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -302,7 +344,7 @@ public final class SplitCanvasView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         if let paneID = currentResult.pane(at: point) {
             store.focus(paneID)
-            focusFirstResponder()
+            assertKeyboardFocus()
             NSAccessibility.post(element: self, notification: .focusedUIElementChanged)
         }
         super.mouseDown(with: event)

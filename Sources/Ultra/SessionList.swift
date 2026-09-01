@@ -90,10 +90,26 @@ final class SessionList {
         store.persist()
     }
 
+    /// Show a session, and put the keyboard in it.
+    ///
+    /// The reclaim belongs HERE rather than in the sidebar's selection binding, which is
+    /// where it used to live. A session is reached from at least five places — a row click,
+    /// ⌥⌘] and ⌥⌘[, Open Recent raising a project this window already holds, the command
+    /// palette, `open(directory:)` — and only the first of them went through that binding.
+    /// Every other route landed on a canvas nothing had asked to take the keyboard back, so
+    /// the shell you had just switched to could not be typed into.
+    ///
+    /// Asked for even when the id has not CHANGED, and deliberately: selecting the session
+    /// already on screen is the one gesture a user has for "give me back the terminal", and
+    /// a guard that returned early made it a no-op. Nothing else here runs twice — the
+    /// write and the persist are still behind the change check.
     func select(_ id: UUID) {
-        guard selectedID != id, sessions.contains(where: { $0.workspaceID == id }) else { return }
-        selectedID = id
-        persist()
+        guard sessions.contains(where: { $0.workspaceID == id }) else { return }
+        if selectedID != id {
+            selectedID = id
+            persist()
+        }
+        selected?.reclaimKeyboardFocus()
     }
 
     /// Wraps, for the same reason the editor's list does: stopping at the end just means

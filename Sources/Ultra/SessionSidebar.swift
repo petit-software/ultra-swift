@@ -31,11 +31,12 @@ struct SessionSidebar: View {
         Binding(get: { sessions.selectedID },
                 set: { id in
                     guard let id else { return }
-                    sessions.select(id)
                     // Clicking a row leaves AppKit's first responder on the LIST. Nothing
-                    // about that changes the model, so the canvas had no reason to re-assert
-                    // itself and the shell you just switched to could not be typed into.
-                    sessions.selected?.reclaimKeyboardFocus()
+                    // about that changes the model, so the canvas has no reason to re-assert
+                    // itself and the shell you just switched to could not be typed into —
+                    // which is why `select` itself asks for the keyboard back, for this
+                    // route and for the four others that never came through here.
+                    sessions.select(id)
                 })
     }
 
