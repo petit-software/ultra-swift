@@ -86,6 +86,9 @@ struct WorkspaceWindow: View {
     var body: some View {
         RootView(sessions: model.sessions, ui: model.ui)
             .task {
+                // BEFORE `adoptWindow`, which places the window using the selected session's
+                // saved frame — there is no selected session until this has run.
+                model.openInitialSessions()
                 model.adoptWindow()
                 // Idempotent: every window asks, one monitor runs. Started from a window
                 // rather than from `init` because there is nothing to count until a
@@ -146,10 +149,29 @@ final class WorkspaceModel {
     /// value left standing would make every later window inherit a project opened once.
     @MainActor static var pendingDirectory: String?
 
+    /// Allocates, and does NOTHING ELSE. Every side effect lives in `openInitialSessions`.
+    ///
+    /// `@State private var model = WorkspaceModel()` evaluates its initial value every time
+    /// the view struct is built, not once per window — SwiftUI keeps the first instance and
+    /// throws the rest away. So anything done here is done again on every re-render of the
+    /// window, and thrown away with the object that did it.
+    ///
+    /// This init used to open the window's sessions, which meant each of those discarded
+    /// models spawned a workspace: real PTYs started, `ShellWorkspace.Registry` gained an
+    /// entry nothing would ever remove, and `pendingDirectory` — a value deliberately
+    /// consumed once — was eaten by an instance that never reached the screen. It went
+    /// unnoticed only because nothing invalidated this view very often; adding a per-second
+    /// observable (the sidebar's agent status) turned it into a workspace a second.
     init() {
+        sessions = SessionList(storage: WorkspaceStorage())
+    }
+
+    /// Open what this window starts with. Called from `.task`, which runs on the model that
+    /// actually survived, and idempotent because a `.task` can run again.
+    func openInitialSessions() {
+        guard sessions.isEmpty else { return }
         let requested = WorkspaceModel.pendingDirectory
         WorkspaceModel.pendingDirectory = nil
-        sessions = SessionList(storage: WorkspaceStorage())
 
         // A window opened ON a project restores that project's layout even though it is not
         // the first window of the launch. The "new window is new work" rule exists to stop a
@@ -473,6 +495,19 @@ struct RootView: View {
             }
         }
         .ignoresSafeArea()
+            // No background behind the toolbar — the window already has one.
+            //
+            // In a normal window this changes nothing: `titlebarAppearsTransparent` means
+            // AppKit builds no titlebar background at all, and the window's own material
+            // runs unbroken from the very top. FULL SCREEN is where it matters. There the
+            // titlebar and toolbar are hosted in a window of AppKit's own, which ignores
+            // that flag and paints an opaque bar behind them — a flat, several-shades-lighter
+            // strip across the top of a window that is otherwise one continuous surface,
+            // arriving the moment the green button is pressed.
+            //
+            // The supported way to say "I am drawing that myself", rather than reaching into
+            // the full-screen window and clearing the view AppKit put there.
+            .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             .sheet(isPresented: $ui.isPaletteShown) {
                 if let store {
                     CommandPalette(store: store, isPresented: $ui.isPaletteShown)
