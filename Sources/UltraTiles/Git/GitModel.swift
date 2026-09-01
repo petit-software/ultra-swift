@@ -23,6 +23,23 @@ public final class GitModel {
         public var isStaged: Bool { staged != .unmodified && staged != .untracked }
     }
 
+    /// The pull request open on this branch, as GitHub knows it.
+    ///
+    /// Read through `gh`, not by guessing a URL from the remote: a branch's PR number is a
+    /// fact only the forge has, and a link built from a branch name lands on a "create a
+    /// pull request" page rather than on the review the user meant to open.
+    public struct PullRequest: Identifiable, Equatable, Sendable {
+        public let number: Int
+        public let title: String
+        public let url: String
+        /// As `gh` spells it: OPEN, MERGED, CLOSED.
+        public let state: String
+        public let isDraft: Bool
+        public var id: Int { number }
+
+        public var isOpen: Bool { state == "OPEN" }
+    }
+
     public struct Worktree: Identifiable, Equatable, Sendable {
         public let path: String
         public let branch: String?
@@ -42,8 +59,21 @@ public final class GitModel {
     /// through these, which is exactly when a hand-rolled parser drifts.
     public private(set) var operation: String?
     public private(set) var isRefreshing = false
+    /// The pull request for the current branch, once `gh` has answered. `nil` covers every
+    /// way there can be no link to offer: no `gh` on this Mac, not signed in, a remote that
+    /// is not GitHub, or a branch nobody has opened a PR for.
+    public private(set) var pullRequest: PullRequest?
 
     private let root: URL
+    /// Which branch the answer in `pullRequest` is about, and when it was asked for. The
+    /// rest of this tile reads local files and can poll on a few seconds; `gh pr view` is a
+    /// NETWORK call, so it is re-asked only when the branch changes or the answer has gone
+    /// stale.
+    private var pullRequestBranch: String?
+    private var pullRequestCheckedAt: Date?
+    private var isLoadingPullRequest = false
+    static let pullRequestInterval: TimeInterval = 60
+
     public init(root: URL) { self.root = root }
 
     public var stagedCount: Int { changes.filter(\.isStaged).count }
@@ -60,6 +90,7 @@ public final class GitModel {
         guard !status.isEmpty else {
             isRepository = false
             branch = nil; changes = []; worktrees = []; ahead = 0; behind = 0
+            pullRequest = nil; pullRequestBranch = nil; pullRequestCheckedAt = nil
             return
         }
         isRepository = true
@@ -76,6 +107,82 @@ public final class GitModel {
 
     private func git(_ arguments: [String]) async -> String {
         await CommandProbe.run("/usr/bin/git", ["-C", root.path] + arguments)
+    }
+
+    // MARK: Pull request
+
+    /// Ask GitHub what pull request this branch has, if it is time to ask again.
+    ///
+    /// Deliberately NOT part of `refresh`. Everything there is local and finishes in
+    /// milliseconds; this one crosses the network, and folding it in would make the tile's
+    /// whole status beat as slow as the slowest API call.
+    public func refreshPullRequest() async {
+        guard isRepository, let branch else { return }
+        guard !isLoadingPullRequest else { return }
+        // A branch change is asked about immediately — the answer on screen belongs to a
+        // branch the user has left, which is worse than no answer at all.
+        if branch != pullRequestBranch {
+            pullRequest = nil
+        } else if let checked = pullRequestCheckedAt,
+                  Date().timeIntervalSince(checked) < Self.pullRequestInterval {
+            return
+        }
+        guard let gh = Self.ghPath() else {
+            pullRequestBranch = branch
+            pullRequestCheckedAt = Date()
+            return
+        }
+
+        isLoadingPullRequest = true
+        defer { isLoadingPullRequest = false }
+        // Longer than the local commands' four seconds, and still bounded: this one is a
+        // round trip to GitHub, and the watchdog in `CommandProbe` is what stops a wedged
+        // one from sitting on a thread forever.
+        let output = await CommandProbe.run(
+            gh,
+            ["pr", "view", branch, "--json", "number,title,url,state,isDraft"],
+            directory: root,
+            timeout: 10)
+        // Nothing is recorded until the answer is in hand: a branch that changed WHILE the
+        // call was in flight would otherwise be stamped with another branch's pull request.
+        guard branch == self.branch else { return }
+        pullRequest = Self.parsePullRequest(output)
+        pullRequestBranch = branch
+        pullRequestCheckedAt = Date()
+    }
+
+    /// Where `gh` might be.
+    ///
+    /// Looked for by path rather than run by name: a bundled app inherits launchd's `PATH`,
+    /// not a login shell's, so `/opt/homebrew/bin` — where the overwhelming majority of
+    /// these installs live — is not on it and `gh` would simply appear not to exist.
+    static func ghPath(fileManager: FileManager = .default) -> String? {
+        let candidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh",
+                          NSHomeDirectory() + "/.local/bin/gh"]
+        return candidates.first { fileManager.isExecutableFile(atPath: $0) }
+    }
+
+    /// What `gh pr view --json …` printed, or nil.
+    ///
+    /// Empty output is the ORDINARY case, not an error: `gh` says "no pull requests found
+    /// for branch …" on stderr and prints nothing, which is also what a missing binary, a
+    /// signed-out user, and a non-GitHub remote all look like from here. Every one of them
+    /// means the same thing to this tile — there is no link to offer — so none of them is
+    /// worth a row of error text in a pane about local changes.
+    static func parsePullRequest(_ output: String) -> PullRequest? {
+        struct Payload: Decodable {
+            let number: Int
+            let title: String
+            let url: String
+            let state: String
+            let isDraft: Bool
+        }
+        guard let data = output.data(using: .utf8), !data.isEmpty,
+              let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              !payload.url.isEmpty
+        else { return nil }
+        return PullRequest(number: payload.number, title: payload.title, url: payload.url,
+                           state: payload.state, isDraft: payload.isDraft)
     }
 
     /// Which multi-step operation is in flight, if any. Read from the git directory rather

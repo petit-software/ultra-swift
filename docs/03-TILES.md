@@ -198,6 +198,12 @@ The project's dedicated worktree, its branch, and its changes.
   untracked sections with per-file rows and +/- counts.
 - **Actions**: create a worktree for a branch (`git worktree add`), point a pane's cwd at a
   worktree, stage/unstage/discard (discard confirms, always), open a file's diff, copy branch name.
+- **The branch's pull request** is a row under the branch — number, title, and state in GitHub's
+  own colours — that opens the PR in the browser. Read through `gh pr view --json`, because a PR
+  number is a fact only the forge has; `gh` is located by path, since a bundled app inherits
+  launchd's `PATH` rather than a login shell's. No `gh`, no auth, a non-GitHub remote and a branch
+  with no PR are one case with one answer: no row. Asked at most once a minute and immediately on
+  a branch change, because unlike everything else here it crosses the network.
 - **Refresh**: on FSEvents change under `.git/` plus a 5s floor, not a busy poll.
 - **Destructive operations are explicit.** No auto-stash, no auto-commit, no implicit branch
   switching. The tile reports state and performs only what the user clicks.

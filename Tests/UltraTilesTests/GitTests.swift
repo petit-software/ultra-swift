@@ -94,6 +94,64 @@ struct GitTests {
         #expect(trees.first { $0.name == "repo" }?.isCurrent == false)
     }
 
+    // MARK: Pull request
+
+    /// What `gh pr view --json number,title,url,state,isDraft` actually prints.
+    @Test("a pull request parses out of gh's json")
+    func pullRequestParses() throws {
+        let json = """
+        {"isDraft":false,"number":42,"state":"OPEN",\
+        "title":"Adding leads, removing is a minus",\
+        "url":"https://github.com/petit-software/ultra-swift/pull/42"}
+        """
+        let pr = try #require(GitModel.parsePullRequest(json))
+        #expect(pr.number == 42)
+        #expect(pr.title == "Adding leads, removing is a minus")
+        #expect(pr.url == "https://github.com/petit-software/ultra-swift/pull/42")
+        #expect(pr.isOpen)
+        #expect(!pr.isDraft)
+    }
+
+    @Test("a draft and a merged pull request keep the state gh reported")
+    func pullRequestStates() throws {
+        let draft = try #require(GitModel.parsePullRequest(
+            #"{"isDraft":true,"number":7,"state":"OPEN","title":"wip","url":"https://x/pull/7"}"#))
+        #expect(draft.isDraft)
+        #expect(draft.isOpen)
+        let merged = try #require(GitModel.parsePullRequest(
+            #"{"isDraft":false,"number":8,"state":"MERGED","title":"done","url":"https://x/pull/8"}"#))
+        #expect(!merged.isOpen)
+        #expect(merged.state == "MERGED")
+    }
+
+    /// The ordinary case, not an error: no PR for the branch, no `gh` on the Mac, a
+    /// signed-out user and a remote that is not GitHub all reach the tile as empty stdout.
+    @Test("no pull request is nothing, not a broken row")
+    func noPullRequest() {
+        #expect(GitModel.parsePullRequest("") == nil)
+        #expect(GitModel.parsePullRequest("no pull requests found for branch \"main\"") == nil)
+        #expect(GitModel.parsePullRequest("{}") == nil)
+        #expect(GitModel.parsePullRequest("[]") == nil)
+    }
+
+    /// A row that links nowhere is worse than no row: it looks clickable and does nothing.
+    @Test("a pull request with no url is not offered")
+    func urllessPullRequest() {
+        #expect(GitModel.parsePullRequest(
+            #"{"isDraft":false,"number":9,"state":"OPEN","title":"x","url":""}"#) == nil)
+    }
+
+    /// `gh` is looked for by path because a bundled app's `PATH` is launchd's, not a login
+    /// shell's — Homebrew's bin is not on it.
+    @Test("gh is found by path, and its absence is not an error")
+    func ghLookup() {
+        // Whatever this machine has: either a path ending in the binary, or nothing.
+        #expect(GitModel.ghPath() == nil || GitModel.ghPath()?.hasSuffix("/gh") == true)
+        // A manager that can see nothing stands in for a Mac without gh installed. The
+        // tile must treat that as "no link to offer", not as a failure.
+        #expect(GitModel.ghPath(fileManager: NoFilesManager()) == nil)
+    }
+
     @Test("garbage does not produce changes")
     func robustness() {
         #expect(GitModel.parseStatus("").changes.isEmpty)
@@ -270,4 +328,9 @@ struct GitDiffTests {
         #expect(staged.isEmpty)
         #expect(!staged.isBinary)
     }
+}
+
+/// A `FileManager` that reports nothing executable — a Mac with no `gh` installed.
+private final class NoFilesManager: FileManager, @unchecked Sendable {
+    override func isExecutableFile(atPath path: String) -> Bool { false }
 }

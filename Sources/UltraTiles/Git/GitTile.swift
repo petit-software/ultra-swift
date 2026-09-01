@@ -125,6 +125,13 @@ public struct GitTile: View {
                     .foregroundStyle(.orange)
             }
 
+            // The branch's pull request, one click from the review it names. A PR is read
+            // and discussed in a browser — this tile's job is only to say there is one and
+            // to get you there without a trip through GitHub's branch list.
+            if let pullRequest = model.pullRequest {
+                PullRequestRow(pullRequest: pullRequest)
+            }
+
             if model.worktrees.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
@@ -193,8 +200,87 @@ public struct GitTile: View {
     private func poll() async {
         while !Task.isCancelled {
             await model.refresh()
+            // On the same beat, but rate-limited inside the model to something a network
+            // call can live with — usually this returns without asking GitHub anything.
+            await model.refreshPullRequest()
             await TilePolling.tick(Preferences.gitInterval)
         }
+    }
+}
+
+/// The pull request open on this branch, as a row you can click.
+///
+/// A whole row rather than a chip beside the branch: a PR is a title, and a title truncated
+/// to fit next to a branch name is a link you have to open to find out what it is.
+private struct PullRequestRow: View {
+    let pullRequest: GitModel.PullRequest
+    @State private var isHovering = false
+
+    /// GitHub's own colours for its own states, because that is what the user has just been
+    /// looking at in the browser. Draft is deliberately grey even though it is open: a draft
+    /// is not asking to be reviewed.
+    private var stateColour: Color {
+        if pullRequest.isDraft { return Token.Colour.tertiaryLabel }
+        switch pullRequest.state {
+        case "OPEN": return .green
+        case "MERGED": return .purple
+        default: return .red
+        }
+    }
+
+    /// Said in words only when it is NOT the ordinary case. An "OPEN" badge on every row is
+    /// a word that never varies, which is a word nobody reads.
+    private var stateLabel: String? {
+        if pullRequest.isDraft { return "draft" }
+        switch pullRequest.state {
+        case "OPEN": return nil
+        case "MERGED": return "merged"
+        default: return "closed"
+        }
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.trianglehead.pull")
+                    .foregroundStyle(stateColour)
+                Text("#\(pullRequest.number)")
+                    .foregroundStyle(Token.Colour.label)
+                Text(pullRequest.title)
+                    .foregroundStyle(Token.Colour.secondaryLabel)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let stateLabel {
+                    Text(stateLabel)
+                        .foregroundStyle(stateColour)
+                }
+                Spacer(minLength: 0)
+                // Says where the click goes BEFORE it is clicked — the one thing in this
+                // tile that leaves the app.
+                Image(systemName: "arrow.up.forward.square")
+                    .opacity(isHovering ? 1 : 0)
+            }
+            .font(Token.Type_.monoSmall)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Token.Colour.label.opacity(isHovering ? 0.08 : 0))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .onHover { isHovering = $0 }
+        .help("Open #\(pullRequest.number) in your browser")
+        .accessibilityLabel("Pull request \(pullRequest.number), \(pullRequest.title)")
+        .accessibilityHint("Opens on GitHub in your browser")
+    }
+
+    private func open() {
+        guard let url = URL(string: pullRequest.url) else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 

@@ -117,11 +117,17 @@ public struct TodoTile: View {
                 .focused($draftFocused)
                 .onSubmit(add)
 
-            if !draft.isEmpty {
+            // The slot is always here; only the glyph inside it comes and goes. Appearing
+            // and disappearing, the button changed the composer's height as well as its
+            // width, so the first character typed nudged the whole list below it — and the
+            // moment the task landed and the draft emptied, nudged it back.
+            TodoRowSlot {
                 Button(action: add) { Image(systemName: "return") }
                     .buttonStyle(.plain)
                     .foregroundStyle(Token.Colour.accent)
                     .help("Add task")
+                    .opacity(draft.isEmpty ? 0 : 1)
+                    .disabled(draft.isEmpty)
             }
         }
         .padding(.leading, 12)
@@ -246,34 +252,48 @@ private struct TodoRow: View {
             .pointerStyle(.link)
             .disabled(isEditing)
 
-            if isEditing {
-                // Deliberately the same font, colour and column as the label it replaces, so
-                // the row is edited in place rather than replaced by a form.
-                TextField("Task", text: $draft)
-                    .textFieldStyle(.plain)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(Token.Colour.label)
-                    .focused($isFieldFocused)
-                    .onSubmit { commitEdit(draft) }
-                    // Escape abandons the edit. Without it the only way out of the field is
-                    // to accept whatever is in it, which makes a mistyped task a trap.
-                    .onExitCommand(perform: cancelEdit)
-                    .task {
-                        draft = item.text
-                        isFieldFocused = true
+            // The LABEL gives the row its height in both modes, and the field is laid over
+            // it rather than swapped in for it.
+            //
+            // A plain text field carries a point or so of chrome a `Text` does not, so the
+            // swap grew the row as an edit opened and shrank it again on commit — every
+            // task below the one being edited sliding a pixel each way. An overlay takes no
+            // part in layout, so the row measures the same whether it is being read or
+            // typed into, and the field paints in exactly the label's column.
+            Text(item.text)
+                .font(Token.Type_.tileSubtitle)
+                .foregroundStyle(item.isDone ? Token.Colour.tertiaryLabel : Token.Colour.label)
+                .strikethrough(item.isDone, color: Token.Colour.tertiaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
+                // Takes the row's free width itself, in place of the trailing spacer it
+                // used to share it with — the field over it has to span the row, not stop
+                // at the end of a three-word task.
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(isEditing ? 0 : 1)
+                // Double-click to edit, the way a filename is renamed in Finder. The
+                // pencil below is the discoverable route; this is the fast one.
+                .onTapGesture(count: 2, perform: beginEdit)
+                .overlay(alignment: .topLeading) {
+                    if isEditing {
+                        // Deliberately the same font, colour and column as the label it
+                        // covers, so the row is edited in place rather than replaced by a
+                        // form.
+                        TextField("Task", text: $draft)
+                            .textFieldStyle(.plain)
+                            .font(Token.Type_.tileSubtitle)
+                            .foregroundStyle(Token.Colour.label)
+                            .focused($isFieldFocused)
+                            .onSubmit { commitEdit(draft) }
+                            // Escape abandons the edit. Without it the only way out of the
+                            // field is to accept whatever is in it, which makes a mistyped
+                            // task a trap.
+                            .onExitCommand(perform: cancelEdit)
+                            .task {
+                                draft = item.text
+                                isFieldFocused = true
+                            }
                     }
-            } else {
-                Text(item.text)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(item.isDone ? Token.Colour.tertiaryLabel : Token.Colour.label)
-                    .strikethrough(item.isDone, color: Token.Colour.tertiaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
-                    // Double-click to edit, the way a filename is renamed in Finder. The
-                    // pencil below is the discoverable route; this is the fast one.
-                    .onTapGesture(count: 2, perform: beginEdit)
-            }
-
-            Spacer(minLength: 0)
+                }
 
             // Three slots, always the same three columns, whatever is in them. The row used
             // to carry three controls on hover and a single one while editing, so pressing
@@ -345,11 +365,12 @@ private struct TodoRow: View {
     }
 }
 
-/// One trailing control's worth of a todo row, occupied or not.
+/// One control's worth of a todo row, occupied or not.
 ///
-/// A fixed width so the cluster's columns are a property of the ROW rather than of whatever
-/// happens to be showing in it: hover reveals controls, editing swaps one for another, and
-/// none of that is allowed to move the rest.
+/// A fixed width so the columns are a property of the ROW rather than of whatever happens to
+/// be showing in it: hover reveals controls, editing swaps one for another, the composer's
+/// Add appears with the first character typed, and none of that is allowed to move anything
+/// else.
 private struct TodoRowSlot<Content: View>: View {
     @ViewBuilder let content: Content
 
