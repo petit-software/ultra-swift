@@ -162,8 +162,12 @@ the agent running in the next pane over.
   to survive atomic-replace saves). Reload on change. If the file changed on disk while a local
   edit was in flight (mtime + content hash mismatch), keep both: write the local version and
   surface a non-blocking "reloaded from disk — your edit is in the undo stack" notice.
-- **Actions**: toggle, add, delete, reorder by drag, indent/outdent, and **Send to shell** —
-  injects the task text into the focused shell without submitting.
+- **Actions**: toggle, add, remove (a **minus** — one line out of a markdown file, not a
+  deletion), reorder by drag, indent/outdent, edit in place, and **Send to shell** — injects the
+  task text into the focused shell without submitting.
+- **Editing does not move the row.** The trailing controls sit in fixed-width slots and the row
+  keeps one baseline alignment in both modes, so entering edit mode swaps the pencil for Save in
+  the same column instead of re-flowing every icon out from under the pointer.
 - **Why markdown and not a database**: the agent in the adjacent pane can read and update it with
   no integration work at all. That is the entire point.
 
@@ -211,8 +215,11 @@ The drop target. Files, folders, and links that the agent should know about.
 - **Send to shell** — the reason the tile exists. Injects `@<path relative to project root>`
   references into the focused shell **without submitting**, so the user types their sentence
   around them. Multi-select joins with spaces. Absolute paths are used when the target is
-  outside the project.
+  outside the project. The footer sends the whole list; **each row sends just itself**, in the
+  same `@path` form — a list gathered over a session usually holds more than the one file the
+  next prompt is about. A missing file's send is dimmed.
 - **Also**: "Copy as prompt" (paths plus a short preamble), pin/unpin, remove, reveal in Finder.
+  Remove is a **minus**, not a trash can: it takes a row off a list and never touches the file.
 - Stored per project alongside the layout.
 
 ## 6. Ports

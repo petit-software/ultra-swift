@@ -114,6 +114,29 @@ struct ContextTests {
         #expect(model.referenceText(relativeTo: root) == "@Sources/Main.swift")
     }
 
+    /// The per-row send exists so a prompt can name ONE file out of a list gathered over a
+    /// session. It has to speak the same `@path` the whole-list send does, or the two
+    /// buttons in this tile would be typing two different things at the same prompt.
+    @Test("one item's reference is the same @path the whole list would send")
+    func singleReference() throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nested = root.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        for name in ["Main.swift", "Other.swift"] {
+            try "x".write(to: nested.appendingPathComponent(name),
+                          atomically: true, encoding: .utf8)
+        }
+        let model = ContextModel(root: root)
+        model.add(nested.appendingPathComponent("Main.swift"))
+        model.add(nested.appendingPathComponent("Other.swift"))
+        let main = try #require(model.items.first { $0.name == "Main.swift" })
+        #expect(ContextModel.reference(for: main, relativeTo: root) == "@Sources/Main.swift")
+        #expect(model.referenceText(relativeTo: root)
+                == "@Sources/Main.swift @Sources/Other.swift",
+                "sending one file must not be a different spelling from sending the list")
+    }
+
     @Test("a path outside the root stays absolute rather than growing ../..")
     func outsideRoot() throws {
         let root = try makeProject()

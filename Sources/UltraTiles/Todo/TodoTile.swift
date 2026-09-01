@@ -233,7 +233,10 @@ private struct TodoRow: View {
     }
 
     private var row: some View {
-        HStack(alignment: isEditing ? .center : .firstTextBaseline, spacing: 7) {
+        // ONE alignment, in both modes. It used to centre while editing and sit on the first
+        // text baseline otherwise, so clicking the pencil nudged the circle and the controls
+        // a couple of points down the row — a jump on a row you are about to type into.
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
             Button(action: toggle) {
                 Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
@@ -272,21 +275,52 @@ private struct TodoRow: View {
 
             Spacer(minLength: 0)
 
-            if isEditing {
-                Button { commitEdit(draft) } label: { Image(systemName: "return") }
-                    .foregroundStyle(Token.Colour.accent)
-                    .help("Save task")
-                    .pointerStyle(.link)
-            } else if isHovering {
-                Button(action: beginEdit) { Image(systemName: "pencil") }
-                    .help("Edit task")
-                    .pointerStyle(.link)
-                Button(action: send) { Image(systemName: "arrow.right.to.line") }
-                    .help("Send to shell")
-                    .pointerStyle(.link)
-                Button(action: delete) { Image(systemName: "trash") }
-                    .help("Delete task")
-                    .pointerStyle(.link)
+            // Three slots, always the same three columns, whatever is in them. The row used
+            // to carry three controls on hover and a single one while editing, so pressing
+            // the pencil re-flowed the cluster and every icon landed somewhere else —
+            // including under the pointer that had just pressed one.
+            //
+            // The cluster appears with the hover and stays for the edit, rather than sitting
+            // there empty on every row: a todo pane is narrow, and 62pt held open on the
+            // right of a resting list wraps task text for controls nobody is reaching for.
+            if isHovering || isEditing {
+                HStack(spacing: 4) {
+                    TodoRowSlot {
+                        // Save takes the PENCIL's slot: it is the same verb at its other end —
+                        // one opens the edit, one closes it — so the column keeps its meaning.
+                        if isEditing {
+                            Button { commitEdit(draft) } label: { Image(systemName: "return") }
+                                .foregroundStyle(Token.Colour.accent)
+                                .help("Save task")
+                                .pointerStyle(.link)
+                        } else if isHovering {
+                            Button(action: beginEdit) { Image(systemName: "pencil") }
+                                .help("Edit task")
+                                .pointerStyle(.link)
+                        }
+                    }
+                    TodoRowSlot {
+                        // Hidden, not disabled, while editing: sending half-typed text to a
+                        // shell is not a thing anyone means to do, and the empty slot keeps
+                        // the column open for when the edit ends.
+                        if !isEditing, isHovering {
+                            Button(action: send) { Image(systemName: "arrow.right.to.line") }
+                                .help("Send to shell")
+                                .pointerStyle(.link)
+                        }
+                    }
+                    TodoRowSlot {
+                        if !isEditing, isHovering {
+                            // Minus rather than a trash can. The can says "destroyed"; this
+                            // takes one line out of a markdown file that is in the repository,
+                            // which is a removal, and it is the same glyph the Context list
+                            // removes a row with.
+                            Button(action: delete) { Image(systemName: "minus") }
+                                .help("Remove task")
+                                .pointerStyle(.link)
+                        }
+                    }
+                }
             }
         }
         .buttonStyle(.plain)
@@ -308,6 +342,23 @@ private struct TodoRow: View {
             onDropBefore(moved)
             return true
         } isTargeted: { onDragOver($0) }
+    }
+}
+
+/// One trailing control's worth of a todo row, occupied or not.
+///
+/// A fixed width so the cluster's columns are a property of the ROW rather than of whatever
+/// happens to be showing in it: hover reveals controls, editing swaps one for another, and
+/// none of that is allowed to move the rest.
+private struct TodoRowSlot<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    /// Wide enough for the widest glyph the slot holds (`return`), so no state of the row
+    /// is the one that decides the width.
+    static var width: CGFloat { 18 }
+
+    var body: some View {
+        content.frame(width: Self.width)
     }
 }
 

@@ -63,8 +63,14 @@ public enum SessionTint: String, CaseIterable, Identifiable, Sendable {
 /// The symbols a session's sidebar icon can be.
 ///
 /// A curated list, not the whole SF Symbols library. 7,000 symbols behind a search field is
-/// a second app; two dozen that answer "what kind of project is this" is a decision someone
-/// can make in a second and recognise a week later.
+/// a second app; a few dozen that answer "what kind of project is this" is a decision
+/// someone can make in a second and recognise a week later.
+///
+/// Ordered in ROWS of `columns`, each row one theme — panes and code, build and debug,
+/// machines, data, network, security, people, business, media, documents, nature, marks.
+/// The grid is laid out row-wise, so the order here IS the grouping the user reads; adding
+/// a symbol means putting it in its row, not on the end. A test keeps the count a whole
+/// number of rows, because a half-filled last row is a ragged edge under a tidy grid.
 ///
 /// Every one is a `.fill` variant, and that is the point of curating rather than opening the
 /// library: at 15pt in a sidebar an outline symbol is a few hairlines of colour and reads as
@@ -80,13 +86,51 @@ public enum SessionSymbols {
     /// stored name falls back to.
     public static let fallback = "square.split.2x1.fill"
 
+    /// How wide the picker's grid is, and therefore how long a themed row of this list is.
+    /// One number, read by both the catalogue's tests and the picker, so the rows a reader
+    /// sees are the rows written here.
+    public static let columns = 6
+
+    /// Nothing is ever REMOVED from this list, only added to it. A name that leaves the
+    /// catalogue stops resolving — see `resolved` — so every session that had chosen it
+    /// silently goes back to the default mark.
     public static let all: [String] = [
+        // Panes, files, code
         "square.split.2x1.fill", "folder.fill", "apple.terminal.fill", "curlybraces.square.fill",
-        "hammer.fill", "wrench.and.screwdriver.fill", "gearshape.fill", "cpu.fill",
-        "cube.fill", "shippingbox.fill", "externaldrive.fill", "cloud.fill",
-        "globe.americas.fill", "lock.fill", "bolt.fill", "flame.fill",
-        "leaf.fill", "flask.fill", "paintbrush.fill", "book.fill",
-        "doc.text.fill", "star.fill", "heart.fill", "bookmark.fill",
+        "app.fill", "square.stack.3d.up.fill",
+        // Build, debug, ideas
+        "hammer.fill", "wrench.and.screwdriver.fill", "gearshape.fill",
+        "puzzlepiece.extension.fill", "ladybug.fill", "lightbulb.fill",
+        // Machines and packages
+        "cpu.fill", "memorychip.fill", "keyboard.fill", "externaldrive.fill",
+        "cube.fill", "shippingbox.fill",
+        // Data, models, science
+        "cylinder.split.1x2.fill", "tablecells.fill", "chart.bar.fill", "brain.fill",
+        "flask.fill", "waveform.circle.fill",
+        // Network and power
+        "cloud.fill", "globe.americas.fill", "antenna.radiowaves.left.and.right.circle.fill",
+        "circle.hexagongrid.fill", "bolt.fill", "flame.fill",
+        // Security and trust
+        "lock.fill", "key.fill", "shield.fill", "eye.fill",
+        "checkmark.seal.fill", "lifepreserver.fill",
+        // People and messages
+        "envelope.fill", "message.fill", "bell.fill", "phone.fill",
+        "person.2.fill", "quote.bubble.fill",
+        // Business and money
+        "briefcase.fill", "building.2.fill", "house.fill", "cart.fill",
+        "creditcard.fill", "dollarsign.circle.fill",
+        // Media and play
+        "camera.fill", "photo.fill", "movieclapper.fill", "gamecontroller.fill",
+        "paintbrush.fill", "theatermasks.fill",
+        // Documents and reading
+        "doc.text.fill", "book.fill", "newspaper.fill", "tray.fill",
+        "archivebox.fill", "graduationcap.fill",
+        // Outdoors and weather
+        "leaf.fill", "tree.fill", "mountain.2.fill", "drop.fill",
+        "sun.max.fill", "moon.fill",
+        // Marks
+        "star.fill", "heart.fill", "bookmark.fill", "tag.fill",
+        "flag.fill", "trophy.fill",
     ]
 
     /// Does this system have the symbol? Used by the test that guards the catalogue.

@@ -27,7 +27,12 @@ public struct ContextTile: View {
                             ContextRow(item: item,
                                        remove: { model.remove(item) },
                                        togglePin: { model.togglePin(item) },
-                                       reveal: { context.revealInFinder(item.url) })
+                                       reveal: { context.revealInFinder(item.url) },
+                                       send: {
+                                           context.injectIntoShell(
+                                            ContextModel.reference(for: item,
+                                                                   relativeTo: context.root))
+                                       })
                         }
                     }
                     .padding(.vertical, 4)
@@ -64,7 +69,10 @@ public struct ContextTile: View {
                              isEnabled: !model.items.isEmpty) {
                 context.injectIntoShell(model.referenceText(relativeTo: context.root))
             }
-            TileFooterButton(symbol: "trash", help: "Clear everything except pinned items",
+            // `minus.circle` rather than a trash can: nothing is deleted from disk here, a
+            // row is taken off a list — the same verb each row's own minus performs, in the
+            // plural, which is what the ring around it says.
+            TileFooterButton(symbol: "minus.circle", help: "Clear everything except pinned items",
                              isEnabled: !model.items.allSatisfy(\.isPinned)) {
                 model.removeAllUnpinned()
             }
@@ -94,6 +102,7 @@ private struct ContextRow: View {
     let remove: () -> Void
     let togglePin: () -> Void
     let reveal: () -> Void
+    let send: () -> Void
     @State private var isHovering = false
 
     var body: some View {
@@ -143,14 +152,26 @@ private struct ContextRow: View {
                     .foregroundStyle(Token.Colour.accent)
             }
             if isHovering {
+                // The tile's headline verb, per row. The footer sends the WHOLE list, which
+                // is the wrong granularity for most prompts: a list gathered over a session
+                // holds far more than the one file the next sentence is about.
+                //
+                // Leads the cluster because it is the thing this tile is for; a missing file
+                // has no reference worth typing, so it is dimmed rather than dropped — a
+                // cluster that changes width between rows is a cluster you cannot aim at.
+                Button(action: send) { Image(systemName: "arrow.right.to.line") }
+                    .help("Send this file to the shell")
+                    .disabled(item.isMissing)
                 Button(action: togglePin) {
                     Image(systemName: item.isPinned ? "pin.slash" : "pin")
                 }
                 .help(item.isPinned ? "Unpin" : "Pin — survives Clear")
                 Button(action: reveal) { Image(systemName: "magnifyingglass") }
                     .help("Reveal in Finder")
-                Button(action: remove) { Image(systemName: "xmark") }
-                    .help("Remove")
+                // Minus, not a cross or a trash can. Removing a row takes the file off this
+                // list and does nothing to the file, and a trash can promises otherwise.
+                Button(action: remove) { Image(systemName: "minus") }
+                    .help("Remove from list")
             }
         }
         .buttonStyle(.plain)

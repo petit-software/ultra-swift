@@ -133,7 +133,16 @@ public final class ContextModel {
 
     /// `@path` references, the form the agent CLIs already understand.
     public func referenceText(relativeTo root: URL) -> String {
-        items.map { "@" + Self.relativePath($0.url, to: root) }.joined(separator: " ")
+        items.map { Self.reference(for: $0, relativeTo: root) }.joined(separator: " ")
+    }
+
+    /// ONE item's reference, in exactly the form the whole-list send uses.
+    ///
+    /// Sending the list is the tile's headline verb, but a context list is gathered over a
+    /// session and most prompts want one file out of it — without this the only route was to
+    /// send everything and delete back the references you did not mean.
+    public static func reference(for item: Item, relativeTo root: URL) -> String {
+        "@" + relativePath(item.url, to: root)
     }
 
     static func relativePath(_ url: URL, to root: URL) -> String {

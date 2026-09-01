@@ -29,7 +29,16 @@ struct SessionCustomizer: View {
 
     private var tint: SessionTint { SessionTint(storedValue: appearance.tint) }
 
-    private let columns = Array(repeating: GridItem(.fixed(28), spacing: 6), count: 6)
+    /// One width for both grids, taken from the catalogue: the symbol list is written in
+    /// themed rows of `SessionSymbols.columns`, and a picker that laid it out any other
+    /// width would show those rows broken across lines.
+    private let columns = Array(repeating: GridItem(.fixed(28), spacing: 6),
+                                count: SessionSymbols.columns)
+
+    /// Five rows, plus enough of a sixth to show there is more below. The catalogue is
+    /// twelve rows long now; laid out in full it made a popover taller than the sidebar
+    /// row it hangs off.
+    private static let symbolGridHeight: CGFloat = 178
 
     /// Reset offers to undo all three, so it lights up when any one of them has moved.
     private var isCustomized: Bool { !appearance.isDefault || name != defaultName }
@@ -74,29 +83,22 @@ struct SessionCustomizer: View {
             }
 
             section("Symbol") {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(SessionSymbols.all, id: \.self) { symbol in
-                        Button { appearance.symbol = symbol } label: {
-                            Image(systemName: symbol)
-                                .font(.system(size: 14))
-                                // Deliberately NOT the chosen colour. Twenty-four glyphs all
-                                // repainted on every swatch press turned choosing a colour
-                                // into the whole popover flashing, and it left the grid
-                                // answering a question — "what colour is this?" — that the
-                                // swatches above already answer. This grid picks a SHAPE;
-                                // the row behind the popover is where the colour shows.
-                                .foregroundStyle(Token.Colour.label)
-                                .frame(width: 28, height: 28)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(Token.Colour.label.opacity(0.12))
-                                        .opacity(appearance.symbol == symbol ? 1 : 0)
-                                }
-                                .contentShape(.rect)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        symbolGrid
+                    }
+                    .frame(height: Self.symbolGridHeight)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .onAppear {
+                        // A mark chosen from the bottom of the list would otherwise open
+                        // to a grid with no selection anywhere in it, which reads as
+                        // "nothing is chosen" rather than "scroll down".
+                        //
+                        // After the first layout pass: a lazy grid has not built the row
+                        // being scrolled to until it has one.
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(appearance.symbol, anchor: .center)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(symbol)
-                        .accessibilityAddTraits(appearance.symbol == symbol ? [.isSelected] : [])
                     }
                 }
             }
@@ -114,6 +116,37 @@ struct SessionCustomizer: View {
         // Closing by clicking away is as much a commit as pressing Return, so an emptied
         // field must not be able to leave a nameless row behind.
         .onDisappear { normalize() }
+    }
+
+    private var symbolGrid: some View {
+        LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(SessionSymbols.all, id: \.self) { symbol in
+                Button { appearance.symbol = symbol } label: {
+                    Image(systemName: symbol)
+                        .font(.system(size: 14))
+                        // Deliberately NOT the chosen colour. A grid of glyphs all
+                        // repainted on every swatch press turned choosing a colour
+                        // into the whole popover flashing, and it left the grid
+                        // answering a question — "what colour is this?" — that the
+                        // swatches above already answer. This grid picks a SHAPE;
+                        // the row behind the popover is where the colour shows.
+                        .foregroundStyle(Token.Colour.label)
+                        .frame(width: 28, height: 28)
+                        .background {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Token.Colour.label.opacity(0.12))
+                                .opacity(appearance.symbol == symbol ? 1 : 0)
+                        }
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(symbol)
+                .accessibilityAddTraits(appearance.symbol == symbol ? [.isSelected] : [])
+                // The anchor `scrollTo` aims at when the popover opens on a mark
+                // that sits below the fold.
+                .id(symbol)
+            }
+        }
     }
 
     /// A name of nothing but spaces is a blank row. Fall back to the folder's own name,

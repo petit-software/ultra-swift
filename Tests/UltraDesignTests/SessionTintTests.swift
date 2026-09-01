@@ -64,6 +64,31 @@ struct SessionTintTests {
         #expect(SessionSymbols.all.contains(SessionSymbols.fallback))
     }
 
+    /// The grid is laid out row-wise, and the list is written in themed rows. A count that
+    /// is not a whole number of rows leaves the last theme ragged under a tidy grid — and,
+    /// more usefully, catches a symbol appended to the end instead of into its group.
+    @Test("the catalogue is a whole number of grid rows")
+    func wholeRows() {
+        #expect(SessionSymbols.all.count % SessionSymbols.columns == 0,
+                "\(SessionSymbols.all.count) symbols does not fill rows of \(SessionSymbols.columns)")
+    }
+
+    /// Nothing may LEAVE the catalogue: `resolved` sends an off-catalogue name back to the
+    /// default, so dropping a symbol silently resets every session that had chosen it.
+    @Test("the symbols earlier builds offered are all still offered")
+    func nothingIsEverRemoved() {
+        let shipped = ["square.split.2x1.fill", "folder.fill", "apple.terminal.fill",
+                       "curlybraces.square.fill", "hammer.fill", "wrench.and.screwdriver.fill",
+                       "gearshape.fill", "cpu.fill", "cube.fill", "shippingbox.fill",
+                       "externaldrive.fill", "cloud.fill", "globe.americas.fill", "lock.fill",
+                       "bolt.fill", "flame.fill", "leaf.fill", "flask.fill", "paintbrush.fill",
+                       "book.fill", "doc.text.fill", "star.fill", "heart.fill", "bookmark.fill"]
+        for symbol in shipped {
+            #expect(SessionSymbols.all.contains(symbol),
+                    "\(symbol) was offered by an earlier build; removing it resets whoever chose it")
+        }
+    }
+
     @Test("the catalogue has no duplicates")
     func noDuplicates() {
         #expect(Set(SessionSymbols.all).count == SessionSymbols.all.count)
