@@ -271,6 +271,21 @@ struct WorkspaceCommands: Commands {
         }
 
         CommandGroup(after: .newItem) {
+            // A project that does not exist yet — an empty folder, or a clone. Distinct from
+            // everything below it, all of which needs a folder that is already there.
+            //
+            // ⇧⌘N because it is what "new, but not the default new" means on this platform:
+            // ⌘N is New Window here as it is everywhere, and ⇧⌘N is Finder's New Folder,
+            // which is half of what this does. Nothing in the reserved terminal table uses
+            // it — see `ReservedTerminalKeys`.
+            Button("New Project…") { ui?.isCreatingProject = true }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                // Dims rather than vanishing: a command that disappears is a command nobody
+                // learns. There is no window to open the result in until one exists.
+                .disabled(ui == nil)
+
+            Divider()
+
             Button("Open Folder…") { chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
 
@@ -512,6 +527,13 @@ struct RootView: View {
                 if let store {
                     CommandPalette(store: store, isPresented: $ui.isPaletteShown)
                 }
+            }
+            // Presented HERE rather than from the sidebar, so File ▸ New Project… reaches it
+            // in a window whose sidebar is collapsed — which is a window with no `+` in it
+            // at all.
+            .sheet(isPresented: $ui.isCreatingProject) {
+                NewProjectSheet(open: { sessions.open(directory: $0) },
+                                isPresented: $ui.isCreatingProject)
             }
             // In the real toolbar rather than drawn into the titlebar ourselves: on macOS 26
             // a toolbar item gets the standard Liquid Glass treatment automatically, which

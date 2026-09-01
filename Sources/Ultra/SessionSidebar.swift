@@ -19,9 +19,10 @@ import UltraTerminal
 /// worse copy of AppKit.
 struct SessionSidebar: View {
     @Bindable var sessions: SessionList
-    /// The window's UI state, for one flag: whether the selected row's customise popover is
-    /// open. It lives up there because File ▸ Session ▸ Customize Session… has to be able to
-    /// open it without going through a row.
+    /// The window's UI state, for two flags: whether the selected row's customise popover is
+    /// open, and whether the new-project sheet is up. Both live up there because File ▸
+    /// Session ▸ Customize Session… and File ▸ New Project… have to be able to open them
+    /// without going through the sidebar at all.
     @Bindable var ui: UIState
     /// The folder picker lives in the app's command layer, so the bar asks for it rather
     /// than opening its own — two `NSOpenPanel`s configured separately drift apart.
@@ -76,54 +77,72 @@ struct SessionSidebar: View {
         // Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a toolbar item, up
         // in the strip the traffic lights own and a long way from the list it adds to.
         .overlay(alignment: .bottom) {
-            SessionSidebarBar(sessions: sessions, openFolder: openFolder)
+            SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder)
         }
     }
 }
 
-/// The bar under the list: add a session, and nothing else.
+/// The bar under the list: the two ways a project gets into this window.
 ///
-/// Deliberately one control. A bottom bar is the easiest place in an app to accumulate
-/// buttons nobody presses, and everything else a session can do is on the row itself.
+/// TWO controls, and only two. `+` makes a project that does not exist yet — an empty
+/// folder, or a clone — and the folder opens one that does. They were one button for a
+/// while, and the one button could only do the second thing: a `+` that opens a file picker
+/// is not "new", it is "open" wearing the wrong icon, and there was nowhere at all to start
+/// a project from scratch.
+///
+/// A bottom bar is the easiest place in an app to accumulate buttons nobody presses.
+/// Everything else a session can do is on the row itself.
 private struct SessionSidebarBar: View {
     @Bindable var sessions: SessionList
+    @Bindable var ui: UIState
     let openFolder: () -> Void
 
     var body: some View {
+        // One in each corner. Side by side they read as a pair of related verbs — "add" and
+        // "add, but differently" — and the eye has to stop at both to work out which is
+        // which. Pushed apart, each is the only thing at its end of the bar: new on the
+        // leading edge where a source list puts "add", open on the trailing edge.
         HStack(spacing: 0) {
-                Menu {
-                    ForEach(RecentProjects.list, id: \.self) { path in
-                        Button(ShellPaneFactory.abbreviate(path)) { sessions.open(directory: path) }
-                    }
-                    if !RecentProjects.list.isEmpty { Divider() }
-                    Button("Open Folder…") { openFolder() }
-                } label: {
-                    // The label is the whole hit target, padded rather than framed, so the
-                    // press area matches what a bottom-bar button looks like instead of
-                    // being a 12pt glyph you have to aim at.
-                    Label("New Session", systemImage: "plus")
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 24, height: 20)
-                        .contentShape(.rect)
-                } primaryAction: {
-                    // Clicking opens a folder; holding drops the recents menu. The plain
-                    // menu made the common case — "add a project I have not opened before"
-                    // — take two clicks and a read.
-                    openFolder()
-                    // Whether or not a folder was chosen: the button took first responder
-                    // the moment it was pressed, and a cancelled panel leaves it there.
-                    sessions.selected?.reclaimKeyboardFocus()
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("Open another project in this window (⌘T)")
-                .accessibilityLabel("New session")
+            // NEW. A plain button, not a menu: the choice between an empty folder and a
+            // clone belongs in the sheet, where both are visible at once and the fields
+            // under them explain what each one needs. A menu here would have made it a
+            // decision taken before seeing either.
+            Button { ui.isCreatingProject = true } label: {
+                barLabel("plus.capsule.fill")
+            }
+            .buttonStyle(.plain)
+            .help("New project — an empty folder or a clone (⇧⌘N)")
+            .accessibilityLabel("New project")
 
             Spacer(minLength: 0)
+
+            // OPEN. Clicking opens a folder; holding drops the recents. The plain menu made
+            // the common case — "a project I have not opened before" — two clicks and a
+            // read.
+            Menu {
+                ForEach(RecentProjects.list, id: \.self) { path in
+                    Button(ShellPaneFactory.abbreviate(path)) { sessions.open(directory: path) }
+                }
+                if !RecentProjects.list.isEmpty { Divider() }
+                Button("Open Folder…") { openFolder() }
+            } label: {
+                barLabel("folder.fill")
+            } primaryAction: {
+                openFolder()
+                // Whether or not a folder was chosen: the button took first responder the
+                // moment it was pressed, and a cancelled panel leaves it there.
+                sessions.selected?.reclaimKeyboardFocus()
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            // Belt and braces with the `foregroundStyle` in `barLabel`: the tint is what a
+            // menu style reaches for first when it draws a label.
+            .tint(Token.Colour.secondaryLabel)
+            .help("Open an existing project in this window (⌘T)")
+            .accessibilityLabel("Open project")
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         // The same height as a tile's footer and a pane's header, so every horizontal strip
         // in the window sits on one rhythm.
         .frame(height: Token.Space.tileHeaderHeight)
@@ -134,6 +153,26 @@ private struct SessionSidebarBar: View {
         // bottom of the sidebar — a second surface inside the first — and the line was only
         // needed because the fill ended abruptly. A ramp has no edge to justify.
         .background { EdgeBlur(edge: .bottom) }
+    }
+
+    /// The label is the whole hit target, padded rather than framed, so the press area
+    /// matches what a bottom-bar button looks like instead of being a 12pt glyph you have to
+    /// aim at. Shared by both controls so the two cannot end up different sizes.
+    private func barLabel(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            // Bold rather than semibold. These two are the smallest glyphs in the window and
+            // they sit on a blurred ramp with rows fading underneath them, which eats a
+            // weight — semibold read as thin here in a way the same weight does not in a
+            // pane header sitting on a solid surface.
+            .font(.system(size: 14, weight: .bold))
+            // Stated, not inherited. One of these is a `Button` and the other is a `Menu`,
+            // and a borderless menu draws its label in the CONTROL tint while a plain button
+            // takes the foreground it is given — so the pair rendered in two different
+            // colours despite sharing this label. The same token every other chrome icon
+            // rests in (`ChromeIconLabel`), so the bar matches the pane headers above it.
+            .foregroundStyle(Token.Colour.secondaryLabel)
+            .frame(width: 26, height: 22)
+            .contentShape(.rect)
     }
 }
 

@@ -127,6 +127,32 @@ public enum Token {
             }
         }
 
+        /// The label colour that reads ON a solid accent fill.
+        ///
+        /// Never assume white. This app's accent is user-chosen and its DEFAULT is
+        /// literally `.white` (`Preferences.AccentColour.white`), so "fill with the accent,
+        /// label in white" is an invisible control out of the box — which is exactly how it
+        /// shipped for about ten minutes. Yellow has the same problem for a different
+        /// reason.
+        ///
+        /// Picked from the fill's own luminance instead, by the Rec. 709 coefficients — the
+        /// eye is far more sensitive to green than to blue, and an unweighted average calls
+        /// a saturated blue "light" and puts black on it.
+        public static var onAccent: Color {
+            Color(nsColor: onAccentColour(NSColor(accent)))
+        }
+
+        /// Split out so a test can hold the rule without a preference or a screen.
+        static func onAccentColour(_ fill: NSColor) -> NSColor {
+            guard let srgb = fill.usingColorSpace(.sRGB) else { return .white }
+            let luminance = 0.2126 * srgb.redComponent
+                          + 0.7152 * srgb.greenComponent
+                          + 0.0722 * srgb.blueComponent
+            // 0.6 rather than 0.5: white text on a mid-tone is harder to read than black
+            // text on the same tone, so the tie is broken toward black.
+            return luminance > 0.6 ? .black : .white
+        }
+
         /// How much of the accent a held-back tint carries.
         ///
         /// One source for every muted use of the accent, so the focus ring and anything

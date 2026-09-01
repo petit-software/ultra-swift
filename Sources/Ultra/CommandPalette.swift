@@ -13,6 +13,14 @@ final class UIState {
     /// could only be reached by the first. A context menu is a *view* of the command
     /// registry, never the only way to do something; see the `keyboard-first` skill.
     var isCustomizingSession = false
+    /// Whether the new-project sheet is up.
+    ///
+    /// Window state rather than sidebar state, for the same reason as the flag above: there
+    /// are two ways in — the sidebar's `+` and File ▸ New Project… — and a flag owned by the
+    /// bar could only be reached by the first. The menu item is not a convenience; it is the
+    /// keyboard path, and a command reachable only from a control is the anti-pattern the
+    /// `keyboard-first` skill names outright.
+    var isCreatingProject = false
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding
