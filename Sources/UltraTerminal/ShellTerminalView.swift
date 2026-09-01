@@ -69,11 +69,59 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// The launched half is deliberately NOT gated on the tty agreeing. A user's own agent
     /// need not be one of the built-ins, and demanding the foreground process match a known
     /// binary would stop counting every agent they configured themselves.
-    public var isRunningAgent: Bool {
+    public var isRunningAgent: Bool { isRunningAgent(given: activity) }
+
+    /// The same rule, answered from a reading already taken. One rule, two callers: the
+    /// property above for anyone who just wants the answer, and `agentSample`, which must
+    /// not read the tty twice — see there.
+    func isRunningAgent(given activity: PaneActivity?) -> Bool {
         guard isRunning else { return false }
         return spec.agentCommand != nil || (activity?.isAgent ?? false)
     }
     public private(set) var isRunning = false
+
+    /// When this pane last produced a byte, and when it last rang `BEL`.
+    ///
+    /// Both exist for `AgentStatus`, which has no other way to tell an agent that is
+    /// thinking from one that has stopped and is waiting for a human — see
+    /// `AgentStatusTracker`. Recorded here rather than sampled because output is an EVENT
+    /// and a poller would only ever see the gaps between bursts.
+    public private(set) var lastOutputAt: Date?
+    public private(set) var lastBellAt: Date?
+
+    /// What the pane's process exited with, kept after it has gone.
+    ///
+    /// Only meaningful for a pane launched AS an agent — `ShellLauncher` runs `exec
+    /// <agent>`, so the code is the agent's own. A plain shell's code is the shell's, and an
+    /// agent typed at a prompt is reaped by that shell and never reaches this at all.
+    public private(set) var lastExitCode: Int32?
+
+    /// Everything `AgentStatus` is allowed to read from this pane, sampled together.
+    ///
+    /// One value rather than four properties, because the rules read across the fields and a
+    /// sample whose "is an agent running" is a tick newer than its "has it gone quiet"
+    /// cannot be reasoned about.
+    ///
+    /// The tty is read ONCE. Asking `isRunningAgent` and then `activity` takes two separate
+    /// readings of the foreground process group, which is both twice the syscalls on a
+    /// per-second poll and — the part that matters — two answers from two instants in a
+    /// value whose whole purpose is to be self-consistent.
+    public var agentSample: AgentPaneSample {
+        let activity = activity
+        return AgentPaneSample(
+            // The `"agent"` fallback cannot currently be reached — a pane is only running an
+            // agent because it was launched as one or because the tty named one — but a
+            // sample that reported nil here would read as an agent EXITING, so the
+            // unreachable branch is the one worth being explicit about.
+            agent: isRunningAgent(given: activity)
+                ? (activity?.command ?? spec.agentCommand ?? "agent") : nil,
+            lastOutputAt: lastOutputAt,
+            lastBellAt: lastBellAt,
+            // Only for a pane that WAS an agent: a plain shell's exit code says nothing about
+            // an agent, and reporting it would paint a row red for an `exit 1` typed at a
+            // prompt.
+            exitCode: spec.agentCommand == nil ? nil : lastExitCode)
+    }
 
     private var process: LocalProcess!
     private var coalescer = ResizeCoalescer()
@@ -332,6 +380,10 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// rings `BEL` many times a minute, and one `NSSound.beep()` per ring is one CoreAudio
     /// stream opened and torn down per ring.
     public func bell(source: TerminalView) {
+        // Recorded BEFORE the preference is consulted. A bell is how an agent says it wants
+        // attention, and the sidebar's status badge depends on hearing every one of them —
+        // whether or not the user has asked to hear them too.
+        lastBellAt = Date()
         guard Preferences.audibleBell else { return }
         TerminalBell.ring()
     }
@@ -366,11 +418,18 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         pendingDirectoryProbe = nil
         isRunning = false
         processID = nil
+        // A process killed by a signal reports no code at all. Treated as a failure rather
+        // than as a clean finish: an agent that was terminated did not complete its work,
+        // and a green row would say it had.
+        lastExitCode = exitCode ?? -1
         shellDelegate?.shellTerminated(self, exitCode: exitCode)
     }
 
     public func dataReceived(slice: ArraySlice<UInt8>) {
         feed(byteArray: slice)
+        // One `gettimeofday` per burst on a path that already schedules a work item per
+        // burst. It is what lets the status badge tell a thinking agent from a stopped one.
+        lastOutputAt = Date()
         scheduleDirectoryProbe()
     }
 

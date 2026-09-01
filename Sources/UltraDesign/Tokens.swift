@@ -148,6 +148,21 @@ public enum Token {
 
         public static let unfocusedBorder = Color(nsColor: .separatorColor)
 
+        // MARK: Agent status
+        //
+        // The four states a session row can report — see `AgentStatus`. System colours
+        // rather than hand-picked hues, for the reason `SessionTint` gives: they are legible
+        // in both appearances and follow Increase Contrast without this app tracking it.
+        //
+        // Deliberately NOT the accent, even for `agentWorking`, which is the one that would
+        // read naturally as "the app's own colour". The accent is user-chosen and can be any
+        // of twelve hues, including the green and the red these have to be told apart from —
+        // a status vocabulary that changes meaning with a preference is not a vocabulary.
+        public static let agentWorking = Color(nsColor: .systemBlue)
+        public static let agentNeedsInput = Color(nsColor: .systemYellow)
+        public static let agentDone = Color(nsColor: .systemGreen)
+        public static let agentFailed = Color(nsColor: .systemRed)
+
         /// Divider hairline. Under Increase Contrast this becomes an opaque separator.
         public static var divider: Color {
             NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast

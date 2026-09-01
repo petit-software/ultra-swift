@@ -146,6 +146,13 @@ private struct SessionRow: View {
     let rename: (String) -> Void
     let close: () -> Void
     @State private var isHovering = false
+    /// Read straight off the monitor, which is `@Observable`, so a row redraws when its own
+    /// session's status changes and not when another's does. There is no per-row timer here
+    /// and there must never be: one poll for the whole app is the rule `AgentMonitor` was
+    /// written to hold.
+    private var status: AgentStatus {
+        AgentMonitor.shared.statusBySession[store.workspaceID] ?? .idle
+    }
     /// Seeded from disk at the row's first appearance, so a customised session is already
     /// wearing its icon on the frame it is drawn in rather than flashing the default first.
     /// SwiftUI keeps this per row IDENTITY, and a row's identity is its session.
@@ -212,20 +219,46 @@ private struct SessionRow: View {
 
             Spacer(minLength: 0)
 
-            // Shown on the SELECTED row as well as the hovered one. Hover-only meant the
-            // close control did not exist for anyone not holding the pointer over the row —
-            // and the row you are most likely to want to close is the one you are in.
-            if isSelected || isHovering, canClose {
-                Button(action: close) {
-                    Image(systemName: "xmark.circle.fill")
+            // ONE trailing slot, of a fixed width, holding whichever of two things the row
+            // currently has to say. Two slots side by side was the obvious layout and it is
+            // the wrong one: the close control comes and goes with the pointer, so the badge
+            // beside it would jump left and right as the mouse crossed the row — and a
+            // status light that moves is read as a change of status.
+            //
+            // The close control wins the slot when both want it, and that costs nothing:
+            // it only appears on the row the pointer is over or the one that is selected,
+            // and in both cases the session's agents are a glance away in the canvas
+            // itself. The badge is for the sessions you are NOT looking at.
+            ZStack {
+                if isSelected || isHovering, canClose {
+                    // Shown on the SELECTED row as well as the hovered one. Hover-only meant
+                    // the close control did not exist for anyone not holding the pointer over
+                    // the row — and the row you are most likely to want to close is the one
+                    // you are in.
+                    Button(action: close) {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    // Dimmer until the pointer is actually on the row, so a permanent control
+                    // on the selected row does not compete with the name beside it.
+                    .foregroundStyle(isHovering ? AnyShapeStyle(Token.Colour.label)
+                                                : AnyShapeStyle(.secondary))
+                    .help("Close session")
+                } else if let badge = status.badge {
+                    Image(systemName: badge.symbol)
+                        .font(Token.Type_.tileTitle)
+                        .foregroundStyle(badge.colour)
+                        // Free, and correct: SwiftUI drops a symbol effect under Reduce
+                        // Motion without this view having to ask. A working agent is the one
+                        // state that is about to change on its own, so it is the one worth
+                        // animating — the other three are settled.
+                        .symbolEffect(.pulse, isActive: status == .working)
+                        .help(badge.help)
                 }
-                .buttonStyle(.plain)
-                // Dimmer until the pointer is actually on the row, so a permanent control on
-                // the selected row does not compete with the name beside it.
-                .foregroundStyle(isHovering ? AnyShapeStyle(Token.Colour.label)
-                                            : AnyShapeStyle(.secondary))
-                .help("Close session")
             }
+            // Reserved whether or not anything is in it. Without the frame the name beside
+            // it would reflow every time an agent started or a pointer arrived.
+            .frame(width: 16)
         }
         // The WHOLE row, gaps included. Without it the hit area is the icon and the text
         // and nothing else, so the empty space between the name and the close button — most
@@ -279,7 +312,12 @@ private struct SessionRow: View {
             appearance = SessionAppearanceStore.appearance(forDirectory: directory)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Session, \(store.workspaceTitle)")
+        // The status is SPOKEN, not only coloured. A row whose whole meaning is a hue is a
+        // row that says nothing to a VoiceOver user and half of one to anybody who cannot
+        // separate the green from the red — which is why the badge carries a distinct glyph
+        // as well, rather than four dots in four colours.
+        .accessibilityLabel(status.badge.map { "Session, \(store.workspaceTitle), \($0.help)" }
+                            ?? "Session, \(store.workspaceTitle)")
     }
 
     /// Select first, then open. The popover is anchored to the SELECTED row, and macOS lets
@@ -288,5 +326,47 @@ private struct SessionRow: View {
     private func beginCustomizing() {
         select()
         ui.isCustomizingSession = true
+    }
+}
+
+/// How a session's agent status looks in the sidebar.
+///
+/// The mapping lives HERE rather than on `AgentStatus` itself: the status is a fact the
+/// terminal layer derives from a tty, and a type in `UltraTerminal` that knows about SF
+/// Symbols and sidebar colours is a layer boundary that has stopped meaning anything.
+private extension AgentStatus {
+    struct Badge {
+        let symbol: String
+        let colour: Color
+        /// The tooltip AND the accessibility label — one string, so what is read aloud and
+        /// what is shown on hover cannot drift apart.
+        let help: String
+    }
+
+    /// Nil for `idle`, which is the state with nothing to say. An always-present grey dot
+    /// was tried in the head and rejected: a sidebar of six projects would carry six pieces
+    /// of punctuation reporting that nothing is happening in any of them, and the one row
+    /// that DID have news would have to compete with them to be noticed.
+    var badge: Badge? {
+        switch self {
+        case .idle:
+            nil
+        // A plain dot, because "working" is the state that needs no reading — it is the
+        // baseline the other three are exceptions to, and it is the one that pulses.
+        case .working:
+            Badge(symbol: "circle.fill", colour: Token.Colour.agentWorking,
+                  help: "Agent working")
+        case .needsInput:
+            Badge(symbol: "questionmark.circle.fill", colour: Token.Colour.agentNeedsInput,
+                  help: "Agent waiting for you")
+        case .done:
+            Badge(symbol: "checkmark.circle.fill", colour: Token.Colour.agentDone,
+                  help: "Agent finished")
+        // A triangle rather than a fifth circle. Failure is the one state where the SHAPE
+        // should differ from a glance away, not only the colour.
+        case .failed:
+            Badge(symbol: "exclamationmark.triangle.fill", colour: Token.Colour.agentFailed,
+                  help: "Agent exited with an error")
+        }
     }
 }

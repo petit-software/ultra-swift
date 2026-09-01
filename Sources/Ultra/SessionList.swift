@@ -110,6 +110,11 @@ final class SessionList {
             persist()
         }
         selected?.reclaimKeyboardFocus()
+        // Going to a session is how its finished-agent badge is dismissed. `done` and
+        // `failed` are sticky precisely so a completion is not shown for the one second it
+        // takes the next poll to arrive — which means something has to put them away, and
+        // "the user went and looked" is the only honest something available.
+        AgentMonitor.shared.acknowledge(session: id)
     }
 
     /// Wraps, for the same reason the editor's list does: stopping at the end just means

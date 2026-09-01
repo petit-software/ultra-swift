@@ -41,6 +41,14 @@ final class AgentMonitor {
     /// it can be tested; this holds the clock, the registry and the badge.
     private(set) var tracker = AgentCompletionTracker()
 
+    /// What each pane's agent is doing, and the same answer rolled up per session.
+    ///
+    /// Rolled up HERE rather than in the sidebar because this is the only place that knows
+    /// which panes belong to which workspace — the registry is keyed by workspace, and a
+    /// view handed a flat pane→status map would have to reach back through it to find out.
+    private(set) var statuses = AgentStatusTracker()
+    private(set) var statusBySession: [UUID: AgentStatus] = [:]
+
     /// Injectable so tests can run the whole transition without a clock or a notification.
     var now: () -> Date = Date.init
     var isWatching: () -> Bool = {
@@ -70,10 +78,52 @@ final class AgentMonitor {
     /// Read the current answer and publish it if it moved.
     func sample() {
         var present: [PaneID: String] = [:]
-        for factory in ShellWorkspace.Registry.factories.values {
-            present.merge(factory.agentPanes) { first, _ in first }
+        var byWorkspace: [UUID: [PaneID: AgentPaneSample]] = [:]
+        for (workspaceID, factory) in ShellWorkspace.Registry.factories {
+            let samples = factory.agentSamples
+            byWorkspace[workspaceID] = samples
+            for (paneID, sample) in samples {
+                if let agent = sample.agent { present[paneID] = agent }
+            }
         }
         observe(present)
+        observeStatuses(byWorkspace)
+    }
+
+    /// Fold one round of per-pane samples into a status for every session.
+    ///
+    /// Separate from `observe` above, which answers "how many agents are running" for the
+    /// dock badge and the sleep assertion. This answers "what should this row look like",
+    /// and the two differ in the case the badge does not have: an agent that has FINISHED
+    /// still has something to say, and a count has already forgotten it.
+    func observeStatuses(_ byWorkspace: [UUID: [PaneID: AgentPaneSample]]) {
+        var flattened: [PaneID: AgentPaneSample] = [:]
+        for samples in byWorkspace.values {
+            flattened.merge(samples) { first, _ in first }
+        }
+        statuses.observe(flattened, at: now())
+        // Rebuilt rather than updated in place, so a session that has closed takes its entry
+        // with it instead of leaving a badge behind for a row that no longer exists.
+        let rolled = byWorkspace.mapValues { samples in
+            AgentStatus.rollup(samples.keys.map { statuses.status(for: $0) })
+        }
+        // Published only when it actually MOVED. This runs every second, and assigning an
+        // equal dictionary to an observed property is still a change as far as Observation is
+        // concerned — every row in every sidebar would redraw once a second for news that had
+        // not happened. `runningCount` above has always been guarded for the same reason.
+        guard rolled != statusBySession else { return }
+        statusBySession = rolled
+    }
+
+    /// The user has looked at this session: put its finished badges away.
+    ///
+    /// Acknowledging the SESSION rather than a pane, because a row is what the badge is on
+    /// — going to a session is a statement about all of it, and leaving one pane's green dot
+    /// standing after the user has been there would make the row lie.
+    func acknowledge(session workspaceID: UUID) {
+        guard let factory = ShellWorkspace.Registry.factories[workspaceID] else { return }
+        statuses.acknowledge(factory.shells.keys)
+        statusBySession[workspaceID] = .idle
     }
 
     /// Fold one sample into the running set, announcing whatever finished.

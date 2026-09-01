@@ -42,6 +42,15 @@ public final class ShellPaneFactory {
         shells.compactMapValues { $0.activity }
     }
 
+    /// Everything the sidebar's status badge is derived from, one entry per live pane.
+    ///
+    /// EVERY pane, not only the ones running an agent. A pane whose agent has just exited
+    /// looks exactly like a plain shell in a single sample, and dropping it here would take
+    /// the completion with it — see `AgentStatusTracker`, which is stateful for that reason.
+    public var agentSamples: [PaneID: AgentPaneSample] {
+        shells.mapValues(\.agentSample)
+    }
+
     /// The panes with an agent in them, named.
     ///
     /// The name prefers what the tty reports, because that is what is actually running; a
