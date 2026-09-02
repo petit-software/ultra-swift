@@ -63,8 +63,11 @@ public struct CanvasSurface: View {
         // the column beside it. The top is still ignored so the backdrop runs behind the
         // transparent titlebar, which is where the glass reading comes from.
         .ignoresSafeArea(edges: .top)
+        // The PROJECT's name, which is what the window is called — the same string
+        // `RootView` gives `navigationTitle`, so the two writers of `window.title` cannot
+        // disagree about what it says.
         .background(WindowChrome(theme: store.theme,
-                                 title: store.windowTitle) { store.noteWindowFrame($0) })
+                                 title: store.workspaceTitle) { store.noteWindowFrame($0) })
     }
 }
 
@@ -144,9 +147,23 @@ public struct WindowChrome: NSViewRepresentable {
         if NSApp.appearance?.name != appearance?.name { NSApp.appearance = appearance }
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        // Hidden in the titlebar, but still the TAB's label — a row of tabs all reading
-        // "Ultra" tells the user nothing about which workspace each one is.
+        // VISIBLE, and it is the project's name.
+        //
+        // It was hidden, on the reasoning that the toolbar's centre already carried a title
+        // and this would be a second one. Both halves of that went wrong. The centre item was
+        // removed as a duplicate, which left the window with no name in it at all — and
+        // hiding this was never even stable, because SwiftUI sets the title visible again
+        // whenever it applies a `navigationTitle`, so the name appeared the first time the
+        // sidebar selection changed and stayed. One writer, one visible answer.
+        //
+        // AppKit's own title rather than a view of ours in the titlebar: there is no title
+        // toolbar item in this window (verified by listing `window.toolbar?.items` — the
+        // toolbar holds the sidebar toggle, the separator and this app's two buttons), so
+        // this text IS the title in the standard slot, laid out by AppKit beside the toggle.
+        // A `.principal` item was tried and flickered, being laid out against a titlebar
+        // whose leading width is still animating as the sidebar opens.
+        window.titleVisibility = .visible
+        // Also what the Window menu and Mission Control call this window.
         window.title = title
         // The toolbar itself comes from SwiftUI's `.toolbar` — it owns the items, so making
         // a second NSToolbar here would fight it. This only picks the STYLE: `.unified` is

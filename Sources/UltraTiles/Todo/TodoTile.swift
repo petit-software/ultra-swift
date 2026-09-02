@@ -34,17 +34,12 @@ public struct TodoTile: View {
     @ViewBuilder
     private var list: some View {
         if store.document.items.isEmpty {
-            VStack(spacing: 6) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 22))
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                // The path used to be repeated here. The footer carries it now, on every
-                // state of the tile rather than only the empty one.
-                Text(store.exists ? "No tasks yet" : "No list in this project yet")
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(Token.Colour.secondaryLabel)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The path used to be repeated here, and the answer this tile reached — the
+            // footer carries it, in every state rather than only the empty one — is now the
+            // rule for all of them. So this is `EmptyTileState` rather than a copy of it.
+            EmptyTileState(icon: "checklist",
+                           title: store.exists ? "No tasks yet"
+                                               : "No list in this project yet")
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {

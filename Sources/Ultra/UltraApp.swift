@@ -490,22 +490,38 @@ struct RootView: View {
             // long way from the list it adds to, and in the row macOS reserves for what
             // acts on the window. Every source list on this platform — Finder's sidebar,
             // Mail's mailboxes, Xcode's navigator — puts it under the list instead.
+            //
+            // NO title of its own, either. A `navigationTitle` on this column names the
+            // SIDEBAR; the window's own name comes from the detail column, below.
             SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
-                // The window's title, which macOS draws beside the sidebar toggle whenever
-                // a `NavigationSplitView` has one. With nothing set, SwiftUI supplies the
-                // app's name — so "Ultra" sat next to the toggle saying which app you are
-                // in, in the app's own window, while the toolbar's centre already carries
-                // the one title that means something: the session.
-                //
-                // Removed rather than blanked. An empty `navigationTitle` still reserves
-                // the slot, which leaves the toggle offset by the width of nothing.
-                .toolbar(removing: .title)
         } detail: {
-            if let store {
-                CanvasSurface(store: store)
-            } else {
-                Color.clear
+            Group {
+                if let store {
+                    CanvasSurface(store: store)
+                } else {
+                    Color.clear
+                }
             }
+            // THE title, and the only one in the window: the PROJECT's name — whatever the
+            // sidebar row says, which is either the name typed in Customize or the folder's
+            // own. In the slot macOS draws a window title in, beside the sidebar toggle.
+            //
+            // On the DETAIL column, because in a `NavigationSplitView` that is the column
+            // whose title becomes the window's. With nothing set anywhere, SwiftUI supplies
+            // the app's own name, which is how a literal "Ultra" came to sit up there telling
+            // the user which app they were in, in the app's own window.
+            //
+            // Removing the item instead was tried and is worse: the window then carries no
+            // name at all, and which project this is remains the one question a title
+            // answers. A `.principal` item is not the way back either — that slot is laid out
+            // against a titlebar whose leading width is still animating as the sidebar opens,
+            // so the name flickered in and out. The system's own title item does not move,
+            // and it is what the Window menu reads.
+            //
+            // Empty, not "Ultra", for the instant before the first session exists: the app's
+            // own name in its own window is the thing being removed here, and a name that
+            // appears for one frame and is replaced is worse than a slot that fills in.
+            .navigationTitle(store?.workspaceTitle ?? "")
         }
         // The window's material, at WINDOW scope — behind the sidebar and the canvas alike.
         //

@@ -32,13 +32,14 @@ public struct GitTile: View {
                 Divider().overlay(Token.Colour.divider)
                 changeList
             } else {
-                // Say WHICH directory was checked. "Not a git repository" on its own reads
-                // as the tile being broken; naming the path shows it is pointed somewhere
-                // the user did not expect, which is the actual problem.
+                // Say WHICH directory was checked. "No repository here" on its own reads as
+                // the tile being broken; naming the folder shows it is pointed somewhere the
+                // user did not expect, which is the actual problem. The FOLDER, in the one
+                // line, rather than the whole path on a second one — the footer's folder menu
+                // carries the path, and it does so in every state of the tile.
                 VStack(spacing: 10) {
                     EmptyTileState(icon: "arrow.trianglehead.branch",
-                                   title: "No repository here",
-                                   detail: TileFactory.abbreviate(context.root.path))
+                                   title: "No repository in \(context.root.lastPathComponent)")
                     // The fix for the state the user is looking at, offered where they are
                     // looking. The same verb as the footer's folder menu.
                     Button("Choose Folder…") {

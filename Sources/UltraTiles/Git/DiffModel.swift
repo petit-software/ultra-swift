@@ -60,6 +60,14 @@ public struct FileDiff: Equatable, Sendable {
     public var additions: Int { hunks.flatMap(\.lines).count { $0.kind == .addition } }
     public var deletions: Int { hunks.flatMap(\.lines).count { $0.kind == .deletion } }
 
+    /// The longest line in the diff, in characters.
+    ///
+    /// A count rather than a measurement, because it is used as one: the rows are monospaced,
+    /// so a length times one character's advance IS the width of the widest row — and the
+    /// alternative is laying every row out once to ask how wide it came out, then again at
+    /// the width that answer implies.
+    public var columns: Int { hunks.lazy.flatMap(\.lines).map(\.text.count).max() ?? 0 }
+
     public static func empty(path: String, side: DiffSide) -> FileDiff {
         FileDiff(path: path, side: side, hunks: [], isBinary: false)
     }

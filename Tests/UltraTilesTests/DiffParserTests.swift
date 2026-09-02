@@ -110,6 +110,27 @@ struct DiffParserTests {
         #expect(!diff.isEmpty, "binary is not the same as no change")
     }
 
+    /// The width of the widest row is worked out from this, and a row narrower than the pane
+    /// is what left a diff of short lines as a narrow column floating in the middle of the
+    /// editor — see `DiffView.rowWidth`. Counted over EVERY hunk, because the longest line in
+    /// a file is rarely in the first one.
+    @Test("the longest line in the diff is what the rows have to be wide enough for")
+    func columns() {
+        let diff = DiffParser.parse("""
+        @@ -1,3 +1,3 @@ first
+        -short
+        +a rather longer line than the others
+        @@ -20,3 +20,3 @@ second
+        -b
+        """, path: "f.swift", side: .unstaged)
+        #expect(diff.columns == "a rather longer line than the others".count)
+    }
+
+    @Test("nothing to show is nothing to be wide for")
+    func columnsOfAnEmptyDiff() {
+        #expect(DiffParser.parse("", path: "f.swift", side: .staged).columns == 0)
+    }
+
     @Test("no output means no change")
     func emptyDiff() {
         let diff = DiffParser.parse("", path: "f.swift", side: .staged)

@@ -53,9 +53,9 @@ public struct EditorTile: View {
             case .diff(let diff): DiffView(session: diff)
             }
         } else {
-            EmptyTileState(icon: "doc.text",
-                           title: "Nothing open",
-                           detail: "Open a file, or click one in a File Tree or Git pane")
+            // The line says what is missing; the button under it is the sentence that used
+            // to say how to fix it. A control beats a description of one.
+            EmptyTileState(icon: "doc.text", title: "Nothing open")
                 .overlay(alignment: .bottom) {
                     Button("Open File…") { openPanel() }
                         .padding(.bottom, 26)
@@ -228,9 +228,9 @@ private struct FilePane: View {
         VStack(spacing: 0) {
             if let notice = document.notice { noticeBar(notice) }
             if document.isBinary {
-                EmptyTileState(icon: "doc.questionmark",
-                               title: "Not a text file",
-                               detail: document.displayName)
+                // WHICH file is the footer's job — it carries the full path in every state
+                // of this tile, including this one.
+                EmptyTileState(icon: "doc.questionmark", title: "Not a text file")
             } else {
                 CodeTextView(text: $document.text, onSave: { document.save() })
             }

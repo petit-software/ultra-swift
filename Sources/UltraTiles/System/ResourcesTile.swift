@@ -13,8 +13,7 @@ public struct ResourcesTile: View {
             header
             if model.processes.isEmpty {
                 EmptyTileState(icon: "gauge.with.dots.needle.33percent",
-                               title: "No processes yet",
-                               detail: "Started by this workspace's shells")
+                               title: "No processes yet")
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -93,33 +92,6 @@ private struct ProcessRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Shared tile furniture
-
-struct EmptyTileState: View {
-    let icon: String
-    let title: String
-    var detail: String?
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 22))
-                .foregroundStyle(Token.Colour.tertiaryLabel)
-            Text(title)
-                .font(Token.Type_.tileSubtitle)
-                .foregroundStyle(Token.Colour.secondaryLabel)
-            if let detail {
-                Text(detail)
-                    .font(Token.Type_.monoSmall)
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

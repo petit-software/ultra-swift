@@ -96,18 +96,25 @@ public enum Token {
             }
         }
 
-        /// The wash behind a selected row in the session sidebar.
+        /// The wash that marks a selection. ONE of them, everywhere: the session sidebar's
+        /// selected row and the selected pill of a `PillTabs`.
         ///
         /// A neutral veil rather than the accent. A list whose selection is a saturated
         /// accent block fights the row's own colour: the session icon is user-chosen and can
         /// be any of twelve hues, and half of them are unreadable sitting on a slab of a
         /// thirteenth. Translucent white leaves the icon and the name as the only colour in
-        /// the row and lets the window's material show through.
+        /// the row and lets the window's material show through. The same argument holds for a
+        /// tab: the LABEL carries the contrast, which it can do against any appearance
+        /// because `labelColor` is dynamic.
         ///
         /// It inverts in light appearance for the obvious reason — translucent white on a
         /// light sidebar is not a selection, it is nothing — and takes a little less of
         /// itself there, the same correction `windowBorder` makes.
-        public static let sidebarSelection = Color(nsColor:
+        ///
+        /// It was `sidebarSelection` while the sidebar was the only thing that had a
+        /// selection. Two washes at two strengths is exactly the drift this file exists to
+        /// prevent, so the second call site took the name rather than a value of its own.
+        public static let selectionWash = Color(nsColor:
             NSColor(name: nil) { appearance in
                 appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                     ? NSColor.white.withAlphaComponent(0.16)

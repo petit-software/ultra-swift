@@ -65,8 +65,8 @@ struct SessionSidebar: View {
         }
         // A sidebar list draws its selection in the TINT colour, so this is how the
         // selected row gets a neutral wash instead of a slab of accent — see
-        // `Token.Colour.sidebarSelection` for why a coloured one fights the row's own icon.
-        .tint(Token.Colour.sidebarSelection)
+        // `Token.Colour.selectionWash` for why a coloured one fights the row's own icon.
+        .tint(Token.Colour.selectionWash)
         // The footer floats OVER the list, and the list's content — not the list itself —
         // is inset to clear it. `safeAreaInset` was the obvious spelling and it is the wrong
         // one, for the reason written out on `View.tileFooter`: it shrinks the container, so

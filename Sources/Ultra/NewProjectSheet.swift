@@ -75,52 +75,18 @@ struct NewProjectSheet: View {
 
     /// The two modes, as a pill-tab switch.
     ///
-    /// ONE background colour in the whole control: the selected pill wears a neutral grey
-    /// wash and the unselected one wears nothing. A filled track behind a filled pill was
-    /// two greys arguing about which one meant "selected", and an accent fill on top of that
-    /// was a third — and unreadable besides, since this app's accent defaults to white.
-    ///
-    /// The same idea as `Token.Colour.sidebarSelection`, which exists for exactly this
-    /// reason: a neutral wash marks the selection and leaves the LABEL to carry the
-    /// contrast, which it can do against any appearance because `labelColor` is dynamic.
+    /// The control itself is `PillTabs`, in UltraDesign, because the diff header wanted the
+    /// same switch a size down and this sheet had the only copy of it. What is left here is
+    /// what is local: the modes, and clearing a message that was about the other one.
     private var modeTabs: some View {
-        HStack(spacing: 2) {
-            ForEach(Mode.allCases) { tab in
-                Button {
-                    withAnimation(Token.Motion.structuralRespectingPreferences) {
-                        mode = tab
-                        // The two modes ask different things, so a message about the last
-                        // one is a message about a field no longer on screen.
-                        problem = nil
-                    }
-                } label: {
-                    Text(tab.title)
-                        .font(Token.Type_.body)
-                        // The weight and the colour do the work the second background used
-                        // to: full-strength label on the selected side, secondary on the
-                        // other. Both are system colours, so both contrast in either
-                        // appearance and under Increase Contrast.
-                        .fontWeight(mode == tab ? .semibold : .regular)
-                        .foregroundStyle(mode == tab
-                                         ? AnyShapeStyle(Token.Colour.label)
-                                         : AnyShapeStyle(Token.Colour.secondaryLabel))
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 7)
-                        .background {
-                            if mode == tab {
-                                Capsule().fill(Token.Colour.label.opacity(0.12))
-                            }
-                        }
-                        .contentShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(mode == tab ? [.isButton, .isSelected] : .isButton)
-            }
-        }
-        // Centred rather than filling the width: two capsules stretched across 460pt read
-        // as a split bar, not as tabs.
-        .frame(maxWidth: .infinity)
-        .disabled(isWorking)
+        PillTabs(Mode.allCases, selection: $mode) { $0.title }
+            // The two modes ask different things, so a message about the last one is a
+            // message about a field no longer on screen.
+            .onChange(of: mode) { _, _ in problem = nil }
+            // Centred rather than filling the width: two capsules stretched across 460pt read
+            // as a split bar, not as tabs.
+            .frame(maxWidth: .infinity)
+            .disabled(isWorking)
     }
 
     /// The sidebar row's colour and mark, as one control: the icon IS the preview, so a row

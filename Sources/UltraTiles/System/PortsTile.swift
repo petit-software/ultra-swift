@@ -12,9 +12,7 @@ public struct PortsTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             if model.ports.isEmpty {
-                EmptyTileState(icon: "network",
-                               title: "Nothing listening",
-                               detail: model.lastError)
+                EmptyTileState(icon: "network", title: "Nothing listening")
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {

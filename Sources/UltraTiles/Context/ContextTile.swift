@@ -17,9 +17,7 @@ public struct ContextTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             if model.items.isEmpty {
-                EmptyTileState(icon: "paperclip",
-                               title: "Drop files or folders here",
-                               detail: "From Finder, or any pane")
+                EmptyTileState(icon: "paperclip", title: "Drop files or folders here")
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {

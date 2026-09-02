@@ -75,3 +75,38 @@ public func chooseTileItems(title: String, directory: URL) -> [URL] {
     panel.showsHiddenFiles = true
     return panel.runModal() == .OK ? panel.urls : []
 }
+
+// MARK: - Nothing to show
+
+/// A tile with nothing in it yet: one symbol, one line.
+///
+/// ONE line, and it is the title. Every empty state used to carry a quieter second line under
+/// it — where the files come from, which folder was checked, what to click — and in a pane the
+/// width of a sidebar those lines wrapped to three, which made the emptiest state in the app
+/// the wordiest thing in it.
+///
+/// Nothing is actually lost. The footer names the folder a tile is pointed at in EVERY state
+/// rather than only this one, so a path repeated here was the same fact twice; and where there
+/// is something to be done about the emptiness, the control that does it sits under the line
+/// instead of a sentence describing it. `TodoTile` got there first — the note where its path
+/// used to be says so — and now shares this view rather than keeping a copy of it.
+struct EmptyTileState: View {
+    let icon: String
+    let title: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 22))
+                .foregroundStyle(Token.Colour.tertiaryLabel)
+            Text(title)
+                .font(Token.Type_.tileSubtitle)
+                .foregroundStyle(Token.Colour.secondaryLabel)
+                // A pane can be dragged down to 160pt, where even a short phrase runs to two
+                // lines. Centred, because the symbol above it is.
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
