@@ -129,6 +129,46 @@ final class SessionList {
         select(sessions[(current + offset + sessions.count) % sessions.count].workspaceID)
     }
 
+    // MARK: - Ordering
+
+    /// Where the selected session sits in the list, or nil when nothing is selected.
+    private var selectedIndex: Int? {
+        sessions.firstIndex { $0.workspaceID == selectedID }
+    }
+
+    /// Reorder the list.
+    ///
+    /// Persisting is the whole of the work, and cheaply: the saved form of a window's
+    /// sessions is an ORDERED list of directories, and `restoreSaved` reopens them in the
+    /// order it reads. So the sidebar's order has always been the stored order — until now
+    /// nothing could change it except the order projects happened to be opened in.
+    ///
+    /// Selection is untouched. Dragging a row is a statement about where a session belongs
+    /// in the list, not a request to go there, and a drag that stole the canvas would make
+    /// tidying the sidebar something you cannot do while working in one project.
+    func move(fromOffsets offsets: IndexSet, toOffset destination: Int) {
+        sessions.move(fromOffsets: offsets, toOffset: destination)
+        persist()
+    }
+
+    /// Whether the selected session can move a row in this direction.
+    ///
+    /// Drives the menu items' enabled state, so Move Up on the top row DIMS rather than
+    /// beeping — a command that cannot run says so, per the `keyboard-first` rules.
+    func canMoveSelected(by offset: Int) -> Bool {
+        guard let selectedIndex else { return false }
+        return sessions.indices.contains(selectedIndex + offset)
+    }
+
+    /// The keyboard half of the drag. A drag-only reorder is the anti-pattern this app is
+    /// written against: the sidebar is navigation, and navigation a terminal user cannot
+    /// rearrange from the keys is navigation they will not rearrange.
+    func moveSelected(by offset: Int) {
+        guard canMoveSelected(by: offset), let selectedIndex else { return }
+        sessions.swapAt(selectedIndex, selectedIndex + offset)
+        persist()
+    }
+
     // MARK: - Closing
 
     /// Whether a session can be closed. The last one cannot — the same rule a pane follows,

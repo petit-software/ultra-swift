@@ -318,6 +318,17 @@ struct WorkspaceCommands: Commands {
                     .keyboardShortcut("]", modifiers: [.command, .option])
                 Button("Previous Session") { sessions?.selectPrevious() }
                     .keyboardShortcut("[", modifiers: [.command, .option])
+
+                // The same two keys as switching, plus shift: ⌥⌘] goes to the next session,
+                // ⇧⌥⌘] takes the session WITH you. Deliberately not ⌃⌘↑/↓ or ⌥⌘↑/↓, which
+                // read better and are both taken — by Grow Pane and Focus Pane, whose arrows
+                // are worth more than a mnemonic here.
+                Button("Move Session Up") { sessions?.moveSelected(by: -1) }
+                    .keyboardShortcut("[", modifiers: [.command, .option, .shift])
+                    .disabled(!(sessions?.canMoveSelected(by: -1) ?? false))
+                Button("Move Session Down") { sessions?.moveSelected(by: 1) }
+                    .keyboardShortcut("]", modifiers: [.command, .option, .shift])
+                    .disabled(!(sessions?.canMoveSelected(by: 1) ?? false))
                 Divider()
                 // The keyboard path to the sidebar's Customize popover. It is also on the
                 // row's context menu, and a command reachable ONLY from a context menu is

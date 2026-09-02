@@ -53,6 +53,15 @@ struct SessionSidebar: View {
                            close: { sessions.close(store.workspaceID) })
                     .tag(store.workspaceID)
             }
+            // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
+            // is possible, including the insertion line and the drag image.
+            //
+            // The keyboard path is File ▸ Session ▸ Move Session Up / Down (⇧⌥⌘[ and ⇧⌥⌘]),
+            // which is the rule rather than a courtesy: a drag-only reorder cannot be
+            // reached at all by someone whose hands are on the keys, which here is everyone.
+            .onMove { offsets, destination in
+                sessions.move(fromOffsets: offsets, toOffset: destination)
+            }
         }
         // A sidebar list draws its selection in the TINT colour, so this is how the
         // selected row gets a neutral wash instead of a slab of accent — see
