@@ -28,8 +28,13 @@ public struct GitTile: View {
                 // else had changed — and reviewing four files meant four round trips through
                 // a back button. The editor already exists, it is where a file belongs, and
                 // it holds tabs; four clicks here now fill it with four diffs.
+                //
+                // NO rule between the header and the list. A pane is one surface — see the
+                // pane chrome, which gave up its own fill for the same reason — and a
+                // hairline across it is a seam saying two things are stacked here when what
+                // is actually stacked is a branch and the files on it. The gap between them
+                // already separates them.
                 header
-                Divider().overlay(Token.Colour.divider)
                 changeList
             } else {
                 // Say WHICH directory was checked. "No repository here" on its own reads as
@@ -90,9 +95,10 @@ public struct GitTile: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.trianglehead.branch")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Token.Colour.accent)
+                // The NAME, with no glyph in front of it. The pane's own header already wears
+                // the branch symbol and says "Git", so this was the second time the same
+                // picture answered the same question — and it sat where the eye goes first,
+                // pushing the one thing worth reading a symbol's width to the right.
                 Text(model.branch ?? "detached HEAD")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Token.Colour.label)

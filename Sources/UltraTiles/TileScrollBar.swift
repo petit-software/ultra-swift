@@ -15,6 +15,11 @@ import UltraDesign
 /// tall file tree becomes a two-pixel speck that says nothing and cannot be aimed at; a fixed
 /// one stays a legible marker of position. It gives up encoding how much content there is,
 /// which the system scroller communicates poorly at these sizes anyway.
+///
+/// It shows while the POINTER IS IN THE PANE and is otherwise invisible — see
+/// `TileScrollBarModifier`. Position is worth reporting to someone who is reading the pane,
+/// and a bar drawn down eight panes at once is eight vertical lines competing with the
+/// content for the same edge.
 public struct TileScrollBar: View {
     /// How tall the knob is, whatever the content length.
     public static let knobHeight: CGFloat = 42
@@ -93,6 +98,12 @@ private struct TileScrollBarModifier: ViewModifier {
     @State private var progress: Double = 0
     @State private var isScrollable = false
     @State private var trackHeight: CGFloat = 0
+    /// Whether the pointer is in this pane.
+    ///
+    /// Which is also, on this platform, whether the pane can be scrolled at all by wheel or
+    /// trackpad: macOS scrolls what is under the pointer. So "on hover" is not a lesser
+    /// version of "while scrolling" — it is the same moment, arriving slightly earlier.
+    @State private var isHovering = false
 
     /// The scroll view's bottom content margin — the room the floating footer occupies.
     @State private var bottomInset: CGFloat = 0
@@ -128,6 +139,10 @@ private struct TileScrollBarModifier: ViewModifier {
                 trackHeight = snapshot.trackHeight
                 bottomInset = snapshot.bottomInset
             }
+            // The whole scrollable area, so entering the pane is what shows the bar rather
+            // than finding the four points of it. The bar itself takes no hits, so it cannot
+            // shadow the content it sits over and end the hover it depends on.
+            .onHover { isHovering = $0 }
             .overlay {
                 // The track height is read from LAYOUT, not from the scroll geometry.
                 // `onScrollGeometryChange` reports changes, and its first value is the
@@ -140,6 +155,8 @@ private struct TileScrollBarModifier: ViewModifier {
                     TileScrollBar(progress: progress,
                                   isScrollable: isScrollable,
                                   trackHeight: max(0, proxy.size.height - bottomInset))
+                        .opacity(isHovering ? 1 : 0)
+                        .animation(Token.Motion.chromeFade, value: isHovering)
                 }
             }
     }

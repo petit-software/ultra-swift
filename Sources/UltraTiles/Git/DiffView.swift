@@ -84,6 +84,13 @@ struct DiffView: View {
                         .padding(.vertical, 4)
                         .textSelection(.enabled)
                     }
+                    // The pane's own indicator, on hover, in place of the system's. With
+                    // "Show scroll bars: Always" — the default with a mouse attached — macOS
+                    // makes every scroller `.legacy`, and a legacy scroller RESERVES its
+                    // width: a permanent grey gutter down the inside of a diff, and a second
+                    // one across the bottom, taking room from the very rows this view just
+                    // went to some trouble to give the full width of the pane to.
+                    .tileScrollBar()
                 }
             }
         } else {

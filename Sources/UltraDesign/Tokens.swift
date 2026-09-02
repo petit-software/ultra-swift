@@ -224,6 +224,12 @@ public enum Token {
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : structural
         }
 
+        /// Chrome answering the pointer: an indicator fading in as the pointer enters a pane.
+        ///
+        /// Shorter than `structural`, and no spring, because nothing has MOVED — something
+        /// has appeared. Deliberately not gated on Reduce Motion: a cross-fade is what that
+        /// setting asks for in place of movement, not something it asks to be rid of.
+        public static let chromeFade = Animation.easeOut(duration: 0.12)
     }
 
 
