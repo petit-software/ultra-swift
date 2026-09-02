@@ -26,7 +26,6 @@ public struct PortsTile: View {
             }
         }
         .tileFooter { footer }
-        .tileHeaderInset()
         .task { await poll() }
     }
 

@@ -41,7 +41,6 @@ public struct ContextTile: View {
             }
         }
         .tileFooter { footer }
-        .tileHeaderInset()
         // The whole tile is the drop target, not a small well inside it — a drop zone you
         // have to aim at is a drop zone people miss.
         .dropDestination(for: URL.self) { urls, _ in
@@ -65,6 +64,12 @@ public struct ContextTile: View {
                    // Deliberately approximate, and labelled so: an exact-looking number
                    // here would be a lie, because the real tokeniser is the model's.
                    summaryHelp: "Rough estimate — bytes ÷ 4") {
+            // Dropping from Finder is the fast path and stays the headline — see the empty
+            // state — but a drop needs two windows arranged just so. This is the same verb
+            // for whoever has the tile in front of them and Finder behind something else.
+            TileFooterButton(symbol: "plus", help: "Add files or folders…") {
+                addFromFinder()
+            }
             TileFooterButton(symbol: "arrow.right.to.line", help: "Type @references at the prompt, without submitting",
                              isEnabled: !model.items.isEmpty) {
                 context.injectIntoShell(model.referenceText(relativeTo: context.root))
@@ -80,6 +85,14 @@ public struct ContextTile: View {
                           help: "Where this list is stored",
                           choose: chooseLocation,
                           reset: { model.resetLocation() })
+        }
+    }
+
+    /// Adds whatever the panel returns, and silently skips what is already on the list —
+    /// `add` answers that, and a duplicate is not an error worth a dialog.
+    private func addFromFinder() {
+        for url in chooseTileItems(title: "Add to Context", directory: context.root) {
+            _ = model.add(url)
         }
     }
 

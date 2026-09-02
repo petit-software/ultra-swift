@@ -99,3 +99,43 @@ struct PaneThemeTests {
         }
     }
 }
+
+/// A pane is three elements stacked — header, content, footer — not one surface with chrome
+/// floating on it.
+///
+/// Both earlier arrangements are what these guard. Content running under a see-through
+/// header let the grid scroll up through the title; content running under an OPAQUE header
+/// meant the terminal theme's background painted a slab of cold colour across the top of a
+/// glass pane.
+@Suite("A pane's content clears its header")
+@MainActor
+struct PaneContentInsetTests {
+
+    private func pane(height: CGFloat = 400) -> PaneContainerView {
+        let container = PaneContainerView(paneID: LayoutTree.fixturePane(1),
+                                          descriptor: PaneDescriptor(title: "Pane"),
+                                          kind: .placeholder,
+                                          content: NSView(),
+                                          actions: .inert)
+        container.frame = CGRect(x: 0, y: 0, width: 600, height: height)
+        container.layoutSubtreeIfNeeded()
+        return container
+    }
+
+    @Test("content starts below the header, not under it")
+    func contentClearsTheHeader() {
+        let container = pane()
+        #expect(container.content.frame.minY == Token.Space.tileHeaderHeight)
+        #expect(container.content.frame.height
+                == container.bounds.height - Token.Space.tileHeaderHeight)
+    }
+
+    /// A pane dragged to nothing must not hand its content a negative height, which AppKit
+    /// takes as a crash rather than as an empty rectangle.
+    @Test("a pane shorter than its own header still lays out")
+    func aTinyPaneSurvives() {
+        let container = pane(height: 10)
+        #expect(container.content.frame.height == 0)
+        #expect(container.content.frame.minY <= 10)
+    }
+}

@@ -53,11 +53,10 @@ public struct TileFooter<Controls: View>: View {
         // The same height as a pane header, so the two ends of a tile are the same weight
         // and a column of tiles has one horizontal rhythm rather than several.
         .frame(height: Token.Space.tileHeaderHeight)
-        // The mirror of the header's ramp: solid at the bottom edge, gone by the top. A
-        // hard-edged material was a second surface inside the tile — a bar bolted to the
-        // bottom. Content now passes under it and fades out, which is what the header has
-        // always done at the other end.
-        .background { EdgeBlur(edge: .bottom) }
+        // No background. The footer occupies its own band of the tile — see `tileFooter` —
+        // so what sits behind it is the pane's own surface and nothing else. A material or
+        // a fill here would be a second surface inside the pane; a see-through blur, which
+        // is what was here, let the list scroll up through the status line.
     }
 }
 
@@ -166,21 +165,22 @@ public struct TileFolderMenu: View {
 }
 
 public extension View {
-    /// Floats a tile's footer over its content, with the content able to scroll beneath.
+    /// Gives a tile's footer a band of its own at the foot of the tile.
     ///
-    /// `safeAreaInset` was the obvious spelling and it is wrong here: it floats the footer
-    /// AND shrinks the container, so a list inside stops dead at the footer's top edge.
-    /// Nothing ever passes underneath, which leaves the footer's ramp nothing to fade — it
-    /// renders against flat pane background and reads as no gradient at all.
+    /// A STACK, which is the same thing `PaneContainerView` does for the header at the other
+    /// end: the content is handed a rectangle that stops where the chrome starts, so there
+    /// is nothing to see through and no material to hide anything with.
     ///
-    /// Content margins instead: the scroll view keeps its full height, and only its CONTENT
-    /// is inset, so the last row can still be scrolled clear of the footer while everything
-    /// above it slides under. On a tile whose content does not scroll the margin is a no-op
-    /// and the overlay alone does the work.
+    /// Both of the obvious spellings are wrong here, and both were tried. An overlay with
+    /// content margins keeps the scroll view full height and lets rows slide under the bar.
+    /// `safeAreaInset` looks like the fix and is not: it shrinks the safe AREA, while the
+    /// scroll view keeps its frame and goes on drawing through the inset — which is exactly
+    /// the see-through footer this is meant to end. Only a real frame stops a scroll view.
     func tileFooter<Footer: View>(@ViewBuilder _ footer: () -> Footer) -> some View {
-        self
-            .contentMargins(.bottom, Token.Space.tileHeaderHeight, for: .scrollContent)
-            .overlay(alignment: .bottom) { footer() }
+        VStack(spacing: 0) {
+            frame(maxWidth: .infinity, maxHeight: .infinity)
+            footer()
+        }
     }
 }
 

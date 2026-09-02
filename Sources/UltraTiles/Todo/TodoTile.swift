@@ -29,7 +29,6 @@ public struct TodoTile: View {
             list
         }
         .tileFooter { footer }
-        .tileHeaderInset()
     }
 
     @ViewBuilder

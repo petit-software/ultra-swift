@@ -569,30 +569,16 @@ struct RootView: View {
                     .help("New pane")
                 }
 
-                // `.principal` is the toolbar's centre slot — the same one Mail and Notes
-                // use for a title, so it stays centred as the window resizes.
-                ToolbarItem(placement: .principal) {
-                    // The SESSION's name — whatever the sidebar row says, which is either
-                    // the name the user typed in Customize or the project folder's own.
-                    // A literal "Ultra" told the user something they already knew (which
-                    // app they are in, in the app's own window) and left the one question a
-                    // title is for — which project is this? — to the sidebar alone.
-                    //
-                    // Falls back to the app's name only for the instant before the first
-                    // session exists, where there is genuinely nothing else to say.
-                    Text(store?.workspaceTitle ?? "Ultra")
-                        .font(.system(size: 17, weight: .bold, design: .default))
-                        .foregroundStyle(Token.Colour.label)
-                        // Long project names must not push the toolbar's buttons off the
-                        // right of a narrow window.
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                // A name is a label, not a control — the shared glass capsule macOS 26 puts
-                // behind toolbar items made it read as a button you could press.
-                .sharedBackgroundVisibility(.hidden)
+                // NO title in the toolbar, in either slot.
+                //
+                // The window's own title is already removed from beside the sidebar toggle
+                // (`.toolbar(removing: .title)`), and a `.principal` item was the second
+                // place a name appeared: it flickered in and out as the sidebar opened,
+                // because that slot is laid out against a titlebar whose leading width is
+                // still animating. Which session this is belongs to the sidebar row that is
+                // selected, and the window's own title still carries it for the Window menu.
 
-                // Everything after the title sits hard right; the flexible spacer is what
+                // Everything sits hard right; the flexible spacer is what
                 // pushes it there. The leading side belongs to the traffic lights, the
                 // sidebar toggle, and the one verb that makes something new.
                 ToolbarSpacer(.flexible)

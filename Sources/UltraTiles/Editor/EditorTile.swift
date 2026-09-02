@@ -32,7 +32,6 @@ public struct EditorTile: View {
             }
         }
         .tileFooter { footer }
-        .tileHeaderInset()
     }
 
     /// Hidden when there is nothing open, and hidden when the pane is simply too narrow to

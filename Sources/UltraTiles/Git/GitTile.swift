@@ -53,7 +53,6 @@ public struct GitTile: View {
             }
         }
         .tileFooter { footer }
-        .tileHeaderInset()
         .task { await poll() }
         .confirmationDialog("Discard changes to \(confirming?.path ?? "")?",
                             isPresented: Binding(get: { confirming != nil },

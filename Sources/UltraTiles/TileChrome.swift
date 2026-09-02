@@ -1,20 +1,11 @@
+import AppKit
 import SwiftUI
 import UltraDesign
 
-public extension View {
-    /// Leave room for the pane header, which floats OVER a tile rather than sitting above it.
-    ///
-    /// `safeAreaInset` rather than padding on purpose: a scroll view then starts its content
-    /// below the header but still DRAWS through it, which is the whole point — the header's
-    /// blur needs something moving underneath to be worth having.
-    func tileHeaderInset() -> some View {
-        safeAreaInset(edge: .top, spacing: 0) {
-            Color.clear.frame(height: Token.Space.tileHeaderHeight)
-        }
-    }
-}
-
-import AppKit
+// No `tileHeaderInset()` here any more, deliberately. A tile does not hold itself off the
+// pane header: `PaneContainerView` lays its content out BELOW the header, so a tile is
+// handed a rectangle already clear of it, and re-applying the inset would leave every tile a
+// second 36pt of nothing at the top. The footer's own band is `View.tileFooter`.
 
 /// Ask the user where a tile's file should live.
 ///
@@ -59,4 +50,28 @@ public func chooseTileFolder(title: String, directory: URL) -> URL? {
     // a panel that hides them makes a project's most interesting folders unreachable.
     panel.showsHiddenFiles = true
     return panel.runModal() == .OK ? panel.url : nil
+}
+
+/// Ask the user which files or folders to add to a tile's list.
+///
+/// Files AND directories, and several at a time: this is the panel behind the Context tile's
+/// `+`, and gathering context is a bulk verb — dropping six files from Finder in one gesture
+/// already works, so the keyboard-reachable path must not be six trips through a panel.
+///
+/// "Add" rather than "Open", because nothing is opened: the tile takes a reference.
+@MainActor
+public func chooseTileItems(title: String, directory: URL) -> [URL] {
+    let panel = NSOpenPanel()
+    panel.title = title
+    panel.prompt = "Add"
+    panel.message = title
+    panel.directoryURL = directory
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = true
+    panel.allowsMultipleSelection = true
+    panel.canCreateDirectories = false
+    // The same reason `chooseTileFolder` shows them: a `.github` or a `.ultra` is exactly
+    // the kind of folder someone hands an agent.
+    panel.showsHiddenFiles = true
+    return panel.runModal() == .OK ? panel.urls : []
 }

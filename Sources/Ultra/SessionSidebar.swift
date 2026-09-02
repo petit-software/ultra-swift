@@ -158,20 +158,25 @@ private struct SessionSidebarBar: View {
     /// The label is the whole hit target, padded rather than framed, so the press area
     /// matches what a bottom-bar button looks like instead of being a 12pt glyph you have to
     /// aim at. Shared by both controls so the two cannot end up different sizes.
+    ///
+    /// The size and the box come from `ChromeIconLabel` — the control a pane header and a
+    /// tile footer wear — rather than from numbers of their own. They WERE their own numbers
+    /// (14pt in a 26×22 box) and the sidebar's bar came out a size smaller than every other
+    /// strip in the window, which is the one thing a bar at the foot of a column must not
+    /// be: the icons across the bottom of the window are all the same control.
     private func barLabel(_ symbol: String) -> some View {
         Image(systemName: symbol)
-            // Bold rather than semibold. These two are the smallest glyphs in the window and
-            // they sit on a blurred ramp with rows fading underneath them, which eats a
-            // weight — semibold read as thin here in a way the same weight does not in a
-            // pane header sitting on a solid surface.
-            .font(.system(size: 14, weight: .bold))
+            // Bold rather than semibold — the one thing here that is NOT the header's. These
+            // sit on a blurred ramp with rows fading underneath them, which eats a weight:
+            // semibold read as thin here in a way it does not on a pane's solid surface.
+            .font(.system(size: ChromeIconLabel.size, weight: .bold))
             // Stated, not inherited. One of these is a `Button` and the other is a `Menu`,
             // and a borderless menu draws its label in the CONTROL tint while a plain button
             // takes the foreground it is given — so the pair rendered in two different
             // colours despite sharing this label. The same token every other chrome icon
             // rests in (`ChromeIconLabel`), so the bar matches the pane headers above it.
             .foregroundStyle(Token.Colour.secondaryLabel)
-            .frame(width: 26, height: 22)
+            .frame(width: ChromeIconLabel.width, height: ChromeIconLabel.height)
             .contentShape(.rect)
     }
 }

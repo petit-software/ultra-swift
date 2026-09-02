@@ -19,18 +19,12 @@ public final class ShellPaneContainer: NSView {
     /// Horizontal padding is larger than vertical: a column of text wants room from the
     /// edge, a row does not need as much from the header.
     ///
-    /// The top inset clears the pane header, which floats over the content.
-    ///
-    /// A terminal grid draws its first row at the top and grows DOWNWARD, so a grid that
-    /// extends under the header puts the prompt beneath the title on a fresh shell — the
-    /// one line you always need to see. That is the opposite of a list, which fills from the
-    /// top and is only ever interesting once it is long enough to scroll.
-    ///
-    /// The header's blur is not lost by this: this container paints nothing, so what shows
-    /// through the header band is the pane's own surface. The ramp still has a real surface
-    /// to work on — just not the shell's text.
-    public var contentInsets = NSEdgeInsets(top: Token.Space.tileHeaderHeight + 4,
-                                            left: 10, bottom: 6, right: 10)
+    /// Breathing room ONLY. It used to carry `tileHeaderHeight` as well, because the header
+    /// floated over the content and a grid that ran under it put the prompt beneath the
+    /// title on a fresh shell. `PaneContainerView` now lays this whole view out below the
+    /// header, so adding the header's height here again would drop every terminal a second
+    /// 36pt down its own pane.
+    public var contentInsets = NSEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
 
     public init(terminal: ShellTerminalView) {
         self.terminal = terminal

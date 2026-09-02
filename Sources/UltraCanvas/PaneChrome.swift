@@ -142,7 +142,7 @@ public struct PaneHeader: View {
     /// declines to open, and a button that does nothing is worse than a label.
     @ViewBuilder private var icon: some View {
         if actions.kinds().isEmpty {
-            Image(systemName: descriptor.icon)
+            Image(systemName: ChromeSymbol.filled(descriptor.icon))
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
         } else {
@@ -211,9 +211,10 @@ public struct PaneHeader: View {
         .padding(.trailing, 5)
         .frame(height: Token.Space.tileHeaderHeight)
         .frame(maxWidth: .infinity)
-        // No background at all. The header is not a bar and not a separate surface: it is
-        // a label floating on the pane's own glass, in the same material as the terminal
-        // beneath it. Anything drawn here re-introduces the seam.
+        // No background at all, and nothing behind it either. The header's band is the
+        // pane's own glass — the content is laid out below it, so there is nothing to hide
+        // and nothing to blur. Anything drawn here would be a second surface inside the
+        // pane, which is exactly what the header must not read as.
         .onHover { isHovering = $0 }
         // Click-to-focus sits BEHIND the controls rather than on the whole header. On the
         // header itself it consumed the tap before the icon's menu ever saw it: the pane
@@ -414,7 +415,6 @@ public final class PaneContainerView: NSView {
         header.focusRingType = .none
         addSubview(glass)
         clip.addSubview(content)
-        clip.addSubview(headerBlur)
         clip.addSubview(header)
         clip.addSubview(dragHandle)
         addSubview(ring, positioned: .above, relativeTo: nil)
@@ -477,14 +477,6 @@ public final class PaneContainerView: NSView {
         thumb.unlockFocus()
         return thumb
     }
-
-    /// A blur that ramps in from nothing at its bottom edge to full at the top.
-    ///
-    /// The pane title has no background of its own, so content scrolling up behind it would
-    /// otherwise collide with the text. A hard-edged material bar would be a background by
-    /// another name; ramping the material's own opacity keeps the header reading as part of
-    /// the pane's surface while still separating the words from whatever slides under them.
-    private let headerBlur = EdgeBlurView(edge: .top)
 
     private func refresh() {
         rebuildHeader()
@@ -599,13 +591,18 @@ public final class PaneContainerView: NSView {
                                    cornerHeight: Token.Space.paneRadius,
                                    transform: nil)
         let headerHeight = Token.Space.tileHeaderHeight
-        // The content fills the WHOLE pane, header included, and the header floats on top of
-        // it. Previously the content began below the header, which left that band showing the
-        // pane's glass — a second surface behind the title, exactly what a shell pane does
-        // not have. Content is what the header's blur has to blur, so it has to be under it.
-        content.frame = bounds
-        headerBlur.frame = CGRect(x: 0, y: 0, width: bounds.width,
-                                  height: min(headerHeight, bounds.height))
+        // A pane is header, content, footer — three elements, not one surface with chrome
+        // floating on it. The content starts BELOW the header rather than running under it.
+        //
+        // Both of the earlier arrangements are why. Content under a see-through header meant
+        // the grid scrolled up through the title; content under an OPAQUE header meant the
+        // terminal theme's background painted as a slab of cold colour across the top of a
+        // glass pane. With the band left to the pane's own surface there is nothing to show
+        // through and no second colour: the header is a label on the pane's glass, and the
+        // content simply stops where it stops.
+        content.frame = CGRect(x: 0, y: min(headerHeight, bounds.height),
+                               width: bounds.width,
+                               height: max(0, bounds.height - headerHeight))
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: min(headerHeight, bounds.height))
         // Between the kind menu (the icon, on the left) and the split/close cluster. Both
         // ends are controls, and a drag that starts on one of them is a misfire.

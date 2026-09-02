@@ -1,4 +1,37 @@
+import AppKit
 import SwiftUI
+
+/// Chrome wears FILLED glyphs, always.
+///
+/// At 15pt an outline symbol is a few hairlines of colour: next to a filled one it reads as
+/// a lighter, smaller control rather than as the same control with a different picture — the
+/// same reason `SessionSymbols` is a fill-only catalogue. Call sites keep naming the plain
+/// symbol, because a fill variant is a rendering choice and not a different icon.
+///
+/// Not every symbol HAS a fill — `xmark` and `command` do not — so the variant is only used
+/// when this system actually draws it, and the plain name is the fallback rather than an
+/// empty box.
+public enum ChromeSymbol {
+    /// Asked once per name. `body` runs on every hover of every icon in every pane, and
+    /// building an `NSImage` to answer the same question each time is a per-frame cost for a
+    /// fact that cannot change while the app runs.
+    @MainActor private static var resolved: [String: String] = [:]
+
+    @MainActor
+    public static func filled(_ name: String) -> String {
+        if let hit = resolved[name] { return hit }
+        let answer = resolve(name)
+        resolved[name] = answer
+        return answer
+    }
+
+    private static func resolve(_ name: String) -> String {
+        guard !name.hasSuffix(".fill") else { return name }
+        let filled = name + ".fill"
+        return NSImage(systemSymbolName: filled, accessibilityDescription: nil) != nil
+            ? filled : name
+    }
+}
 
 /// The icon control worn by a tile's chrome — pane header and tile footer alike.
 ///
@@ -35,7 +68,7 @@ public struct ChromeIconLabel: View {
     }
 
     public var body: some View {
-        Image(systemName: symbol)
+        Image(systemName: ChromeSymbol.filled(symbol))
             .font(.system(size: size, weight: .semibold))
             .frame(width: Self.width, height: Self.height)
             .contentShape(.rect)

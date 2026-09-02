@@ -44,7 +44,6 @@ public struct FileTreeTile: View {
         }
         .tileScrollBar()
         .tileFooter { footer }
-        .tileHeaderInset()
     }
 
     /// The folder above this one, or nil at the root of the volume.

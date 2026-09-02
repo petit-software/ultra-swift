@@ -26,7 +26,6 @@ public struct ResourcesTile: View {
             }
         }
         .tileFooter { footer }
-        .tileHeaderInset()
         .task { await poll() }
     }
 
