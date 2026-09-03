@@ -1,10 +1,3 @@
-- [ ] GIt should allow me hover over the pr and click on it to open it in the browser.
-- [ ] Jumping between sidebar iteams make access shell CLI impossible - can't access cli when swichting projects. investigate
-- [ ] why my NPM RUN dev stops from time to time?
-- [x] Move plus button in header toolbar to the left
-- [x] Add option to send a singular files to the sheel from context pane
-- [x] Update editing todos, make sure icons don't move when juming into editing mode
-- [x] Move + button in top toolbar next to command button
-- [x] todo panel, i cant edit added task
-- [x] macOS audio graph constantly connecting and disconnecting while using an AI tool in the Command Line Interface the loop is caused by aggressive audio stream open/close cycles. can check if we have a problem?
-- [x] Changing theme doesn't work, make sure changing opacity affects all panes. right now it does not.
+- [ ] CMD + K opens Comand list
+- [ ] Fixed pane headers
+- [ ] Better structurally organized settings
