@@ -47,10 +47,56 @@ public struct ChromeMenuButton: View {
     }
 
     private func present() {
-        let rows = entries()
+        guard let anchorView = anchor.view else { return }
+        ChromeMenuPresenter.popUp(entries(), from: anchorView)
+    }
+}
+
+/// A chrome menu hanging off an arbitrary label rather than a lone glyph.
+///
+/// The pane header's identity — icon and name together — is one of these: the whole thing
+/// is what you press to change what the pane is, so the whole thing takes the click and the
+/// whole thing wears the hover plate. The label is handed the hover state so it can answer
+/// it the way `ChromeIconLabel` does.
+public struct ChromeMenuTrigger<Label: View>: View {
+    let help: String
+    let entries: () -> [ChromeMenuEntry]
+    let label: (_ isHovering: Bool) -> Label
+
+    @State private var anchor = MenuAnchorBox()
+    @State private var isHovering = false
+
+    public init(help: String,
+                entries: @escaping () -> [ChromeMenuEntry],
+                @ViewBuilder label: @escaping (_ isHovering: Bool) -> Label) {
+        self.help = help
+        self.entries = entries
+        self.label = label
+    }
+
+    public var body: some View {
+        Button(action: present) { label(isHovering) }
+            .buttonStyle(.plain)
+            .background(MenuAnchorView(box: anchor))
+            .onHover { isHovering = $0 }
+            .help(help)
+            .accessibilityLabel(help)
+    }
+
+    private func present() {
+        guard let anchorView = anchor.view else { return }
+        ChromeMenuPresenter.popUp(entries(), from: anchorView)
+    }
+}
+
+/// Builds and pops the `NSMenu` behind every chrome menu control, so an icon button and a
+/// labelled trigger cannot open two differently-built menus.
+public enum ChromeMenuPresenter {
+    @MainActor
+    public static func popUp(_ rows: [ChromeMenuEntry], from anchorView: NSView) {
         // An empty NSMenu declines to open, which reads as a dead button rather than an
         // empty list. Callers hide the control instead.
-        guard !rows.isEmpty, let anchorView = anchor.view else { return }
+        guard !rows.isEmpty else { return }
 
         let menu = ChromeMenu()
         let handler = ChromeMenuTarget(rows: rows)
@@ -129,4 +175,16 @@ struct MenuAnchorView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSView, context: Context) { box.view = nsView }
+}
+
+#Preview("Chrome menu trigger — labelled", traits: .fixedLayout(width: 260, height: 60)) {
+    ChromeMenuTrigger(help: "Change Pane Type",
+                      entries: { [.item(title: "Shell", symbol: "apple.terminal") {},
+                                  .item(title: "Editor", symbol: "doc.text", isOn: true, isEnabled: false) {}] }) { hovering in
+        HStack(spacing: 0) {
+            ChromeIconLabel(symbol: "apple.terminal", isHovering: hovering)
+            Text("Shell").padding(.trailing, 8)
+        }
+    }
+    .padding()
 }

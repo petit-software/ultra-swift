@@ -118,73 +118,59 @@ public struct PaneDescriptor: Sendable, Equatable {
 
 // MARK: - Header
 
-/// A pane's header: identity on the left, explicit split and close controls on the right.
+/// A pane's header: close in the top-left corner, then the pane's identity, then the split
+/// controls on the right.
 ///
 /// Glass, because it is the tile's navigation layer sitting above opaque content — never
 /// the other way round. See docs/02-DESIGN-LANGUAGE.md.
 public struct PaneHeader: View {
+    /// The header's own coordinate space, so the identity control can say where it ends in
+    /// terms the container's `layout()` understands.
+    nonisolated static let coordinateSpace = "paneHeader"
+
     let paneID: PaneID
     let descriptor: PaneDescriptor
     let currentKind: PaneRecord.Kind?
     let isFocused: Bool
     let canClose: Bool
     let actions: PaneActions
+    /// Where the identity control's trailing edge landed, in header coordinates. The drag
+    /// handle is an AppKit view laid out by the container, and it must start after the
+    /// name — the name is a control now, and a handle over it would take its clicks.
+    var onIdentityTrailing: (CGFloat) -> Void = { _ in }
 
     @State private var isHovering = false
 
-    /// The pane's own icon IS the "turn this pane into…" control.
-    ///
-    /// It was a chevron beside the split buttons, and that was the wrong place: the icon is
-    /// the thing that says what the pane is, so it is the thing people press to change what
-    /// the pane is. A second control next to Split read as another way to split.
-    ///
-    /// Falls back to a plain image when the app supplied no kinds — an empty `NSMenu`
-    /// declines to open, and a button that does nothing is worse than a label.
-    @ViewBuilder private var icon: some View {
-        if actions.kinds().isEmpty {
-            Image(systemName: ChromeSymbol.filled(descriptor.icon))
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
-        } else {
-            PaneKindMenuButton(paneID: paneID, symbol: descriptor.icon,
-                               currentKind: currentKind, isFocused: isFocused,
-                               actions: actions)
-        }
-    }
-
-    private func labels(showSubtitle: Bool) -> some View {
-        HStack(spacing: 6) {
-            Text(descriptor.title)
-                .font(Token.Type_.tileTitle)
-                .foregroundStyle(isFocused ? Token.Colour.label : Token.Colour.secondaryLabel)
-                .fixedSize()
-            if showSubtitle, let subtitle = descriptor.subtitle {
-                Text(subtitle)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .fixedSize()
-            }
-        }
-    }
+    /// Split and close are always present, so the affordance is discoverable rather than
+    /// hidden behind a hover the user has to find. Hovering just brings them forward.
+    private var controlOpacity: Double { isHovering ? 1 : (isFocused ? 0.72 : 0.4) }
 
     public var body: some View {
-        // 2 rather than 6: the icon's plate already supplies its own breathing room.
+        // 2 rather than 6: the controls' plates already supply their own breathing room.
         HStack(spacing: 2) {
-            // A head-truncated subtitle reading "…t" is worse than no subtitle, so drop
-            // parts of the identity as the pane narrows rather than mangling them.
-            // The icon sits OUTSIDE `ViewThatFits`, and now that it is a control that is
-            // load-bearing rather than tidy: that view renders its candidates in order to
-            // measure them, and an interactive control inside it does not reliably take
-            // clicks. Only the labels need to collapse as the pane narrows.
-            icon
-            ViewThatFits(in: .horizontal) {
-                labels(showSubtitle: true)
-                labels(showSubtitle: false)
-                EmptyView()
+            // Close leads, in the corner, the way a window's does. It was in the trailing
+            // cluster beside Split, where the destructive control sat one pixel from the
+            // constructive ones.
+            if canClose {
+                PaneHeaderButton(symbol: "xmark", help: "Close Pane (⌘W)", isDestructive: true) {
+                    actions.close(paneID)
+                }
+                .opacity(controlOpacity)
+                .fixedSize()
             }
+
+            PaneIdentityButton(paneID: paneID, descriptor: descriptor,
+                               currentKind: currentKind, isFocused: isFocused,
+                               actions: actions)
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.frame(in: .named(Self.coordinateSpace)).maxX
+                } action: { onIdentityTrailing($0) }
 
             Spacer(minLength: 4)
 
+            // The split controls never move and never collapse as the pane narrows: they
+            // are fixed-size, so the identity control is the only thing that gives, and it
+            // gives by trimming its name.
             HStack(spacing: 1) {
                 PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                     actions.split(paneID, .right)
@@ -192,25 +178,18 @@ public struct PaneHeader: View {
                 PaneHeaderButton(symbol: "square.split.1x2", help: "Split Down (⇧⌘D)") {
                     actions.split(paneID, .bottom)
                 }
-                if canClose {
-                    PaneHeaderButton(symbol: "xmark", help: "Close Pane (⌘W)", isDestructive: true) {
-                        actions.close(paneID)
-                    }
-                }
             }
-            // Always present, so the affordance is discoverable rather than hidden behind a
-            // hover the user has to find. Hovering just brings them forward.
-            .opacity(isHovering ? 1 : (isFocused ? 0.72 : 0.4))
+            .opacity(controlOpacity)
             .fixedSize()
         }
-        // 4, not 10: the icon is now a control wearing the standard 28-wide hover plate,
-        // which carries ~6.5pt of slack either side of the glyph. Padding the header as if
-        // the glyph were still bare would indent it past everything below it. Measured to
-        // put the glyph centre at 18pt, where the bare icon sat.
+        // 4, not 10: the leading control wears the standard 28-wide hover plate, which
+        // carries ~6.5pt of slack either side of the glyph. Padding the header as if the
+        // glyph were bare would indent it past everything below it.
         .padding(.leading, 4)
         .padding(.trailing, 5)
         .frame(height: Token.Space.tileHeaderHeight)
         .frame(maxWidth: .infinity)
+        .coordinateSpace(.named(Self.coordinateSpace))
         // No background at all, and nothing behind it either. The header's band is the
         // pane's own glass — the content is laid out below it, so there is nothing to hide
         // and nothing to blur. Anything drawn here would be a second surface inside the
@@ -257,35 +236,89 @@ public enum PaneDragType {
 
 // MARK: - Kind menu
 
-/// The "turn this pane into…" control: a chevron sitting beside the split buttons.
-struct PaneKindMenuButton: View {
+/// The pane's identity — its icon and its name — and the "turn this pane into…" control,
+/// as one thing.
+///
+/// The icon alone was the control before, and the name beside it was inert, which meant
+/// the biggest target in the header did nothing while the smallest opened a menu. The
+/// identity is what says what the pane is, so all of it is what people press to change
+/// what the pane is: one hover plate, one click, one menu.
+///
+/// Falls back to a plain label when the app supplied no kinds — an empty `NSMenu` declines
+/// to open, and a control that does nothing is worse than a label.
+struct PaneIdentityButton: View {
     let paneID: PaneID
-    /// The pane's CURRENT icon — the control wears whatever the pane is right now, so the
-    /// header keeps reading as identity rather than gaining a generic menu glyph.
-    let symbol: String
+    let descriptor: PaneDescriptor
     let currentKind: PaneRecord.Kind?
     let isFocused: Bool
     let actions: PaneActions
 
     var body: some View {
-        // Keeps the focused pane's accent tint at rest and picks up the standard hover
-        // plate, so it is discoverable as a control without becoming a new kind of one.
-        //
-        // Every kind is also reachable from the palette; the tooltip teaches that rather
-        // than pretending this pointer affordance is the only way in.
-        ChromeMenuButton(symbol: symbol, help: "Change Pane Type (\u{21E7}\u{2318}P)",
-                         tint: isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel) {
-            actions.kinds().map { choice in
-                // The pane's current kind is ticked and cannot be re-chosen: converting a
-                // pane into what it already is would tear down a live tile to rebuild the
-                // same thing.
-                .item(title: choice.title, symbol: choice.symbol,
-                      isOn: choice.kind == currentKind,
-                      isEnabled: choice.kind != currentKind) {
-                    actions.changeKind(paneID, choice.kind)
-                }
+        if actions.kinds().isEmpty {
+            label(isHovering: false)
+        } else {
+            // Every kind is also reachable from the palette; the tooltip teaches that
+            // rather than pretending this pointer affordance is the only way in.
+            ChromeMenuTrigger(help: "Change Pane Type (\u{21E7}\u{2318}P)",
+                              entries: entries) { hovering in
+                label(isHovering: hovering)
             }
         }
+    }
+
+    private func entries() -> [ChromeMenuEntry] {
+        actions.kinds().map { choice in
+            // The pane's current kind is ticked and cannot be re-chosen: converting a pane
+            // into what it already is would tear down a live tile to rebuild the same thing.
+            .item(title: choice.title, symbol: choice.symbol,
+                  isOn: choice.kind == currentKind,
+                  isEnabled: choice.kind != currentKind) {
+                actions.changeKind(paneID, choice.kind)
+            }
+        }
+    }
+
+    /// Icon in the standard chrome box, name beside it, one plate under both on hover.
+    private func label(isHovering: Bool) -> some View {
+        HStack(spacing: 0) {
+            Image(systemName: ChromeSymbol.filled(descriptor.icon))
+                .font(.system(size: ChromeIconLabel.size, weight: .semibold))
+                .frame(width: ChromeIconLabel.width, height: ChromeIconLabel.height)
+                // Keeps the focused pane's accent at rest; hover brightens to `label` the
+                // way every other chrome icon does.
+                .foregroundStyle(isHovering
+                                 ? Token.Colour.label
+                                 : (isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel))
+            name
+                // One line, trimmed from the tail. The name never wraps, never drops out
+                // and never pushes the split controls: as the pane narrows the subtitle
+                // goes first, then the title, one character at a time with an ellipsis.
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.trailing, 8)
+        }
+        .frame(height: ChromeIconLabel.height)
+        .contentShape(.rect)
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Token.Colour.label.opacity(0.10))
+            }
+        }
+    }
+
+    /// Title and subtitle as ONE run of text rather than two views, so tail truncation
+    /// eats the subtitle before it touches the title — and a subtitle that has been trimmed
+    /// to nothing simply is nothing, rather than a lone "…" beside an intact name.
+    private var name: Text {
+        let title = Text(descriptor.title)
+            .font(Token.Type_.tileTitle)
+            .foregroundStyle(isFocused ? Token.Colour.label : Token.Colour.secondaryLabel)
+        guard let subtitle = descriptor.subtitle else { return title }
+        let detail = Text(subtitle)
+            .font(Token.Type_.tileSubtitle)
+            .foregroundStyle(Token.Colour.tertiaryLabel)
+        return Text("\(title)  \(detail)")
     }
 }
 
@@ -450,8 +483,8 @@ public final class PaneContainerView: NSView {
         return hit
     }
 
-    /// The band of the header you can pick the pane up by. Between the kind menu on the left
-    /// and the split/close cluster on the right, so all three keep their own gestures.
+    /// The band of the header you can pick the pane up by. Between the identity control on
+    /// the left and the split cluster on the right, so all three keep their own gestures.
     private lazy var dragHandle = PaneDragHandleView(paneID: paneID) { [weak self] in
         self?.paneSnapshot()
     }
@@ -492,7 +525,22 @@ public final class PaneContainerView: NSView {
     /// in the header unable to respond, the menu included.
     private func rebuildHeader() {
         header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor, currentKind: kind,
-                                     isFocused: isFocused, canClose: canClose, actions: actions)
+                                     isFocused: isFocused, canClose: canClose, actions: actions,
+                                     onIdentityTrailing: { [weak self] in
+                                         self?.noteIdentityTrailing($0)
+                                     })
+    }
+
+    /// Where the header's identity control ends, so the drag handle can start after it.
+    ///
+    /// A guess until the header has laid out once: close plus icon plus a short name. The
+    /// header reports the real number on its first layout and on every rename after.
+    private var identityTrailing: CGFloat = 96
+
+    private func noteIdentityTrailing(_ x: CGFloat) {
+        guard x != identityTrailing else { return }
+        identityTrailing = x
+        needsLayout = true
     }
 
     /// Colours that live on layers. Cheap, idempotent, and safe to re-run on every redraw.
@@ -515,6 +563,14 @@ public final class PaneContainerView: NSView {
     /// What the pane is actually painting. Test seam: the opacity setting is only real if
     /// it is on the layer, and every pane's layer, not merely in the theme value.
     public var backdropColourForTesting: CGColor? { clip.layer?.backgroundColor }
+
+    /// Where the header said its identity control ends. Test seam: the name is a control,
+    /// and the number that keeps the drag handle off it has to be the measured one.
+    public var identityTrailingForTesting: CGFloat { identityTrailing }
+
+    /// The band a drag can start in. Test seam: a handle laid over the name would take the
+    /// name's clicks, and nothing else in the layout would notice.
+    public var dragHandleFrameForTesting: CGRect { dragHandle.frame }
 
     /// Where this pane sits in reading order, 1-based, or nil before layout has said.
     ///
@@ -604,10 +660,11 @@ public final class PaneContainerView: NSView {
                                width: bounds.width,
                                height: max(0, bounds.height - headerHeight))
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: min(headerHeight, bounds.height))
-        // Between the kind menu (the icon, on the left) and the split/close cluster. Both
-        // ends are controls, and a drag that starts on one of them is a misfire.
-        let leadingGutter: CGFloat = 40
-        let trailingGutter: CGFloat = canClose ? 96 : 68
+        // Between the identity control (close, icon and name, on the left) and the split
+        // cluster. Both ends are controls, and a drag that starts on one of them is a
+        // misfire — and the name is a control now, so its edge is measured, not assumed.
+        let leadingGutter: CGFloat = identityTrailing + 2
+        let trailingGutter: CGFloat = 68
         dragHandle.frame = CGRect(x: leadingGutter, y: 0,
                                   width: max(0, bounds.width - leadingGutter - trailingGutter),
                                   height: min(headerHeight, bounds.height))
@@ -638,5 +695,11 @@ public final class PaneContainerView: NSView {
 #Preview("Pane header — narrow", traits: .fixedLayout(width: 190, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
+               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
+}
+
+#Preview("Pane header — narrower than its name", traits: .fixedLayout(width: 140, height: 40)) {
+    PaneHeader(paneID: LayoutTree.fixturePane(1),
+               descriptor: PaneDescriptor(title: "ultra-swift-workspace", subtitle: "~/Repo/Ultra"),
                currentKind: nil, isFocused: true, canClose: true, actions: .inert)
 }

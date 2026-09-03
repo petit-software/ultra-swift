@@ -9,9 +9,9 @@ import UltraLayout
 /// view to render perfectly and do nothing — the kind menu and the focus tap were the other
 /// two. Beginning the session ourselves removes the guesswork.
 ///
-/// Sized to the TITLE band only. The icon on the left is the kind menu and the cluster on the
-/// right is split and close; a drag starting on either of those is not a drag anyone meant,
-/// so this sits between them and lets both keep their clicks.
+/// Sized to the EMPTY band only. Close, icon and name on the left are one control cluster and
+/// the pair on the right is split; a drag starting on any of those is not a drag anyone
+/// meant, so this sits between them and lets both ends keep their clicks.
 @MainActor
 final class PaneDragHandleView: NSView {
     private let paneID: PaneID
@@ -30,9 +30,9 @@ final class PaneDragHandleView: NSView {
 
     /// Clicks pass through, drags do not.
     ///
-    /// The header underneath still needs its taps — clicking the title focuses the pane, and
-    /// swallowing that to enable a gesture nobody has started yet would break the common
-    /// action to serve the rare one.
+    /// The header underneath still needs its taps — clicking the empty band focuses the
+    /// pane, and swallowing that to enable a gesture nobody has started yet would break the
+    /// common action to serve the rare one.
     override func mouseDown(with event: NSEvent) {
         mouseDownAt = event.locationInWindow
     }
