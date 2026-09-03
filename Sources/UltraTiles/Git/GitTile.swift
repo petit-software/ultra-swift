@@ -307,7 +307,9 @@ private struct ChangeRow: View {
         case (.added, _): ("A", .green)
         case (.deleted, _), (_, .deleted): ("D", .red)
         case (.renamed, _): ("R", Token.Colour.accent)
-        default: ("M", Token.Colour.accent)
+        // Grey, not the accent: an edited file is the ORDINARY row in this list, and a
+        // colour that sits on most rows stops marking anything.
+        default: ("M", Token.Colour.secondaryLabel)
         }
     }
 
@@ -319,14 +321,24 @@ private struct ChangeRow: View {
                 .frame(width: 12)
 
             Text(change.path)
-                .font(Token.Type_.monoSmall)
+                .font(Token.Type_.mono)
                 .foregroundStyle(change.isStaged ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .lineLimit(1)
                 .truncationMode(.head)
 
             Spacer(minLength: 0)
 
-            if isHovering {
+            if change.isStaged {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Token.Colour.accent)
+                    .help("Staged")
+            }
+
+            // Always laid out, only faded. A cluster that arrives on hover pushes the
+            // checkmark and the name's truncation point sideways, and a row that moves under
+            // the pointer is a row you cannot aim at. Same three widths whether staged or not.
+            HStack(spacing: 8) {
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send path to shell")
                 if change.isStaged {
@@ -338,17 +350,14 @@ private struct ChangeRow: View {
                 }
                 Button(action: discard) { Image(systemName: "arrow.uturn.backward") }
                     .help("Discard changes")
-            } else if change.isStaged {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Token.Colour.accent)
-                    .help("Staged")
             }
+            .opacity(isHovering ? 1 : 0)
+            .allowsHitTesting(isHovering)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
         .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .frame(height: 24)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
         // The row opens the diff; the buttons on it keep their own actions because a

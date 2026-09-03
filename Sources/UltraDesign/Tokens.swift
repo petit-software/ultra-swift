@@ -211,6 +211,8 @@ public enum Token {
         public static let tileSubtitle = Font.system(size: 15, weight: .regular)
         public static let body = Font.system(size: 13)
         public static let monoSmall = Font.system(size: 11, design: .monospaced)
+        /// A path or file name meant to be READ, not glanced at: body size, fixed pitch.
+        public static let mono = Font.system(size: 13, design: .monospaced)
     }
 
     // MARK: Motion

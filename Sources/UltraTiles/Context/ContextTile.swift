@@ -138,31 +138,33 @@ private struct ContextRow: View {
             //
             // "missing" keeps its warning colour: that is a STATE, not the secondary half of
             // anything, and it is the one thing in this tile worth interrupting a scan for.
-            if !isHovering {
-                Group {
-                    if item.isMissing {
-                        Text("missing")
-                            .foregroundStyle(.orange)
-                    } else {
-                        Text("~\(item.tokens / 1000 > 0 ? "\(item.tokens / 1000)k" : "\(item.tokens)")")
-                            .foregroundStyle(Token.Colour.tertiaryLabel)
-                    }
+            Group {
+                if item.isMissing {
+                    Text("missing")
+                        .foregroundStyle(.orange)
+                } else {
+                    Text("~\(item.tokens / 1000 > 0 ? "\(item.tokens / 1000)k" : "\(item.tokens)")")
+                        .foregroundStyle(Token.Colour.tertiaryLabel)
                 }
-                .font(Token.Type_.tileSubtitle.monospacedDigit())
-                .lineLimit(1)
-                // Never the side that truncates. Two flexible labels in one row shrink
-                // together, and "~12k" losing its tail is a number that now reads wrong
-                // rather than one that reads clipped — the name gives up the space instead,
-                // which is what its middle truncation is already there to do.
-                .layoutPriority(1)
             }
+            .font(Token.Type_.tileSubtitle.monospacedDigit())
+            .lineLimit(1)
+            // Never the side that truncates. Two flexible labels in one row shrink
+            // together, and "~12k" losing its tail is a number that now reads wrong
+            // rather than one that reads clipped — the name gives up the space instead,
+            // which is what its middle truncation is already there to do.
+            .layoutPriority(1)
 
             if item.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Token.Colour.accent)
             }
-            if isHovering {
+
+            // Always laid out, only faded. A cluster that arrives on hover — and a weight
+            // that leaves to make room for it — moves the name, the number and the pin
+            // sideways, and a row that moves under the pointer is a row you cannot aim at.
+            HStack(spacing: 7) {
                 // The tile's headline verb, per row. The footer sends the WHOLE list, which
                 // is the wrong granularity for most prompts: a list gathered over a session
                 // holds far more than the one file the next sentence is about.
@@ -179,16 +181,20 @@ private struct ContextRow: View {
                 .help(item.isPinned ? "Unpin" : "Pin — survives Clear")
                 Button(action: reveal) { Image(systemName: "magnifyingglass") }
                     .help("Reveal in Finder")
-                // Minus, not a cross or a trash can. Removing a row takes the file off this
-                // list and does nothing to the file, and a trash can promises otherwise.
-                Button(action: remove) { Image(systemName: "minus") }
+                // Circled minus, not a cross or a trash can. Removing a row takes the file
+                // off this list and does nothing to the file, and a trash can promises
+                // otherwise; the circle matches the footer's Clear and the Git pane's Unstage,
+                // which perform the same verb.
+                Button(action: remove) { Image(systemName: "minus.circle") }
                     .help("Remove from list")
             }
+            .opacity(isHovering ? 1 : 0)
+            .allowsHitTesting(isHovering)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .frame(height: 28)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
     }
