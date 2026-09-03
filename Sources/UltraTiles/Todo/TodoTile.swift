@@ -325,11 +325,11 @@ private struct TodoRow: View {
                     }
                     TodoRowSlot {
                         if !isEditing, isHovering {
-                            // Minus rather than a trash can. The can says "destroyed"; this
+                            // Circled minus rather than a trash can. The can says "destroyed"; this
                             // takes one line out of a markdown file that is in the repository,
                             // which is a removal, and it is the same glyph the Context list
                             // removes a row with.
-                            Button(action: delete) { Image(systemName: "minus") }
+                            Button(action: delete) { Image(systemName: "minus.circle") }
                                 .help("Remove task")
                                 .pointerStyle(.link)
                         }
