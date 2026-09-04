@@ -18,11 +18,12 @@ struct UltraSettings: View {
             Tab("Terminal", systemImage: "apple.terminal") { TerminalSettings() }
             Tab("Tiles", systemImage: "square.grid.2x2") { TileSettings() }
             Tab("Agents", systemImage: "sparkles") { AgentSettings() }
+            Tab("Chat", systemImage: "text.bubble") { ChatSettings() }
             Tab("Appearance", systemImage: "paintbrush") { AppearanceSettings() }
             Tab("Panes", systemImage: "square.split.2x1") { PaneAppearanceSettings() }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
-        .frame(width: 520)
+        .frame(width: 560)
     }
 }
 

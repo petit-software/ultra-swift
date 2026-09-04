@@ -371,7 +371,7 @@ private struct TodoRow: View {
 /// be showing in it: hover reveals controls, editing swaps one for another, the composer's
 /// Add appears with the first character typed, and none of that is allowed to move anything
 /// else.
-private struct TodoRowSlot<Content: View>: View {
+struct TodoRowSlot<Content: View>: View {
     @ViewBuilder let content: Content
 
     /// Wide enough for the widest glyph the slot holds (`return`), so no state of the row

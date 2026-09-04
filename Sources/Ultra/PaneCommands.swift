@@ -13,7 +13,25 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + paneKinds + folders
+                                 + layouts + chat + paneKinds + folders
+
+    /// The two verbs a chat pane has that a keystroke should reach: another thread, and
+    /// stop. Both act on the focused pane and dim when it is not a chat.
+    ///
+    /// ⌥⌘N sits beside ⌘N (window) and ⇧⌘N (project) as the third kind of new. ⌘. is
+    /// the platform's cancel, and it has been free here because a shell's cancel is ⌃C.
+    static let chat: [AppCommand] = [
+        AppCommand(id: "chat.new", title: "New Chat", menuPath: ["Pane", "Chat"],
+                   binding: KeyBinding("n", [.command, .option]),
+                   isEnabled: { ShellWorkspace.chatStore(in: $0) != nil }) { store in
+            ShellWorkspace.chatStore(in: store)?.newConversation()
+        },
+        AppCommand(id: "chat.stop", title: "Stop Response", menuPath: ["Pane", "Chat"],
+                   binding: KeyBinding(".", [.command]),
+                   isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
+            ShellWorkspace.chatStore(in: store)?.stop()
+        },
+    ]
 
     /// Verbs about the arrangement as a whole. Palette and menu only: a command that
     /// rewrites a project's layout is not one to have on a chord.
@@ -216,6 +234,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Folder") {
                 ForEach(PaneCommands.folders) { item($0) }
+            }
+            Menu("Chat") {
+                ForEach(PaneCommands.chat) { item($0) }
             }
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }

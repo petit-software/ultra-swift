@@ -243,6 +243,28 @@ Listening TCP ports, and which pane owns them.
 
 ---
 
+## 7. Chat
+
+A conversation with a model, beside the terminal. Four providers behind one protocol
+(`UltraChat.ChatProvider`): Apple's on-device model through Foundation Models, which needs
+no key and is the default; Anthropic; OpenAI; Gemini; and anything that speaks OpenAI's
+chat API at a URL of the user's choosing (Ollama, LM Studio, OpenRouter). Each is raw HTTP
+over `URLSession.bytes` with a small SSE parser — no SDK, because none of the three ships
+a Swift one and the community packages lag the APIs. Every provider is tested against a
+recorded transcript.
+
+- Conversations are files: `.ultra/chats/<id>.json`, beside the todo and context lists,
+  newest first in the pane's clock menu. A conversation carries its own provider and model.
+- The store (`ChatStore`) is owned by the tile factory, like an editor's tabs, so an answer
+  still streaming survives the pane being rebuilt. The pane's record carries the
+  conversation id in `command`, the way an editor's carries its file.
+- The answer is rendered in blocks: prose through Foundation's Markdown parser, fenced code
+  in a box with Copy and "type at the prompt" — the latter is `injectIntoShell`, the same
+  verb every other tile sends with.
+- Keys live in the keychain (`ChatCredentials`); Settings ▸ Chat is where they go in.
+- Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
+  Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
+
 ## Sandboxing consequence
 
 Spawning PTYs and shelling out to `lsof`, `ps`, and `git` are all incompatible with the App

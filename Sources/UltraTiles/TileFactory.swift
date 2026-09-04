@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UltraChat
 import UltraCore
 import UltraLayout
 
@@ -54,6 +55,13 @@ public final class TileFactory {
     /// This pane's tabs, or nil for a pane that is not an editor.
     public func editorSessions(for paneID: PaneID) -> EditorSessions? { sessions[paneID] }
 
+    /// Each chat pane's conversation, held here for the same reason the editor's tabs are:
+    /// an answer that is still streaming must outlive the view showing it.
+    private var chats: [PaneID: ChatStore] = [:]
+
+    /// This pane's chat, or nil for a pane that is not one.
+    public func chatStore(for paneID: PaneID) -> ChatStore? { chats[paneID] }
+
     /// Which panes are editors, so the app can find one to send a file to.
     public func editorPanes() -> Set<PaneID> { Set(sessions.keys) }
 
@@ -64,7 +72,7 @@ public final class TileFactory {
     public var onRecordChange: ((PaneID, PaneRecord) -> Void)?
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context]
+    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat]
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? records[paneID]?.kind
@@ -116,6 +124,23 @@ public final class TileFactory {
             view = NSHostingView(rootView: GitTile(context: paneContext))
         case .context:
             view = NSHostingView(rootView: ContextTile(context: paneContext))
+        case .chat:
+            // The PROJECT's root, not the shell's folder: a chat is about the project, and
+            // its transcripts live beside the project's todo and context files.
+            let projectRoot = context.projectRoot
+            let store = chats[paneID] ?? ChatStore(
+                root: projectRoot,
+                conversationID: records[paneID]?.command.flatMap(UUID.init(uuidString:)))
+            chats[paneID] = store
+            store.onChange = { [weak self] conversation in
+                self?.noteChat(paneID, conversation, root: projectRoot)
+            }
+            view = NSHostingView(rootView: ChatTile(context: paneContext, store: store))
+            view.setAccessibilityLabel("Chat")
+            hosts[paneID] = view
+            let record = Self.chatRecord(for: store.current, root: projectRoot)
+            records[paneID] = record
+            return (view, record)
         default:
             return nil
         }
@@ -129,6 +154,22 @@ public final class TileFactory {
     public func release(_ paneID: PaneID) {
         hosts.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
+        chats.removeValue(forKey: paneID)?.stop()
+    }
+
+    /// Keep a chat pane's header on the model it is talking to, and its record on the
+    /// conversation it is showing, so a restored workspace reopens the same thread.
+    private func noteChat(_ paneID: PaneID, _ conversation: ChatConversation, root: URL) {
+        let record = Self.chatRecord(for: conversation, root: root)
+        records[paneID] = record
+        onRecordChange?(paneID, record)
+    }
+
+    /// `command` carries the conversation id, the way it carries an editor's open file.
+    static func chatRecord(for conversation: ChatConversation, root: URL) -> PaneRecord {
+        PaneRecord(kind: .chat, title: "Chat", subtitle: conversation.model,
+                   icon: icon(for: .chat), cwd: root.path,
+                   command: conversation.messages.isEmpty ? nil : conversation.id.uuidString)
     }
 
     /// Keep a pane's header on the tab that is showing.
@@ -191,6 +232,7 @@ public final class TileFactory {
         hosts.removeValue(forKey: paneID)
         records.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
+        chats.removeValue(forKey: paneID)?.stop()
     }
 
     public static func record(for kind: PaneRecord.Kind,
@@ -215,6 +257,7 @@ public final class TileFactory {
         case .git: "Git"
         case .editor: "Editor"
         case .context: "Context"
+        case .chat: "Chat"
         default: abbreviate(root.path)
         }
     }
@@ -240,6 +283,7 @@ public final class TileFactory {
         case .resources: "gauge.with.dots.needle.33percent"
         case .git: "arrow.trianglehead.branch"
         case .context: "paperclip"
+        case .chat: "text.bubble"
         case .shell, .placeholder: "apple.terminal"
         }
     }

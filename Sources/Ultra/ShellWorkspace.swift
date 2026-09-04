@@ -26,8 +26,8 @@ enum ShellWorkspace {
         // A project with nothing to restore takes the DEFAULT layout, if one has been set:
         // the arrangement the user chose once, re-homed onto this folder. Without one it
         // is a single shell, as before.
-        let document = (restore ? storage.load(directory: directory) : nil)
-            ?? defaultDocument(for: directory, storage: storage)
+        let restored = restore ? storage.load(directory: directory) : nil
+        let document = restored ?? defaultDocument(for: directory, storage: storage)
         let records: [PaneID: PaneRecord] = document.map { document in
             Dictionary(uniqueKeysWithValues: document.panes.compactMap { key, value in
                 PaneID(uuidString: key).map { ($0, value) }
@@ -171,6 +171,11 @@ enum ShellWorkspace {
         Registry.factories[store.workspaceID] = factory
         Registry.tiles[store.workspaceID] = tiles
         Registry.stores[store.workspaceID] = store
+        // A layout that came from the default rather than from this project's own file
+        // is written now rather than on the first change. Nothing else persists a store
+        // until something moves, so a project opened, looked at and lost to a crash would
+        // open next time on a single shell as if the default had never applied.
+        if restored == nil, document != nil { store.persist() }
         return store
     }
 
@@ -360,6 +365,16 @@ enum ShellWorkspace {
         return Registry.tiles[store.workspaceID]?.editorSessions(for: target)
     }
 
+    /// The chat the focused pane holds, or nil when the focused pane is not a chat.
+    ///
+    /// Only the FOCUSED pane. An editor command reaches for the editor last worked in
+    /// because clicks in other tiles route files to it; nothing routes to a chat, so a
+    /// New Chat that landed in a pane other than the one in front of you would be a
+    /// surprise.
+    static func chatStore(in store: LayoutStore) -> ChatStore? {
+        Registry.tiles[store.workspaceID]?.chatStore(for: store.tree.focused)
+    }
+
     /// Open a new editor pane on a specific file. Kept for callers that mean a FILE.
     static func openEditor(on file: URL, in store: LayoutStore) {
         showInEditor(.file(file), in: store)
@@ -480,6 +495,7 @@ struct PaneKind: Identifiable, Sendable {
         PaneKind(kind: .ports, title: "Ports", symbol: "network"),
         PaneKind(kind: .resources, title: "Resources", symbol: "gauge.with.needle"),
         PaneKind(kind: .context, title: "Context", symbol: "paperclip"),
+        PaneKind(kind: .chat, title: "Chat", symbol: "text.bubble"),
     ]
 
     /// Handed to the canvas so a pane's own icon can offer the list.

@@ -1,7 +1,8 @@
 # Ultra
 
 A Mac-native agentic terminal. Split a window into panes and make each one what you need — a
-shell, a git worktree, a todo list, a file tree, an editor, a context list, ports, or system
+shell, a git worktree, a todo list, a file tree, an editor, a context list, a chat with a
+model, ports, or system
 resources. A pane changes what it is from its own name.
 
 **[Download Ultra 0.1.1](https://github.com/petit-software/ultra-swift/releases/latest)** —

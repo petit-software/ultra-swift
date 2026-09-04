@@ -606,6 +606,7 @@ public final class PaneContainerView: NSView {
         case .resources: "Resources"
         case .git: "Git"
         case .context: "Context"
+        case .chat: "Chat"
         case .placeholder: "Pane"
         }
     }

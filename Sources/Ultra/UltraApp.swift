@@ -719,6 +719,7 @@ private struct TileShortcut: ViewModifier {
         case .fileTree: content.keyboardShortcut("e", modifiers: [.command, .option])
         case .todo: content.keyboardShortcut("y", modifiers: [.command, .option])
         case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
+        case .chat: content.keyboardShortcut("c", modifiers: [.command, .option])
         default: content
         }
     }
