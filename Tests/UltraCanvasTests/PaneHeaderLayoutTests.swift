@@ -42,7 +42,7 @@ struct PaneHeaderLayoutTests {
         let container = pane(width: 700, title: "a-deliberately-long-pane-name",
                                    subtitle: "~/Repo/somewhere/deep")
         let trailing = container.identityTrailingForTesting
-        // Close (28) + icon (28) + a name this long is well past the pre-layout guess.
+        // Close (28) + a name this long is well past the pre-layout guess.
         #expect(trailing > 120, "the header never reported where its name ends")
         #expect(container.dragHandleFrameForTesting.minX >= trailing)
         #expect(container.dragHandleFrameForTesting.maxX <= 700 - splitCluster)
@@ -55,7 +55,7 @@ struct PaneHeaderLayoutTests {
         let trailing = container.identityTrailingForTesting
         // The name gave way; the split cluster kept its full width at the trailing edge.
         #expect(trailing <= 180 - splitCluster)
-        #expect(trailing > 56, "the name collapsed to nothing instead of trimming")
+        #expect(trailing > 40, "the name collapsed to nothing instead of trimming")
         #expect(container.dragHandleFrameForTesting.width >= 0)
     }
 }

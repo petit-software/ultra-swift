@@ -131,6 +131,42 @@ public enum SessionSymbols {
         // Marks
         "star.fill", "heart.fill", "bookmark.fill", "tag.fill",
         "flag.fill", "trophy.fill",
+        // Windows and stacks
+        "rectangle.on.rectangle.fill", "rectangle.split.3x3.fill", "square.grid.2x2.fill",
+        "rectangle.3.group.fill", "square.stack.fill", "square.fill.on.square.fill",
+        // Code and documents
+        "terminal.fill", "text.page.fill", "doc.on.doc.fill", "doc.badge.gearshape.fill",
+        "list.bullet.rectangle.fill", "list.clipboard.fill",
+        // Servers and cloud
+        "cloud.bolt.fill", "icloud.fill", "externaldrive.connected.to.line.below.fill",
+        "wifi.circle.fill", "powerplug.fill", "bolt.horizontal.fill",
+        // Places
+        "globe.europe.africa.fill", "globe.asia.australia.fill", "map.fill",
+        "location.fill", "mappin.circle.fill", "safari.fill",
+        // Devices
+        "tv.fill", "appletv.fill", "homepod.fill", "hifispeaker.fill",
+        "printer.fill", "scanner.fill",
+        // Health and science
+        "brain.head.profile.fill", "waveform.path.ecg.rectangle.fill", "cross.case.fill",
+        "pills.fill", "syringe.fill", "bandage.fill",
+        // Commerce
+        "banknote.fill", "wallet.pass.fill", "bag.fill", "storefront.fill",
+        "gift.fill", "ticket.fill",
+        // People and time
+        "person.fill", "person.3.fill", "person.crop.circle.fill", "clock.fill",
+        "calendar.circle.fill", "stopwatch.fill",
+        // Home and hospitality
+        "building.fill", "building.columns.fill", "sofa.fill", "lamp.desk.fill",
+        "cup.and.saucer.fill", "birthday.cake.fill",
+        // Media and craft
+        "mic.fill", "radio.fill", "film.fill", "video.fill",
+        "paintpalette.fill", "guitars.fill",
+        // Status
+        "checkmark.circle.fill", "exclamationmark.triangle.fill", "questionmark.circle.fill",
+        "xmark.octagon.fill", "medal.fill", "crown.fill",
+        // Messages and security
+        "text.bubble.fill", "bell.badge.fill", "envelope.badge.fill", "lock.shield.fill",
+        "key.horizontal.fill", "checkmark.shield.fill",
     ]
 
     /// Does this system have the symbol? Used by the test that guards the catalogue.

@@ -236,13 +236,17 @@ public enum PaneDragType {
 
 // MARK: - Kind menu
 
-/// The pane's identity — its icon and its name — and the "turn this pane into…" control,
-/// as one thing.
+/// The pane's identity — its name — and the "turn this pane into…" control, as one thing.
 ///
 /// The icon alone was the control before, and the name beside it was inert, which meant
 /// the biggest target in the header did nothing while the smallest opened a menu. The
 /// identity is what says what the pane is, so all of it is what people press to change
 /// what the pane is: one hover plate, one click, one menu.
+///
+/// No icon any more. The name already says what the pane is — "Todo", "Git", a path for
+/// a shell — so a glyph beside it was the same fact twice, in the one strip of a pane
+/// that has the least room. The kind's symbol still appears where it earns its place:
+/// beside each entry in the menu this control opens.
 ///
 /// Falls back to a plain label when the app supplied no kinds — an empty `NSMenu` declines
 /// to open, and a control that does nothing is worse than a label.
@@ -259,7 +263,7 @@ struct PaneIdentityButton: View {
         } else {
             // Every kind is also reachable from the palette; the tooltip teaches that
             // rather than pretending this pointer affordance is the only way in.
-            ChromeMenuTrigger(help: "Change Pane Type (\u{21E7}\u{2318}P)",
+            ChromeMenuTrigger(help: "Change Pane Type (\u{2318}K)",
                               entries: entries) { hovering in
                 label(isHovering: hovering)
             }
@@ -278,33 +282,25 @@ struct PaneIdentityButton: View {
         }
     }
 
-    /// Icon in the standard chrome box, name beside it, one plate under both on hover.
+    /// The name, with one plate under it on hover.
     private func label(isHovering: Bool) -> some View {
-        HStack(spacing: 0) {
-            Image(systemName: ChromeSymbol.filled(descriptor.icon))
-                .font(.system(size: ChromeIconLabel.size, weight: .semibold))
-                .frame(width: ChromeIconLabel.width, height: ChromeIconLabel.height)
-                // Keeps the focused pane's accent at rest; hover brightens to `label` the
-                // way every other chrome icon does.
-                .foregroundStyle(isHovering
-                                 ? Token.Colour.label
-                                 : (isFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel))
-            name
-                // One line, trimmed from the tail. The name never wraps, never drops out
-                // and never pushes the split controls: as the pane narrows the subtitle
-                // goes first, then the title, one character at a time with an ellipsis.
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.trailing, 8)
-        }
-        .frame(height: ChromeIconLabel.height)
-        .contentShape(.rect)
-        .background {
-            if isHovering {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Token.Colour.label.opacity(0.10))
+        name
+            // One line, trimmed from the tail. The name never wraps, never drops out
+            // and never pushes the split controls: as the pane narrows the subtitle
+            // goes first, then the title, one character at a time with an ellipsis.
+            .lineLimit(1)
+            .truncationMode(.tail)
+            // The same 8 either side, so the plate is a capsule around the words rather
+            // than a box that used to have a glyph in its left half.
+            .padding(.horizontal, 8)
+            .frame(height: ChromeIconLabel.height)
+            .contentShape(.rect)
+            .background {
+                if isHovering {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Token.Colour.label.opacity(0.10))
+                }
             }
-        }
     }
 
     /// Title and subtitle as ONE run of text rather than two views, so tail truncation
@@ -533,9 +529,9 @@ public final class PaneContainerView: NSView {
 
     /// Where the header's identity control ends, so the drag handle can start after it.
     ///
-    /// A guess until the header has laid out once: close plus icon plus a short name. The
-    /// header reports the real number on its first layout and on every rename after.
-    private var identityTrailing: CGFloat = 96
+    /// A guess until the header has laid out once: close plus a short name. The header
+    /// reports the real number on its first layout and on every rename after.
+    private var identityTrailing: CGFloat = 72
 
     private func noteIdentityTrailing(_ x: CGFloat) {
         guard x != identityTrailing else { return }
