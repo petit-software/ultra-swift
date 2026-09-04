@@ -16,3 +16,8 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Per-project state the app writes while running here: chat transcripts and the context
+# list's bookmarks. The todo list beside them is the roadmap and stays tracked.
+.ultra/chats/
+.ultra/context.json
