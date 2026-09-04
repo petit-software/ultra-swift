@@ -1,3 +1,7 @@
-- [ ] CMD + K opens Comand list
-- [ ] Fixed pane headers
-- [ ] Better structurally organized settings
+- [ ] Explor Swift packages if nothing available how to have an AI chat experience to create a chat like expeirence with ChatGPT / Claude / Gemini
+- [x] todo pane, when task is empty - after remoing it with backspace and accepting with enter should remove the empty task line
+- [x] Remove pane icons from the pane headers
+- [x] Add option to apply panel position and types to all projects - add a ellipsis menu on the top tollbar on the right,.
+- [x] Allow to open multiple project folders at once via sidebar open folder icon
+- [x] CMD + K opens and closes Comand list
+- [x] Better structurally organized settings
