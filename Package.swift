@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "UltraCore", targets: ["UltraCore"]),
         .library(name: "UltraTerminal", targets: ["UltraTerminal"]),
         .library(name: "UltraCanvas", targets: ["UltraCanvas"]),
+        .library(name: "UltraChat", targets: ["UltraChat"]),
         .executable(name: "Ultra", targets: ["Ultra"]),
     ],
     dependencies: [
@@ -32,12 +33,16 @@ let package = Package(
                 dependencies: ["UltraCore", "UltraDesign", "UltraLayout",
                                .product(name: "SwiftTerm", package: "SwiftTerm")]),
         .target(name: "UltraCanvas", dependencies: ["UltraLayout", "UltraDesign", "UltraCore"]),
+        // Talking to language models: the four providers, the streams they answer with,
+        // and the conversations on disk. Foundation only — no UI, nothing of ours — so
+        // every provider is tested against a recorded transcript rather than a network.
+        .target(name: "UltraChat"),
         // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
         // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
-        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout"]),
+        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat"]),
         .executableTarget(name: "Ultra",
                           dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal",
-                                         "UltraTiles", "UltraLayout", "UltraDesign",
+                                         "UltraTiles", "UltraLayout", "UltraDesign", "UltraChat",
                                          .product(name: "Sparkle", package: "Sparkle")]),
         .testTarget(name: "UltraLayoutTests", dependencies: ["UltraLayout"]),
         .testTarget(name: "UltraDesignTests", dependencies: ["UltraDesign"]),
@@ -45,5 +50,6 @@ let package = Package(
         .testTarget(name: "UltraCoreTests", dependencies: ["UltraCore", "UltraLayout"]),
         .testTarget(name: "UltraTerminalTests", dependencies: ["UltraTerminal", "UltraLayout", "UltraDesign"]),
         .testTarget(name: "UltraTilesTests", dependencies: ["UltraTiles", "UltraCore"]),
+        .testTarget(name: "UltraChatTests", dependencies: ["UltraChat"]),
     ]
 )
