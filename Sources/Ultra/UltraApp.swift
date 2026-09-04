@@ -144,10 +144,13 @@ final class WorkspaceModel {
                                   exists: { FileManager.default.fileExists(atPath: $0) })
     }
 
-    /// The project the NEXT window should open on. Consumed once, the same idiom as a
+    /// The projects the NEXT window should open on. Consumed once, the same idiom as a
     /// staged tile: `openWindow` cannot carry a value through to `WorkspaceModel`, and a
     /// value left standing would make every later window inherit a project opened once.
-    @MainActor static var pendingDirectory: String?
+    ///
+    /// A list, because the folder picker allows several — and with no window open, "one
+    /// pending folder" would have meant the last one chosen wins and the rest are lost.
+    @MainActor static var pendingDirectories: [String] = []
 
     /// Allocates, and does NOTHING ELSE. Every side effect lives in `openInitialSessions`.
     ///
@@ -158,7 +161,7 @@ final class WorkspaceModel {
     ///
     /// This init used to open the window's sessions, which meant each of those discarded
     /// models spawned a workspace: real PTYs started, `ShellWorkspace.Registry` gained an
-    /// entry nothing would ever remove, and `pendingDirectory` — a value deliberately
+    /// entry nothing would ever remove, and `pendingDirectories` — a value deliberately
     /// consumed once — was eaten by an instance that never reached the screen. It went
     /// unnoticed only because nothing invalidated this view very often; adding a per-second
     /// observable (the sidebar's agent status) turned it into a workspace a second.
@@ -170,8 +173,8 @@ final class WorkspaceModel {
     /// actually survived, and idempotent because a `.task` can run again.
     func openInitialSessions() {
         guard sessions.isEmpty else { return }
-        let requested = WorkspaceModel.pendingDirectory
-        WorkspaceModel.pendingDirectory = nil
+        let requested = WorkspaceModel.pendingDirectories
+        WorkspaceModel.pendingDirectories = []
 
         // A window opened ON a project restores that project's layout even though it is not
         // the first window of the launch. The "new window is new work" rule exists to stop a
@@ -180,8 +183,10 @@ final class WorkspaceModel {
         let isFirst = !Self.hasRestored
         Self.hasRestored = true
 
-        if let requested {
-            sessions.open(directory: requested, restore: true)
+        if !requested.isEmpty {
+            for directory in requested { sessions.open(directory: directory, restore: true) }
+            // The first one chosen is the one on screen; the rest sit in the sidebar.
+            if let first = sessions.sessions.first { sessions.select(first.workspaceID) }
             return
         }
         // The first window of a launch reopens every session the last run had, which is what
@@ -222,14 +227,20 @@ struct WorkspaceCommands: Commands {
     }
 
     private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-        panel.message = "Choose a project folder"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        open(directory: url.path)
+        let folders = chooseProjectFolders()
+        // No window at all: every folder rides into the one window about to open, rather
+        // than each racing to be the single folder a new window reads.
+        guard sessions != nil else {
+            if !folders.isEmpty { openInNewWindow(directories: folders) }
+            return
+        }
+        for folder in folders { open(directory: folder) }
+    }
+
+    private func openInNewWindow(directories: [String]) {
+        for directory in directories { RecentProjects.remember(directory) }
+        WorkspaceModel.pendingDirectories = directories
+        openWindow(id: UltraApp.workspaceWindowID)
     }
 
     /// Raise the project if it is already open; otherwise hand it to the next window.
@@ -256,9 +267,7 @@ struct WorkspaceCommands: Commands {
             sessions.open(directory: directory)
             return
         }
-        RecentProjects.remember(directory)
-        WorkspaceModel.pendingDirectory = directory
-        openWindow(id: UltraApp.workspaceWindowID)
+        openInNewWindow(directories: [directory])
     }
 
     var body: some Commands {
@@ -431,8 +440,15 @@ struct WorkspaceCommands: Commands {
         }
 
         CommandGroup(after: .toolbar) {
-            Button("Command Palette…") { ui?.isPaletteShown = true }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
+            // ⌘K, the key a command list opens on in the editors and launchers most people
+            // arrive from. It was ⇧⌘P, VS Code's spelling, which nobody found. ⌘K is not
+            // in the reserved terminal table — anything with ⌘ is the app's — and a TUI
+            // that genuinely wants it can still be reached through pass-through.
+            //
+            // A TOGGLE: the same key closes it. The main menu sees the keystroke before the
+            // palette's own sheet does, so this is the one place the second press lands.
+            Button("Command Palette…") { ui?.isPaletteShown.toggle() }
+                .keyboardShortcut("k", modifiers: .command)
                 .disabled(ui == nil)
         }
 
@@ -466,14 +482,7 @@ struct RootView: View {
     }
 
     private func chooseSessionFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Open"
-        panel.message = "Choose a project folder"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        sessions.open(directory: url.path)
+        for folder in chooseProjectFolders() { sessions.open(directory: folder) }
     }
 
     var body: some View {
@@ -550,10 +559,15 @@ struct RootView: View {
             // The supported way to say "I am drawing that myself", rather than reaching into
             // the full-screen window and clearing the view AppKit put there.
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .sheet(isPresented: $ui.isPaletteShown) {
-                if let store {
-                    CommandPalette(store: store, isPresented: $ui.isPaletteShown)
-                }
+            // The palette is an OVERLAY, not a sheet. A sheet slides down from the title
+            // bar and parks against it, which is where a document's dialogs live; a
+            // command list is a thing you summon, and it should arrive where you are
+            // looking — the middle — growing into place rather than descending.
+            .overlay { paletteOverlay }
+            // The overlay lives in the same window as the terminal, so nothing hands the
+            // keyboard back when it closes the way a dismissed sheet did. Ask for it.
+            .onChange(of: ui.isPaletteShown) { _, shown in
+                if !shown { store?.reclaimKeyboardFocus() }
             }
             // Presented HERE rather than from the sidebar, so File ▸ New Project… reaches it
             // in a window whose sidebar is collapsed — which is a window with no `+` in it
@@ -566,16 +580,30 @@ struct RootView: View {
             // a toolbar item gets the standard Liquid Glass treatment automatically, which
             // is the same glass Finder's toolbar buttons wear. Nothing to style by hand.
             .toolbar {
-                // Every pane kind, one click from the window itself. Buried in a menu
-                // bar submenu they may as well not exist — this is where someone looks for
-                // "another pane", and it is the only place the full list is discoverable.
-                //
-                // Leading, beside the sidebar toggle, rather than out at the trailing end:
-                // "add" belongs at the same end as the list of what already exists — the
-                // sidebar's own Add sits at the foot of that column — and the trailing
-                // group is for what acts on the WINDOW, which the palette is and a new
-                // pane is not.
+                // The palette on the LEADING side, beside the sidebar toggle. It is the way
+                // into everything, so it sits where navigation starts — with the sidebar,
+                // not with the verbs that act on the window's contents.
                 ToolbarItem(placement: .navigation) {
+                    Button { ui.isPaletteShown = true } label: {
+                        Label("Commands", systemImage: "command")
+                    }
+                    .help("Command Palette (⌘K)")
+                }
+
+                // Everything else sits hard right; the flexible spacer is what pushes it
+                // there.
+                ToolbarSpacer(.flexible)
+
+                // Split and zoom are PANE verbs, and every pane header already carries
+                // them next to the pane they act on. Up here they acted on whichever pane
+                // happened to be focused, which is a different control wearing the same
+                // icon. What remains here acts on the canvas as a whole: adding to it, and
+                // the layout verbs behind the ellipsis.
+                ToolbarItemGroup(placement: .primaryAction) {
+                    // Every pane kind, one click from the window itself. Buried in a menu
+                    // bar submenu they may as well not exist — this is where someone looks
+                    // for "another pane", and it is the only place the full list is
+                    // discoverable.
                     Menu {
                         Section("New Pane") {
                             Button("Shell") {
@@ -593,35 +621,64 @@ struct RootView: View {
                     } label: {
                         Label("Add Pane", systemImage: "plus")
                     }
+                    // A plus already says "this adds something"; the chevron beside it
+                    // said "and it is a menu", which a click answers just as well.
+                    .menuIndicator(.hidden)
                     .help("New pane")
-                }
 
-                // NO title in the toolbar, in either slot.
-                //
-                // The window's own title is already removed from beside the sidebar toggle
-                // (`.toolbar(removing: .title)`), and a `.principal` item was the second
-                // place a name appeared: it flickered in and out as the sidebar opened,
-                // because that slot is laid out against a titlebar whose leading width is
-                // still animating. Which session this is belongs to the sidebar row that is
-                // selected, and the window's own title still carries it for the Window menu.
-
-                // Everything sits hard right; the flexible spacer is what
-                // pushes it there. The leading side belongs to the traffic lights, the
-                // sidebar toggle, and the one verb that makes something new.
-                ToolbarSpacer(.flexible)
-
-                // Split and zoom are PANE verbs, and every pane header already carries
-                // them next to the pane they act on. Up here they acted on whichever pane
-                // happened to be focused, which is a different control wearing the same
-                // icon. The palette stays: it is the one item here about the window.
-                // Both remain on their keyboard shortcuts and in the menu bar.
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { ui.isPaletteShown = true } label: {
-                        Label("Commands", systemImage: "command")
+                    // The window's own verbs, the few that are neither a pane's nor worth
+                    // a button each. A VIEW of the registry: every item here is an
+                    // `AppCommand`, so it is on the Pane menu and in the palette too.
+                    Menu {
+                        ForEach(PaneCommands.layouts) { command in
+                            Button(command.title) { if let store { command.run(store) } }
+                                .disabled(store.map { !command.isEnabled($0) } ?? true)
+                        }
+                    } label: {
+                        Label("More", systemImage: "ellipsis")
                     }
-                    .help("Command Palette (⇧⌘P)")
+                    // The glyph IS the disclosure; a chevron beside it said "menu" twice.
+                    .menuIndicator(.hidden)
+                    .help("More")
                 }
             }
+    }
+}
+
+extension RootView {
+    /// The command palette and the scrim under it.
+    ///
+    /// Two transitions: the scrim fades, the palette SCALES — from 96% up to full, with a
+    /// little overshoot — so it reads as settling into place rather than sliding in from
+    /// an edge. A small step on purpose: from half size it arrived like a zoom, and a
+    /// command list should feel summoned, not launched. Under Reduce Motion both fade.
+    @ViewBuilder
+    private var paletteOverlay: some View {
+        let reduceMotion = Token.Environment_.reduceMotion
+        // Pinned near the TOP rather than centred. The palette grows as the query narrows,
+        // and a centred box grows both ways — the field you are typing into climbs the
+        // window with every keystroke. Anchored at the top, only the bottom edge moves.
+        ZStack(alignment: .top) {
+            if ui.isPaletteShown {
+                // Click-away is dismiss, the same as Escape. Dark rather than blurred: the
+                // palette itself is glass, and glass over blur is two materials arguing.
+                Color.black.opacity(0.28)
+                    .ignoresSafeArea()
+                    .contentShape(.rect)
+                    .onTapGesture { ui.isPaletteShown = false }
+                    .transition(.opacity)
+                if let store {
+                    CommandPalette(store: store, isPresented: $ui.isPaletteShown)
+                        .padding(.top, 110)
+                        .transition(reduceMotion
+                                    ? .opacity
+                                    : .scale(scale: 0.96).combined(with: .opacity))
+                }
+            }
+        }
+        .animation(reduceMotion ? .easeOut(duration: 0.12)
+                                : .spring(duration: 0.32, bounce: 0.22),
+                   value: ui.isPaletteShown)
     }
 }
 
@@ -635,6 +692,22 @@ struct RootView: View {
              ui: UIState())
 }
 
+
+/// The one folder picker behind File ▸ Open Folder…, New Session… and the sidebar's folder
+/// button. One, so the three cannot drift apart — and several folders at once, because
+/// setting up a window of related projects is the usual reason to reach for it, and one
+/// panel per project was that many trips through the same dialog.
+@MainActor
+func chooseProjectFolders() -> [String] {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = true
+    panel.prompt = "Open"
+    panel.message = "Choose one or more project folders"
+    guard panel.runModal() == .OK else { return [] }
+    return panel.urls.map(\.path)
+}
 
 /// Default shortcuts for the tile kinds that earn one. Kinds without a binding are still
 /// reachable from the menu and the palette — a shortcut nobody can remember is not a feature.

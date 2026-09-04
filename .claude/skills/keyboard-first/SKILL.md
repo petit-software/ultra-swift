@@ -60,7 +60,7 @@ Consequences, and they are not negotiable:
 - **Leader key** for anything that would otherwise need a bad binding: a prefix (default `⌃⌘Space`)
   puts the app in a one-shot mode where the *next* keystroke is an app command and the terminal
   sees nothing. Show a HUD listing the available follow-ups. `Esc` cancels. Never a sticky mode.
-- **Command palette** (`⇧⌘P`) is the universal fallback: every registered command is fuzzy
+- **Command palette** (`⌘K`) is the universal fallback: every registered command is fuzzy
   searchable by title, with its key equivalent shown beside it so the palette teaches bindings.
   A command with no key equivalent is still fully reachable here.
 - **Pass-through**: `⌃⌘V` sends the *next* keystroke verbatim to the terminal, so a user who

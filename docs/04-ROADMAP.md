@@ -49,7 +49,7 @@ Full spec: `01-SPLIT-ENGINE.md`. Built and shipped with **placeholder colored pa
 - Accessibility: `splitGroup` / `splitter` roles, VoiceOver resize, full keyboard operation.
 
 - Named `#Preview`s of the canvas over every fixture tree, at multiple sizes, light and dark.
-- Every command declared in the registry with a `menuPath`; palette (`⇧⌘P`) lists them all.
+- Every command declared in the registry with a `menuPath`; palette (`⌘K`) lists them all.
 
 **Accept when** a 6-pane layout can be built, resized, rearranged, zoomed, closed, undone,
 quit, and relaunched pixel-identical — entirely from the keyboard, and again entirely with
