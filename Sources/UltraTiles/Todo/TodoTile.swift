@@ -85,25 +85,18 @@ public struct TodoTile: View {
         store.document.grouped.count > 1
     }
 
-    /// The add field, sitting at the head of the list and shaped like a row in it.
+    /// The add field, sitting at the head of the list.
     ///
     /// At the top rather than the bottom because that is where the new task lands, and a
     /// composer that writes to the opposite end of the list from where it sits makes you
-    /// hunt for what you just typed. Its circle is the same circle a task wears, in the same
-    /// column, so the field reads as the row about to exist rather than a bar bolted on.
+    /// hunt for what you just typed.
+    ///
+    /// A PILL, inset from the pane on both sides, with nothing but the words in it. It was
+    /// dressed as a row — a plus where a task's circle goes, a hairline around it — and read
+    /// as a row with decorations rather than as the one place in the pane you type. The
+    /// fill alone says "input"; the border said it a second time and boxed the pill in.
     private var composer: some View {
-        // Centred rather than baseline-aligned. A task row aligns to the first text baseline
-        // because its label can wrap to several lines and the checkbox belongs beside the
-        // first of them; the field here is always one line, so the baseline just pushes the
-        // glyph low against a row it is supposed to sit in the middle of.
-        HStack(alignment: .center, spacing: 7) {
-            Image(systemName: "plus")
-                .font(.system(size: 12, weight: .semibold))
-                // Sized to the circle it replaced so the field's text still starts on the
-                // same column as every task's label below it.
-                .frame(width: 14)
-                .foregroundStyle(draftFocused ? Token.Colour.accent : Token.Colour.tertiaryLabel)
-
+        HStack(alignment: .center, spacing: 6) {
             TextField("Add a task", text: $draft)
                 .textFieldStyle(.plain)
                 .font(Token.Type_.tileSubtitle)
@@ -124,13 +117,21 @@ public struct TodoTile: View {
                     .disabled(draft.isEmpty)
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, 10)
-        .padding(.vertical, 5)
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 7)
+        .background {
+            Capsule(style: .continuous)
+                .fill(Token.Colour.label.opacity(draftFocused ? 0.09 : 0.06))
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
         .contentShape(.rect)
-        // Clicking anywhere along the row starts typing, the way clicking a task row hits
+        // Clicking anywhere along the field starts typing, the way clicking a task row hits
         // its whole width rather than just the words.
         .onTapGesture { draftFocused = true }
+        .animation(Token.Motion.chromeFade, value: draftFocused)
     }
 
     private var footer: some View {
@@ -161,14 +162,19 @@ public struct TodoTile: View {
 
     /// Write an edited task back, and leave edit mode either way.
     ///
-    /// An empty result REVERTS rather than deleting. Deleting is a separate verb with its own
-    /// button, and clearing a field is far more often a slip on the way to retyping than it
-    /// is a decision to throw the task away — one that a list backed by a file in the repo
-    /// has no undo for.
+    /// An empty result REMOVES the task. It used to revert, on the theory that clearing a
+    /// field is a slip on the way to retyping — but a slip is abandoned with Escape, which
+    /// reverts, and pressing Return on a field you have deliberately emptied is the one
+    /// gesture that says "this line should not be here". Keeping an empty task alive after
+    /// it meant the only way out was the remove control on a row that already said nothing.
     private func commitEdit(_ text: String, for item: TodoDocument.Item) {
         editingID = nil
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, trimmed != item.text else { return }
+        guard !trimmed.isEmpty else {
+            store.removeItem(item.id)
+            return
+        }
+        guard trimmed != item.text else { return }
         store.setText(trimmed, for: item.id)
     }
 
