@@ -1,4 +1,4 @@
-- [ ] Explor Swift packages if nothing available how to have an AI chat experience to create a chat like expeirence with ChatGPT / Claude / Gemini
+- [x] Explor Swift packages if nothing available how to have an AI chat experience to create a chat like expeirence with ChatGPT / Claude / Gemini something like : https://github.com/sachaservan/SwiftChat - we want to have a chat as a pane
 - [x] todo pane, when task is empty - after remoing it with backspace and accepting with enter should remove the empty task line
 - [x] Remove pane icons from the pane headers
 - [x] Add option to apply panel position and types to all projects - add a ellipsis menu on the top tollbar on the right,.
