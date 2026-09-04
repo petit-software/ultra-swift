@@ -169,6 +169,29 @@ public final class LayoutStore {
         }
     }
 
+    /// Replace the whole canvas with another arrangement — every pane released, every
+    /// surface rebuilt through the factories from whatever records they now hold.
+    ///
+    /// The one verb behind "apply this layout to all projects". Not routed through `apply`:
+    /// that registers an undo, and undoing this would restore a tree whose panes no longer
+    /// have processes, records or history behind them — a canvas of fresh shells wearing
+    /// old ids. So the undo stack is emptied instead, and the confirmation this is reached
+    /// through says so.
+    public func adopt(tree newTree: LayoutTree) {
+        guard newTree.validate().isEmpty else { return }
+        trace("adopt: \(tree.paneCount) -> \(newTree.paneCount) panes")
+        surfaces.prune(keeping: [])
+        tree = newTree
+        undoManager.removeAllActions()
+        navigation = NavigationMemory()
+        lastFocusedShell = nil
+        lastFocusedEditor = nil
+        refreshWindowTitle()
+        persist()
+        onGeometrySettled?()
+        onChange?(newTree)
+    }
+
     // MARK: - Commands
 
     @discardableResult

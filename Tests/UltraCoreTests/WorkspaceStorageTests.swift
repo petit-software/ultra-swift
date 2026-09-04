@@ -131,3 +131,43 @@ struct WorkspaceStorageTests {
         #expect(Set(loaded.map(\.id)) == Set(good.map(\.id)))
     }
 }
+
+/// The default layout sits beside the project documents under a name that is not a UUID.
+/// It must round-trip, and it must never be mistaken for a project.
+@Suite("Default layout")
+struct DefaultLayoutTests {
+
+    @Test("a default layout round-trips and is not listed as a project")
+    @MainActor
+    func roundTripsAndStaysOutOfTheList() throws {
+        let storage = temporaryStorage()
+        #expect(!storage.hasDefaultLayout)
+        #expect(storage.loadDefaultLayout() == nil)
+
+        let document = makeDocument(.grid2x2)
+        try storage.saveDefaultLayout(document)
+        #expect(storage.hasDefaultLayout)
+        let restored = try #require(storage.loadDefaultLayout())
+        #expect(restored.tree == document.tree)
+        #expect(restored.panes == document.panes)
+        #expect(storage.loadAll().isEmpty, "the default layout was listed as a project")
+        #expect(storage.recentDirectories().isEmpty)
+
+        storage.clearDefaultLayout()
+        #expect(!storage.hasDefaultLayout)
+    }
+
+    @Test("a fresh project adopts the default layout's shape under its own directory")
+    @MainActor
+    func freshProjectAdoptsIt() throws {
+        let storage = temporaryStorage()
+        try storage.saveDefaultLayout(makeDocument(.threeAcross))
+        let template = try #require(storage.loadDefaultLayout())
+        let blank = WorkspaceDocument(directory: "/Users/x/Repo/other", title: "other",
+                                      tree: LayoutTree(single: PaneID()), panes: [:])
+        let adopted = blank.adoptingLayout(of: template)
+        #expect(adopted.tree.paneCount == 3)
+        #expect(adopted.directory == "/Users/x/Repo/other")
+        #expect(adopted.isConsistent)
+    }
+}

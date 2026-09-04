@@ -124,6 +124,52 @@ public final class WorkspaceStorage: @unchecked Sendable {
             .compactMap { load($0) }
     }
 
+    // MARK: Default layout
+
+    /// The arrangement a project gets the first time it is opened.
+    ///
+    /// One document beside the per-project ones, under a name that is not a UUID so
+    /// `loadAll` and `recentDirectories` never mistake it for a project. Kept as a whole
+    /// document rather than a bare tree: `adoptingLayout(of:)` needs the records and the
+    /// source directory to re-home each pane, and a second format would be a second
+    /// migration path.
+    public var defaultLayoutURL: URL {
+        directory.appendingPathComponent("default-layout.json")
+    }
+
+    public var hasDefaultLayout: Bool {
+        FileManager.default.fileExists(atPath: defaultLayoutURL.path)
+    }
+
+    public func saveDefaultLayout(_ document: WorkspaceDocument) throws {
+        var document = document
+        document.reconcile()
+        guard document.isConsistent else { throw WorkspaceError.inconsistentDocument }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        try encoder.encode(document).write(to: defaultLayoutURL, options: .atomic)
+    }
+
+    /// Nil when none has been set — or when the one on disk cannot be read, which is
+    /// quarantined the way a project's document would be rather than left to fail every
+    /// launch.
+    public func loadDefaultLayout() -> WorkspaceDocument? {
+        guard let data = try? Data(contentsOf: defaultLayoutURL) else { return nil }
+        do {
+            let decoded = try JSONDecoder().decode(WorkspaceDocument.self, from: data)
+            let migrated = try WorkspaceMigration.migrate(decoded)
+            guard migrated.isConsistent else { throw WorkspaceError.inconsistentDocument }
+            return migrated
+        } catch {
+            quarantine(defaultLayoutURL)
+            return nil
+        }
+    }
+
+    public func clearDefaultLayout() {
+        try? FileManager.default.removeItem(at: defaultLayoutURL)
+    }
+
     private func quarantine(_ source: URL) {
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")

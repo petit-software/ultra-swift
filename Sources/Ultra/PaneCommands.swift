@@ -13,7 +13,27 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + paneKinds + folders
+                                 + layouts + paneKinds + folders
+
+    /// Verbs about the arrangement as a whole. Palette and menu only: a command that
+    /// rewrites a project's layout is not one to have on a chord.
+    static let layouts: [AppCommand] = [
+        AppCommand(id: "layout.setDefault", title: "Set as Default Layout",
+                   menuPath: ["Pane"],
+                   isEnabled: { $0.workspaceDirectory != nil }) { store in
+            SharedLayout.setDefault(from: store)
+        },
+        AppCommand(id: "layout.resetToDefault", title: "Use Default Layout…",
+                   menuPath: ["Pane"],
+                   isEnabled: { SharedLayout.hasDefault(for: $0) }) { store in
+            SharedLayout.resetToDefault(store)
+        },
+        AppCommand(id: "layout.applyToAllProjects", title: "Apply Layout to All Projects…",
+                   menuPath: ["Pane"],
+                   isEnabled: { $0.workspaceDirectory != nil }) { store in
+            SharedLayout.applyToAllProjects(from: store)
+        },
+    ]
 
     /// Opening and switching pane kinds. Palette-only: seven kinds times two verbs is
     /// fourteen bindings nobody would remember, and the three that earn a shortcut declare
@@ -197,6 +217,8 @@ struct PaneMenuCommands: Commands {
             Menu("Folder") {
                 ForEach(PaneCommands.folders) { item($0) }
             }
+            Divider()
+            ForEach(PaneCommands.layouts) { item($0) }
             Divider()
             // Editor commands are not in the command registry with everything else, and
             // deliberately: every `AppCommand` acts on a `LayoutStore`, and these act on one

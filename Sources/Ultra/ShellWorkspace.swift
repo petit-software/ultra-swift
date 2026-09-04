@@ -22,7 +22,12 @@ enum ShellWorkspace {
                      restore: Bool = true) -> LayoutStore {
         // BY PATH, not "whichever document is first on disk" — that stood in for this while
         // there was only ever one project, and silently gave every project the same layout.
-        let document = restore ? storage.load(directory: directory) : nil
+        //
+        // A project with nothing to restore takes the DEFAULT layout, if one has been set:
+        // the arrangement the user chose once, re-homed onto this folder. Without one it
+        // is a single shell, as before.
+        let document = (restore ? storage.load(directory: directory) : nil)
+            ?? defaultDocument(for: directory, storage: storage)
         let records: [PaneID: PaneRecord] = document.map { document in
             Dictionary(uniqueKeysWithValues: document.panes.compactMap { key, value in
                 PaneID(uuidString: key).map { ($0, value) }
@@ -167,6 +172,18 @@ enum ShellWorkspace {
         Registry.tiles[store.workspaceID] = tiles
         Registry.stores[store.workspaceID] = store
         return store
+    }
+
+    /// A brand-new project's document, built from the default layout. Nil when there is
+    /// no default, which is the caller's cue to open a single shell.
+    static func defaultDocument(for directory: String,
+                                storage: WorkspaceStorage) -> WorkspaceDocument? {
+        guard let template = storage.loadDefaultLayout() else { return nil }
+        let blank = WorkspaceDocument(directory: directory,
+                                      title: URL(fileURLWithPath: directory).lastPathComponent,
+                                      tree: LayoutTree(single: PaneID()),
+                                      panes: [:])
+        return blank.adoptingLayout(of: template)
     }
 
     /// Everything one session owned, let go of.

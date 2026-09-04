@@ -31,6 +31,13 @@ public final class TileFactory {
     /// "New File Tree" must not turn every later split into a file tree.
     public func stage(_ kind: PaneRecord.Kind?) { pendingKind = kind }
 
+    /// Records for panes that do not exist yet. See `ShellPaneFactory.adopt(records:)`: a
+    /// layout adopted from another project names panes this factory has never built, and
+    /// the record is the only thing that says which of them are tiles.
+    public func adopt(records: [PaneID: PaneRecord]) {
+        self.records.merge(records) { _, new in new }
+    }
+
     /// What the next editor pane should open on. Consumed once, like the kind.
     private var pendingRequest: EditorRequest?
     public func stage(open request: EditorRequest?) { pendingRequest = request }

@@ -87,6 +87,15 @@ public final class ShellPaneFactory {
         pendingAgent = agent
     }
 
+    /// Records for panes that do not exist yet, on top of what was restored at launch.
+    ///
+    /// A layout adopted from another project arrives after this factory was built, with
+    /// pane ids nothing has seen before. Without their records here every one of them
+    /// would open as a plain shell in the workspace directory, whatever it was meant to be.
+    public func adopt(records: [PaneID: PaneRecord]) {
+        restored.merge(records) { _, new in new }
+    }
+
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord) {
         let record = restored[paneID]
         let agent = pendingAgent?.command ?? record?.command
