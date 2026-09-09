@@ -245,10 +245,13 @@ Listening TCP ports, and which pane owns them.
 
 ## 7. Chat
 
-A conversation with a model, beside the terminal. Four providers behind one protocol
+A conversation with a model, beside the terminal. Five providers behind one protocol
 (`UltraChat.ChatProvider`): Apple's on-device model through Foundation Models, which needs
-no key and is the default; Anthropic; OpenAI; Gemini; and anything that speaks OpenAI's
-chat API at a URL of the user's choosing (Ollama, LM Studio, OpenRouter). Each is raw HTTP
+no key and is the default; Anthropic; OpenAI; Gemini; and OpenRouter, many vendors' models
+behind one key. OpenRouter shares the OpenAI provider type, differing only in base URL.
+A local server (Ollama, LM Studio) was once a sixth, "OpenAI-compatible", and was dropped:
+a base URL, an optional key and a model name that had to be typed was more setup than it
+was worth. Each is raw HTTP
 over `URLSession.bytes` with a small SSE parser — no SDK, because none of the three ships
 a Swift one and the community packages lag the APIs. Every provider is tested against a
 recorded transcript.

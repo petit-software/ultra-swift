@@ -9,9 +9,9 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
     case anthropic
     case openAI
     case gemini
-    /// Anything speaking OpenAI's chat API at a URL of the user's choosing: Ollama, LM
-    /// Studio, OpenRouter, a proxy at work.
-    case compatible
+    /// Many vendors' models behind one key, through OpenAI's chat API at a fixed URL.
+    /// Model ids are `vendor/model`, and the list is long enough that the live one matters.
+    case openRouter
 
     public var id: String { rawValue }
 
@@ -21,17 +21,13 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
         case .anthropic: "Anthropic"
         case .openAI: "OpenAI"
         case .gemini: "Google Gemini"
-        case .compatible: "OpenAI-compatible"
+        case .openRouter: "OpenRouter"
         }
     }
 
-    /// Whether the service needs a key at all. The on-device model does not; a local
-    /// server usually does not either, but may, so it is asked for one and works without.
+    /// Whether the service needs a key at all. Only the on-device model does not.
     public var requiresCredential: Bool {
-        switch self {
-        case .apple, .compatible: false
-        case .anthropic, .openAI, .gemini: true
-        }
+        self != .apple
     }
 
     /// The model a fresh conversation starts on. Every one of these can be changed from
@@ -42,7 +38,7 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
         case .anthropic: "claude-opus-5"
         case .openAI: "gpt-5"
         case .gemini: "gemini-2.5-flash"
-        case .compatible: "llama3.2"
+        case .openRouter: "anthropic/claude-opus-5"
         }
     }
 }
@@ -64,7 +60,8 @@ public protocol ChatProvider: Sendable {
     func models() async throws -> [String]
 }
 
-/// What a provider needs to reach its service: a key, and for some, where the service is.
+/// What a provider needs to reach its service: a key, and optionally where the service
+/// is, so a test or a proxy can point it elsewhere.
 public struct ChatCredential: Sendable, Equatable {
     public var apiKey: String
     public var baseURL: URL?

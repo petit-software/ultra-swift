@@ -123,6 +123,15 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
             exitCode: spec.agentCommand == nil ? nil : lastExitCode)
     }
 
+    /// Run once, from the first layout pass that gives the view a real size, then dropped.
+    ///
+    /// The shell is forked from here rather than on a timer. A PTY opened before the pane
+    /// has its width is opened at SwiftTerm's default 80 columns, and zsh paints its first
+    /// prompt for that width: the stray `%` at the top of a new pane was PROMPT_SP's
+    /// end-of-line marker, written for 80 columns and wrapping once the pane turned out
+    /// narrower, and the doubled prompt under it was zsh redrawing on the size change.
+    public var onFirstLayout: (() -> Void)?
+
     private var process: LocalProcess!
     private var coalescer = ResizeCoalescer()
     private var pendingFinalResize: DispatchWorkItem?
@@ -269,6 +278,12 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public override func layout() {
         super.layout()
         hideScroller()
+        // SwiftTerm has already resized its grid in `setFrameSize`, so a shell started
+        // here is forked at the columns and rows the pane really has.
+        if let onFirstLayout, bounds.width > 0, bounds.height > 0 {
+            self.onFirstLayout = nil
+            onFirstLayout()
+        }
         scheduleResize(isFinal: false)
     }
 

@@ -110,8 +110,8 @@ public final class ShellPaneFactory {
         // Held rather than fed here. A view that has not been laid out yet reports SwiftTerm's
         // default 80 columns, so history written now hard-wraps at 80 and STAYS wrapped once
         // the pane turns out to be wider — the same "no real size yet" problem the deferred
-        // start below already exists to avoid. It is replayed from `startPendingShells()`,
-        // which runs a runloop turn later with the pane's true width.
+        // start below exists to avoid. It is replayed just before the shell starts, once
+        // the pane has its true width.
         //
         // Only a pane being RESTORED gets its history back: a brand new pane has none, and a
         // pane whose id happened to match a file would be showing someone else's session.
@@ -121,25 +121,35 @@ public final class ShellPaneFactory {
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)
 
-        // Deferred one runloop turn so the view has a real size first — starting a PTY at
-        // 0×0 makes the shell paint its first prompt into a one-column terminal. Tests
-        // drive `startPendingShells()` directly rather than depending on a pumped runloop.
-        DispatchQueue.main.async { [weak self] in self?.startPendingShells() }
+        // Started from the view's first real layout, not after a fixed delay. One runloop
+        // turn was not always enough: on a fresh window the split tree is still being laid
+        // out, the view still reports SwiftTerm's default 80×25, and the PTY was forked at
+        // that size — zsh's first prompt was painted for 80 columns, and the stray `%` at
+        // the top of a new pane was its end-of-line marker wrapping when the pane turned
+        // out narrower. Tests drive `startPendingShells()` directly rather than depending
+        // on a layout pass.
+        view.onFirstLayout = { [weak self] in self?.startPendingShell(paneID) }
 
         return (container, Self.record(for: spec, agent: agent, cwd: cwd))
     }
 
     /// Start any shell that has not started yet. Idempotent.
+    public func startPendingShells() {
+        for paneID in shells.keys { startPendingShell(paneID) }
+        onAgentActivityChange?(runningAgentCount)
+    }
+
+    /// Start one pane's shell if it has not started. Idempotent, so the layout that fires
+    /// it and a test that calls `startPendingShells()` first cannot fork two.
     ///
     /// Restored history is written just BEFORE the shell starts, so the first prompt lands
     /// underneath it rather than above — and late enough that the pane has its real width.
-    public func startPendingShells() {
-        for (paneID, shell) in shells where !shell.isRunning {
-            if let history = pendingHistory.removeValue(forKey: paneID) {
-                shell.restore(history: history)
-            }
-            shell.start()
+    private func startPendingShell(_ paneID: PaneID) {
+        guard let shell = shells[paneID], !shell.isRunning else { return }
+        if let history = pendingHistory.removeValue(forKey: paneID) {
+            shell.restore(history: history)
         }
+        shell.start()
         onAgentActivityChange?(runningAgentCount)
     }
 

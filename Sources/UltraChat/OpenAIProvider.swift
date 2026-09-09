@@ -2,17 +2,15 @@ import Foundation
 
 /// OpenAI's chat completions API — and, at another base URL, everything that imitates it.
 ///
-/// One type serves two providers. `.openAI` points at api.openai.com; `.compatible` points
-/// wherever the user says, which is how Ollama, LM Studio, OpenRouter and a company proxy
-/// all become a chat pane without a provider each.
+/// One type serves two providers. `.openAI` points at api.openai.com; `.openRouter` at
+/// openrouter.ai, which fronts many vendors' models behind one key.
 public struct OpenAIProvider: ChatProvider {
     public let id: ChatProviderID
     let credential: ChatCredential
     let transport: ChatTransport
 
     public static let defaultBaseURL = URL(string: "https://api.openai.com/v1")!
-    /// Ollama's OpenAI-compatible endpoint, the likeliest local server.
-    public static let defaultCompatibleBaseURL = URL(string: "http://localhost:11434/v1")!
+    public static let openRouterBaseURL = URL(string: "https://openrouter.ai/api/v1")!
 
     public init(id: ChatProviderID = .openAI, credential: ChatCredential,
                 transport: ChatTransport = URLSessionTransport()) {
@@ -22,7 +20,18 @@ public struct OpenAIProvider: ChatProvider {
     }
 
     private var baseURL: URL {
-        credential.baseURL ?? (id == .compatible ? Self.defaultCompatibleBaseURL : Self.defaultBaseURL)
+        credential.baseURL ?? (id == .openRouter ? Self.openRouterBaseURL : Self.defaultBaseURL)
+    }
+
+    /// The bearer token, plus the app-attribution headers OpenRouter asks for so the
+    /// request shows up under a name in its dashboard.
+    private func authorize(_ urlRequest: inout URLRequest) {
+        if !credential.apiKey.isEmpty {
+            urlRequest.setValue("Bearer \(credential.apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        if id == .openRouter {
+            urlRequest.setValue("Ultra", forHTTPHeaderField: "X-Title")
+        }
     }
 
     // MARK: Request
@@ -43,9 +52,7 @@ public struct OpenAIProvider: ChatProvider {
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !credential.apiKey.isEmpty {
-            urlRequest.setValue("Bearer \(credential.apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        authorize(&urlRequest)
         urlRequest.httpBody = try HTTPProviderSupport.json(body)
         return urlRequest
     }
@@ -137,9 +144,7 @@ public struct OpenAIProvider: ChatProvider {
 
     public func models() async throws -> [String] {
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("models"))
-        if !credential.apiKey.isEmpty {
-            urlRequest.setValue("Bearer \(credential.apiKey)", forHTTPHeaderField: "Authorization")
-        }
+        authorize(&urlRequest)
         let (status, data) = try await transport.data(for: urlRequest)
         guard (200..<300).contains(status) else {
             throw HTTPProviderSupport.errorMessage(from: String(decoding: data, as: UTF8.self),

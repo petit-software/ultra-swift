@@ -245,18 +245,23 @@ struct OpenAIProviderTests {
         #expect((json["stream_options"] as? [String: Bool])?["include_usage"] == true)
     }
 
-    @Test("a compatible server at a custom base URL needs no key")
-    func compatible() async throws {
+    @Test("OpenRouter is the same API at its own URL, with the app named for attribution")
+    func openRouter() async throws {
         let transport = RecordedTransport(body: Self.transcript)
-        let provider = OpenAIProvider(
-            id: .compatible,
-            credential: ChatCredential(apiKey: "", baseURL: URL(string: "http://localhost:11434/v1")),
-            transport: transport)
+        let provider = OpenAIProvider(id: .openRouter, credential: ChatCredential(apiKey: "sk-or"),
+                                      transport: transport)
         let events = try await collect(provider.stream(sample))
         #expect(text(of: events) == "Hello")
         let request = try #require(transport.requests.first)
-        #expect(request.url?.absoluteString == "http://localhost:11434/v1/chat/completions")
-        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(request.url?.absoluteString == "https://openrouter.ai/api/v1/chat/completions")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk-or")
+        #expect(request.value(forHTTPHeaderField: "X-Title") == "Ultra")
+
+        let keyless = OpenAIProvider(id: .openRouter, credential: ChatCredential(apiKey: ""),
+                                     transport: transport)
+        await #expect(throws: ChatError.missingCredential(.openRouter)) {
+            _ = try await collect(keyless.stream(sample))
+        }
     }
 
     @Test("a recorded stream becomes text, then one finish carrying the usage chunk")

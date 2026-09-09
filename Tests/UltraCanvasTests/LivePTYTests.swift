@@ -82,6 +82,35 @@ struct LivePTYTests {
                 "and VoiceOver reads the old folder too")
     }
 
+    /// The stray `%` at the top of a fresh pane. It was zsh's PROMPT_SP marker, painted for
+    /// the 80 columns a PTY forked before layout was given, wrapping once the pane had its
+    /// real width. So the shell must be forked at the size the pane actually has, from the
+    /// layout that gives it that size, with nothing outside telling it to start.
+    @Test("a shell starts from the pane's first layout, at the pane's real size")
+    func shellStartsAtTheLaidOutSize() {
+        let (store, canvas, factory, _) = makeHost()
+        let paneID = store.tree.focused
+        _ = store.surfaces.surface(for: paneID)
+        canvas.layoutSubtreeIfNeeded()
+        let shell = try! #require(factory.shells[paneID])
+        defer { store.surfaces.release(paneID) }
+        #expect(shell.isRunning, "layout alone did not start the shell")
+
+        let cols = shell.getTerminal().cols
+        let rows = shell.getTerminal().rows
+        #expect(cols != 80, "the pane is still at SwiftTerm's default width; this proves nothing")
+
+        // What the kernel says the tty is, from inside the shell, against what the view
+        // says it drew. Typed before the prompt has appeared: the tty queues it.
+        let report = NSTemporaryDirectory() + "ultra-stty-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: report) }
+        shell.inject("stty size > '\(report)'", submit: true)
+        let size = { (try? String(contentsOfFile: report, encoding: .utf8))?
+            .split(whereSeparator: { $0 == " " || $0 == "\n" }).compactMap { Int($0) } ?? [] }
+        #expect(poll(upTo: 5) { size().count == 2 }, "the shell never reported its size")
+        #expect(size() == [rows, cols])
+    }
+
     /// The second half of M3's acceptance criterion: "no PTY is killed by a tab switch."
     ///
     /// A tab here is a whole second workspace — its own `LayoutStore`, its own factory, its
