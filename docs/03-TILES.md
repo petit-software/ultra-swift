@@ -170,6 +170,8 @@ the agent running in the next pane over.
   the same column instead of re-flowing every icon out from under the pointer.
 - **Why markdown and not a database**: the agent in the adjacent pane can read and update it with
   no integration work at all. That is the entire point.
+- **The agent is told.** A project Ultra creates gets an `AGENTS.md` whose Ultra section names
+  this file and says to plan in it. See `AgentInstructions` and `04-ROADMAP.md` § M7.
 
 ## 3. Resources
 

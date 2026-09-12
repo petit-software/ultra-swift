@@ -237,6 +237,20 @@ private struct TileSettings: View {
             }
 
             Section {
+                Toggle("Write AGENTS.md into new projects",
+                       isOn: prefs.flag({ Preferences.writesAgentInstructions },
+                                        { Preferences.writesAgentInstructions = $0 }))
+            } header: {
+                Text("Agents")
+            } footer: {
+                SettingNote("A project made with File ▸ New Project gets a short AGENTS.md "
+                            + "telling an agent to plan in the todo list and how to treat the "
+                            + "other files here, plus a CLAUDE.md that imports it. Opening a "
+                            + "folder never writes into it; use File ▸ Session ▸ Write "
+                            + "AGENTS.md for those.")
+            }
+
+            Section {
                 rows.seconds("Ports", { Preferences.portsInterval },
                              { Preferences.portsInterval = $0 }, range: 1...30)
                 rows.seconds("Resources", { Preferences.resourcesInterval },

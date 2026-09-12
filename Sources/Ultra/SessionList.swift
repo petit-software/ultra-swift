@@ -64,6 +64,9 @@ final class SessionList {
             select(existing.workspaceID)
             return existing
         }
+        // A project that carries Ultra's `AGENTS.md` section keeps it current with this
+        // build's text. One that does not is not written into — opening is not opting in.
+        ProjectInstructions.refresh(in: directory)
         let store = ShellWorkspace.make(storage: storage, directory: directory, restore: restore)
         sessions.append(store)
         select(store.workspaceID)

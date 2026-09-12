@@ -281,6 +281,9 @@ struct NewProjectSheet: View {
 
     private func finish(_ url: URL) {
         isPresented = false
+        // The one moment a file may be written into a project unasked: it is Ultra's own
+        // project, seconds old. See `AgentInstructions`.
+        ProjectInstructions.installIfWanted(in: url)
         guard addsToSidebar else {
             // Made, but not opened. Remembered all the same, so it is one press of the
             // sidebar's folder button away rather than something the user has to go and find

@@ -247,6 +247,19 @@ can be sent into a fresh shell.
 - Dock badge and menu-bar indicator driven from the app layer (not a view timer — the same
   throttling problem the Electron app solved by moving this to the main process).
 - Notifications on long-running agent completion, opt-in.
+- **An `AGENTS.md` in every project Ultra creates — DONE.** The tiles' whole argument for
+  keeping files rather than app state is that the agent next door can use them, and it
+  cannot use what it has not been told about. `AgentInstructions` (UltraCore) writes a short
+  section — plan in the todo list, `@path` is a reference not a command, leave the bookmarks
+  and chats alone, work in the current worktree, what is committed and what is ignored —
+  between `<!-- ultra:start -->` and `<!-- ultra:end -->` markers, and only ever rewrites what
+  is between them. Alongside it: the two `.gitignore` lines for `.ultra/chats/` and
+  `.ultra/context.json`, and a one-line `CLAUDE.md` importing `AGENTS.md`, because Claude
+  Code reads the one and Codex the other. Written when a project is created (File ▸ New
+  Project, off in Settings ▸ Tiles), refreshed on open **only if the section is already
+  there**, and on request for any project from File ▸ Session ▸ Write AGENTS.md (⌃⌘A). The
+  todo path it names is the one a Todo pane on that project would open, adopted `TODO.md`
+  and relocations included, so the file and the pane never disagree.
 
 ## M8 — Polish and release
 

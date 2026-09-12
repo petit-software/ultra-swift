@@ -61,11 +61,18 @@ public final class TodoStore {
         beginWatching()
     }
 
+    /// The file a Todo pane on this project would open: the remembered choice, or the
+    /// default. What `AGENTS.md` names, so the two agree.
+    public static func currentLocation(for root: URL) -> URL {
+        storedLocation(for: root) ?? preferredLocation(in: root)
+    }
+
     static func defaultsKey(for root: URL) -> String {
         "ultra.todoLocation." + root.standardizedFileURL.path
     }
 
-    static func storedLocation(for root: URL) -> URL? {
+    /// Where the user has pointed this project's list, if they have.
+    public static func storedLocation(for root: URL) -> URL? {
         (UserDefaults.standard.string(forKey: defaultsKey(for: root))).map {
             URL(fileURLWithPath: $0)
         }

@@ -185,6 +185,17 @@ public enum Preferences {
         set { setFlag("showsHiddenFiles", newValue, current: showsHiddenFiles) }
     }
 
+    /// Write an `AGENTS.md` into every project Ultra creates.
+    ///
+    /// On by default: the tiles' whole argument for keeping files rather than app state is
+    /// that the agent next door can use them, and it cannot use what it has not been told
+    /// about. Applies to CREATED projects only; opening a folder never writes into it.
+    /// File ▸ Session ▸ Write AGENTS.md is the path for a project that already exists.
+    public static var writesAgentInstructions: Bool {
+        get { flag("writesAgentInstructions", default: true) }
+        set { setFlag("writesAgentInstructions", newValue, current: writesAgentInstructions) }
+    }
+
     /// Seconds between refreshes. Each tile shells out to a real command, so these are the
     /// difference between a live readout and a laptop that never idles.
     public static var portsInterval: CGFloat {

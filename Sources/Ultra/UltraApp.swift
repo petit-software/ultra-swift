@@ -354,6 +354,25 @@ struct WorkspaceCommands: Commands {
                     // an icon, so there is nothing for the popover to save.
                     .disabled(store?.workspaceDirectory == nil)
 
+                // The keyboard path to what a new project gets for free: the AGENTS.md
+                // section, the ignore lines, the CLAUDE.md link — for a project that was
+                // opened rather than created here. Opens the result in an editor pane, so
+                // the user sees what was written and where their own notes go.
+                //
+                // ⌃⌘A: ⌃A alone is readline's start-of-line, and ⌘A is Select All
+                // everywhere; the pair is in the safest of the four sets and unused here.
+                Button("Write AGENTS.md") {
+                    guard let store, let directory = store.workspaceDirectory else { return }
+                    do {
+                        ShellWorkspace.openEditor(on: try ProjectInstructions.install(in: directory),
+                                                  in: store)
+                    } catch {
+                        NSSound.beep()
+                    }
+                }
+                .keyboardShortcut("a", modifiers: [.control, .command])
+                .disabled(store?.workspaceDirectory == nil)
+
                 Divider()
 
                 Button("Close Session") {
