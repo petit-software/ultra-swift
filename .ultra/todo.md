@@ -1,3 +1,5 @@
+- [x] Using open router shows error could nor read the response : not JSON { id : ....}
+- [x] Chat: OpenRouter's model picker lists every model, grouped by vendor
 - [x] Every project created in Ultra should have an AGENTS.md file created telling how to use ultra for the best like using todo.md for planning what else those md files should say?
 - [ ] New task
 - [x] New Project sheet: New Folder / Clone Repository keep the same height when switching tabs, no jump

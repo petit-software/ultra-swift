@@ -181,3 +181,34 @@ struct ChatStoreTests {
         #expect(store.current.messages.last?.note == "Stopped.")
     }
 }
+
+@Suite("Chat model picker")
+struct ChatModelPickerTests {
+    @Test("vendor/model ids become one submenu per vendor, with the chosen one ticked through")
+    @MainActor
+    func grouped() {
+        let rows = ChatTile.modelRows(["anthropic/claude-opus-5", "google/gemini-2.5-pro",
+                                       "anthropic/claude-sonnet-5", "openrouter/auto"],
+                                      current: "anthropic/claude-sonnet-5") { _ in }
+        #expect(rows.count == 3)
+        guard case let .submenu(vendor, entries) = rows[0] else { Issue.record("not a submenu"); return }
+        #expect(vendor == "anthropic")
+        #expect(entries.count == 2)
+        guard case let .item(title, _, isOn, _, _) = entries[1] else { Issue.record("not an item"); return }
+        #expect(title == "claude-sonnet-5")
+        #expect(isOn)
+    }
+
+    @Test("a short flat list stays flat")
+    @MainActor
+    func flat() {
+        var chosen = ""
+        let rows = ChatTile.modelRows(["claude-opus-5", "claude-sonnet-5"], current: "claude-opus-5") { chosen = $0 }
+        #expect(rows.count == 2)
+        guard case let .item(title, _, isOn, _, action) = rows[0] else { Issue.record("not an item"); return }
+        #expect(title == "claude-opus-5")
+        #expect(isOn)
+        action()
+        #expect(chosen == "claude-opus-5")
+    }
+}

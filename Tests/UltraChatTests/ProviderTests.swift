@@ -87,6 +87,19 @@ struct SSEParserTests {
         #expect(parser.finish() == ServerSentEvent(data: "last"))
         #expect(parser.finish() == nil)
     }
+
+    @Test("lines end at LF or CRLF only; a line separator inside a JSON string is not one")
+    func lineSplitter() {
+        var splitter = LineSplitter()
+        var lines: [String] = []
+        let body = "data: {\"t\":\"a\u{2028}b\u{2029}c\u{0085}d\"}\r\n\ndata: tail"
+        for byte in body.utf8 {
+            if let line = splitter.feed(byte) { lines.append(line) }
+        }
+        if let line = splitter.finish() { lines.append(line) }
+        #expect(lines == ["data: {\"t\":\"a\u{2028}b\u{2029}c\u{0085}d\"}", "", "data: tail"])
+        #expect(splitter.finish() == nil)
+    }
 }
 
 // MARK: - Anthropic

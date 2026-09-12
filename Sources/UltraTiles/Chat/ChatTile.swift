@@ -190,14 +190,38 @@ public struct ChatTile: View {
         }
         entries.append(.separator)
         entries.append(.caption("Model"))
-        for model in store.modelChoices.prefix(40) {
-            entries.append(.item(title: model, isOn: model == store.current.model) {
-                store.setModel(model)
-            })
-        }
+        entries += Self.modelRows(store.modelChoices, current: store.current.model) { store.setModel($0) }
         entries.append(.separator)
         entries.append(.item(title: "Refresh Models") { store.refreshModels() })
         return entries
+    }
+
+    /// The models as menu rows. A list of `vendor/model` ids — OpenRouter's, hundreds long —
+    /// becomes one submenu per vendor, so a model is two steps away rather than a scroll
+    /// through everything sorted before it. Any other list is the rows themselves.
+    static func modelRows(_ models: [String], current: String,
+                          choose: @escaping (String) -> Void) -> [ChromeMenuEntry] {
+        let row: (String, String) -> ChromeMenuEntry = { title, id in
+            .item(title: title, isOn: id == current) { choose(id) }
+        }
+        let vendored = models.filter { $0.contains("/") }
+        guard vendored.count > 1 else { return models.map { row($0, $0) } }
+
+        var vendors: [String] = []
+        var byVendor: [String: [String]] = [:]
+        for id in vendored {
+            let vendor = String(id[..<id.firstIndex(of: "/")!])
+            if byVendor[vendor] == nil { vendors.append(vendor) }
+            byVendor[vendor, default: []].append(id)
+        }
+        var rows = models.filter { !$0.contains("/") }.map { row($0, $0) }
+        for vendor in vendors.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }) {
+            let items = byVendor[vendor, default: []].map { id in
+                row(String(id.dropFirst(vendor.count + 1)), id)
+            }
+            rows.append(.submenu(title: vendor, entries: items))
+        }
+        return rows
     }
 }
 

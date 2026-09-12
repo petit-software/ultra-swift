@@ -8,6 +8,9 @@ public enum ChromeMenuEntry {
     case separator
     case item(title: String, symbol: String? = nil, isOn: Bool = false,
               isEnabled: Bool = true, action: () -> Void)
+    /// A row that opens another menu, for a list too long to be one: a vendor's models, say.
+    /// Ticked when one of its rows is, so the choice shows without opening it.
+    case submenu(title: String, entries: [ChromeMenuEntry])
 }
 
 /// A `ChromeIconButton` that opens a menu.
@@ -99,34 +102,9 @@ public enum ChromeMenuPresenter {
         guard !rows.isEmpty else { return }
 
         let menu = ChromeMenu()
-        let handler = ChromeMenuTarget(rows: rows)
+        let handler = ChromeMenuTarget()
         menu.handler = handler
-        // AppKit re-derives every item's enabled state from its target unless told not to,
-        // which would undo both the captions and any deliberately greyed row.
-        menu.autoenablesItems = false
-
-        for (index, row) in rows.enumerated() {
-            switch row {
-            case .separator:
-                menu.addItem(.separator())
-            case .caption(let text):
-                let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-                item.isEnabled = false
-                menu.addItem(item)
-            case let .item(title, symbol, isOn, isEnabled, _):
-                let item = NSMenuItem(title: title,
-                                      action: #selector(ChromeMenuTarget.pick(_:)),
-                                      keyEquivalent: "")
-                item.target = handler
-                item.tag = index
-                item.isEnabled = isEnabled
-                item.state = isOn ? .on : .off
-                if let symbol {
-                    item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-                }
-                menu.addItem(item)
-            }
-        }
+        fill(menu, with: rows, handler: handler)
 
         // Dropped from the control's bottom edge rather than the pointer, so the menu is
         // anchored to the thing the user aimed at. Hosting views are flipped; this does not
@@ -134,22 +112,69 @@ public enum ChromeMenuPresenter {
         let y = anchorView.isFlipped ? anchorView.bounds.maxY + 4 : -4
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: anchorView)
     }
+
+    /// The rows, as items of `menu`; a submenu row recurses. Returns whether any row in the
+    /// menu, or in one below it, is ticked, so the submenu's own row can be.
+    @MainActor
+    @discardableResult
+    static func fill(_ menu: NSMenu, with rows: [ChromeMenuEntry], handler: ChromeMenuTarget) -> Bool {
+        // AppKit re-derives every item's enabled state from its target unless told not to,
+        // which would undo both the captions and any deliberately greyed row.
+        menu.autoenablesItems = false
+        var anyOn = false
+        for row in rows {
+            switch row {
+            case .separator:
+                menu.addItem(.separator())
+            case .caption(let text):
+                let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                menu.addItem(item)
+            case let .item(title, symbol, isOn, isEnabled, action):
+                let item = NSMenuItem(title: title,
+                                      action: #selector(ChromeMenuTarget.pick(_:)),
+                                      keyEquivalent: "")
+                item.target = handler
+                item.tag = handler.register(action)
+                item.isEnabled = isEnabled
+                item.state = isOn ? .on : .off
+                if let symbol {
+                    item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                }
+                menu.addItem(item)
+                anyOn = anyOn || isOn
+            case let .submenu(title, entries):
+                let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                let sub = NSMenu(title: title)
+                let isOn = fill(sub, with: entries, handler: handler)
+                item.submenu = sub
+                item.state = isOn ? .on : .off
+                item.isEnabled = !entries.isEmpty
+                menu.addItem(item)
+                anyOn = anyOn || isOn
+            }
+        }
+        return anyOn
+    }
 }
 
-/// Holds the closures the menu items call.
+/// Holds the closures the menu items call, one per item, found again by the item's tag.
 ///
 /// `NSMenuItem.target` is a WEAK reference. Without something owning this for the lifetime of
 /// the menu, the handler is deallocated before the click lands and every item silently does
 /// nothing — the menu opens, you pick a row, and nothing happens.
 @MainActor
-private final class ChromeMenuTarget: NSObject {
-    private let rows: [ChromeMenuEntry]
-    init(rows: [ChromeMenuEntry]) { self.rows = rows }
+final class ChromeMenuTarget: NSObject {
+    private var actions: [() -> Void] = []
+
+    func register(_ action: @escaping () -> Void) -> Int {
+        actions.append(action)
+        return actions.count - 1
+    }
 
     @objc func pick(_ sender: NSMenuItem) {
-        guard rows.indices.contains(sender.tag),
-              case let .item(_, _, _, _, action) = rows[sender.tag] else { return }
-        action()
+        guard actions.indices.contains(sender.tag) else { return }
+        actions[sender.tag]()
     }
 }
 
@@ -180,7 +205,8 @@ struct MenuAnchorView: NSViewRepresentable {
 #Preview("Chrome menu trigger — labelled", traits: .fixedLayout(width: 260, height: 60)) {
     ChromeMenuTrigger(help: "Change Pane Type",
                       entries: { [.item(title: "Shell", symbol: "apple.terminal") {},
-                                  .item(title: "Editor", symbol: "doc.text", isOn: true, isEnabled: false) {}] }) { hovering in
+                                  .item(title: "Editor", symbol: "doc.text", isOn: true, isEnabled: false) {},
+                                  .submenu(title: "anthropic", entries: [.item(title: "claude-opus-5", isOn: true) {}])] }) { hovering in
         HStack(spacing: 0) {
             ChromeIconLabel(symbol: "apple.terminal", isHovering: hovering)
             Text("Shell").padding(.trailing, 8)

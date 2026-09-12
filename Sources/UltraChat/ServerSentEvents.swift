@@ -55,3 +55,35 @@ public struct SSEParser: Sendable {
         return (field, String(value))
     }
 }
+
+/// Cuts a byte stream into lines at LF, dropping the CR before it — the two terminators
+/// SSE knows, and the only two it uses.
+///
+/// Not `AsyncBytes.lines`. That one also breaks a line at U+2028, U+2029 and U+0085, which
+/// JSON allows unescaped inside a string. A model that put a line separator in its answer
+/// arrived as one chunk cut in two, each half "not JSON", and the whole answer failed.
+public struct LineSplitter: Sendable {
+    private var buffer: [UInt8] = []
+
+    public init() {}
+
+    /// Feed one byte. Returns the line this byte ended, if it was an LF.
+    public mutating func feed(_ byte: UInt8) -> String? {
+        guard byte == 0x0A else {
+            buffer.append(byte)
+            return nil
+        }
+        return take()
+    }
+
+    /// The end of the body. Whatever is buffered is the last line, even without an LF.
+    public mutating func finish() -> String? {
+        buffer.isEmpty ? nil : take()
+    }
+
+    private mutating func take() -> String {
+        defer { buffer.removeAll(keepingCapacity: true) }
+        if buffer.last == 0x0D { buffer.removeLast() }
+        return String(decoding: buffer, as: UTF8.self)
+    }
+}

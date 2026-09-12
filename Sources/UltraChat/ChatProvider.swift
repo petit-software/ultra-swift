@@ -102,10 +102,14 @@ public struct URLSessionTransport: ChatTransport {
         let stream = AsyncThrowingStream<String, Error> { continuation in
             let task = Task {
                 do {
-                    for try await line in bytes.lines {
-                        try Task.checkCancellation()
-                        continuation.yield(line)
+                    var splitter = LineSplitter()
+                    for try await byte in bytes {
+                        if let line = splitter.feed(byte) {
+                            try Task.checkCancellation()
+                            continuation.yield(line)
+                        }
                     }
+                    if let line = splitter.finish() { continuation.yield(line) }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
