@@ -65,6 +65,10 @@ struct NewProjectSheet: View {
 
     private var isWorking: Bool { work != nil }
 
+    /// Taller than either control the mode row can hold, so the row is this tall in both
+    /// modes. See the row itself for why.
+    static let modeRowHeight: CGFloat = 24
+
     /// The name the folder will actually get: what was typed, or — while the field is empty
     /// in clone mode — the one git would pick from the URL.
     private var effectiveName: String {
@@ -158,6 +162,12 @@ struct NewProjectSheet: View {
                     }
                 }
 
+                // The mode's own row, held to ONE height in both modes. A text field and a
+                // switch are not naturally the same height — they differ by half a point —
+                // and a grouped form sizes its rows to their content, so switching tabs
+                // grew or shrank the form and the sheet re-centred around the difference: a
+                // dialog that jumps for no reason. A shared minimum taller than either
+                // control makes both rows the same size, and the form cannot tell them apart.
                 switch mode {
                 case .clone:
                     // Below the name it fills in, which is the one cost of keeping the rows
@@ -166,8 +176,10 @@ struct NewProjectSheet: View {
                     TextField("Repository URL", text: $repository,
                               prompt: Text("https://github.com/owner/repo.git"))
                         .onChange(of: repository) { _, _ in problem = nil }
+                        .frame(minHeight: Self.modeRowHeight)
                 case .folder:
                     Toggle("Initialize a Git repository", isOn: $initializesGit)
+                        .frame(minHeight: Self.modeRowHeight)
                 }
             }
             .formStyle(.grouped)
