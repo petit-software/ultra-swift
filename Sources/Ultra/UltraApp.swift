@@ -471,13 +471,36 @@ struct WorkspaceCommands: Commands {
                 .disabled(ui == nil)
         }
 
+        // ⌘Z is the TEXT's while text is being edited, and the layout's otherwise — decided
+        // when the key is pressed, by `UndoRouting`. This item sees the keystroke before
+        // any text view does (the main menu wins), so wiring it straight to the layout's
+        // stack, as it once was, made ⌘Z in a new editor pane undo the split that opened
+        // it. The pane closed; the typo stayed.
+        //
+        // Enabled whenever there is a session, rather than by `canUndo`: SwiftUI evaluates
+        // this body when observed state changes, not when the keyboard moves into a text
+        // field, so a `disabled` computed from the layout's stack would be stale exactly
+        // then — and a disabled item swallows the key. An empty stack answers with a beep.
+        // The title is computed the same way and can lag a focus change by one update;
+        // that is cosmetic, where a swallowed ⌘Z is not.
         CommandGroup(replacing: .undoRedo) {
-            Button(store?.undoManager.undoMenuItemTitle ?? "Undo") { store?.undoManager.undo() }
-                .keyboardShortcut("z", modifiers: .command)
-                .disabled(!(store?.undoManager.canUndo ?? false))
-            Button(store?.undoManager.redoMenuItemTitle ?? "Redo") { store?.undoManager.redo() }
-                .keyboardShortcut("z", modifiers: [.command, .shift])
-                .disabled(!(store?.undoManager.canRedo ?? false))
+            let manager = UndoRouting.current(for: store)
+            Button(manager?.undoMenuItemTitle ?? "Undo") {
+                guard let manager = UndoRouting.current(for: store), manager.canUndo else {
+                    NSSound.beep(); return
+                }
+                manager.undo()
+            }
+            .keyboardShortcut("z", modifiers: .command)
+            .disabled(store == nil)
+            Button(manager?.redoMenuItemTitle ?? "Redo") {
+                guard let manager = UndoRouting.current(for: store), manager.canRedo else {
+                    NSSound.beep(); return
+                }
+                manager.redo()
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(store == nil)
         }
     }
 }

@@ -73,6 +73,11 @@ struct CodeTextView: NSViewRepresentable {
         if textView.string != text {
             let selected = textView.selectedRange()
             textView.string = text
+            // The text was replaced from OUTSIDE — another file in this pane, or a reload
+            // from disk — and none of that went through the undo manager. Entries still on
+            // the stack belong to text that is no longer there; applying one would splice
+            // old characters into the new file at ranges that mean nothing now.
+            context.coordinator.undoManager.removeAllActions()
             textView.setSelectedRange(NSRange(location: min(selected.location, text.utf16.count),
                                               length: 0))
             context.coordinator.ruler?.needsDisplay = true
@@ -84,8 +89,17 @@ struct CodeTextView: NSViewRepresentable {
         private let parent: CodeTextView
         weak var textView: NSTextView?
         weak var ruler: LineNumberRuler?
+        /// This view's own history. Without one, a text view registers into the WINDOW's
+        /// undo manager, which every text field in every tile shares — so ⌘Z in a file
+        /// could take back a rename typed into the todo list an hour ago. `UndoRouting`
+        /// hands ⌘Z to whatever manager the focused text view reports, and this is it.
+        let undoManager = UndoManager()
 
         init(_ parent: CodeTextView) { self.parent = parent }
+
+        nonisolated func undoManager(for view: NSTextView) -> UndoManager? {
+            MainActor.assumeIsolated { undoManager }
+        }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }

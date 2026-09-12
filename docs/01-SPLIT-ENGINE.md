@@ -396,6 +396,16 @@ evidence is built in, gated behind an environment variable and free when off.
 registers exactly one undo entry, on commit. Menu titles are specific: "Undo Split Pane",
 "Undo Close Pane", "Undo Resize Panes".
 
+**Whose ⌘Z.** The Edit ▸ Undo item is an app command, so the main menu sees ⌘Z before any
+text view does — and wired straight to the layout's stack it undid the split that opened a
+new editor pane the moment someone tried to take back a typo in it. `UndoRouting` (UltraCanvas)
+decides at the keystroke: an `NSText` first responder gets its own undo manager, anything else
+gets the layout's. AppKit's standard `undo:` could not carry this: the window handles it and,
+for a non-text first responder, asks the window's manager rather than the responder chain, so
+a canvas offering the layout's manager through `undoManager` is never consulted while a
+terminal has the keyboard. The editor's text view keeps a manager of its own, cleared whenever
+its text is replaced from outside, so ⌘Z in a file never reaches typing in another tile.
+
 **Persistence.** `LayoutTree` is `Codable`. Per workspace:
 
 ```
