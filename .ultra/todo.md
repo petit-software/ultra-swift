@@ -1,15 +1,6 @@
 - [x] Using open router shows error could nor read the response : not JSON { id : ....}
 - [x] Chat: OpenRouter's model picker lists every model, grouped by vendor
-- [x] Every project created in Ultra should have an AGENTS.md file created telling how to use ultra for the best like using todo.md for planning what else those md files should say?
-- [ ] New task
-- [x] New Project sheet: New Folder / Clone Repository keep the same height when switching tabs, no jump
-- [x] BUG : Doing cmd z operation close Editor pane????
-- [x] Chat pane: OpenRouter with just an API key, OpenAI removed from the providers
-- [x] Open Router support
-- [x] Explor Swift packages if nothing available how to have an AI chat experience to create a chat like expeirence with ChatGPT / Claude / Gemini something like : https://github.com/sachaservan/SwiftChat - we want to have a chat as a pane
-- [x] todo pane, when task is empty - after remoing it with backspace and accepting with enter should remove the empty task line
-- [x] Remove pane icons from the pane headers
-- [x] Add option to apply panel position and types to all projects - add a ellipsis menu on the top tollbar on the right,.
-- [x] Allow to open multiple project folders at once via sidebar open folder icon
-- [x] CMD + K opens and closes Comand list
-- [x] Better structurally organized settings
+- [x] Take all apperance and pane settinsg values and set them as defaults then hide the controls from settings except theme. pane should dissaper from settings and appaarcen too besides theme and accent that should go under tab Terminal.
+- [x] Notice banners in Todo and Editor panes: filled symbols, an X button closes the banner
+- [x] Command palette: results list arrives without the scroller gutter on the right, and every command has an icon
+- [x] Command palette: ⌘K keeps the caret in the field on every press, no rule under the field, icons in one column with the ⌘, "No command found" for an empty query

@@ -21,12 +21,12 @@ enum PaneCommands {
     /// ⌥⌘N sits beside ⌘N (window) and ⇧⌘N (project) as the third kind of new. ⌘. is
     /// the platform's cancel, and it has been free here because a shell's cancel is ⌃C.
     static let chat: [AppCommand] = [
-        AppCommand(id: "chat.new", title: "New Chat", menuPath: ["Pane", "Chat"],
+        AppCommand(id: "chat.new", title: "New Chat", symbol: "plus.bubble", menuPath: ["Pane", "Chat"],
                    binding: KeyBinding("n", [.command, .option]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0) != nil }) { store in
             ShellWorkspace.chatStore(in: store)?.newConversation()
         },
-        AppCommand(id: "chat.stop", title: "Stop Response", menuPath: ["Pane", "Chat"],
+        AppCommand(id: "chat.stop", title: "Stop Response", symbol: "stop.circle", menuPath: ["Pane", "Chat"],
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
@@ -37,17 +37,17 @@ enum PaneCommands {
     /// rewrites a project's layout is not one to have on a chord.
     static let layouts: [AppCommand] = [
         AppCommand(id: "layout.setDefault", title: "Set as Default Layout",
-                   menuPath: ["Pane"],
+                   symbol: "pin", menuPath: ["Pane"],
                    isEnabled: { $0.workspaceDirectory != nil }) { store in
             SharedLayout.setDefault(from: store)
         },
         AppCommand(id: "layout.resetToDefault", title: "Use Default Layout…",
-                   menuPath: ["Pane"],
+                   symbol: "arrow.uturn.backward", menuPath: ["Pane"],
                    isEnabled: { SharedLayout.hasDefault(for: $0) }) { store in
             SharedLayout.resetToDefault(store)
         },
         AppCommand(id: "layout.applyToAllProjects", title: "Apply Layout to All Projects…",
-                   menuPath: ["Pane"],
+                   symbol: "square.on.square", menuPath: ["Pane"],
                    isEnabled: { $0.workspaceDirectory != nil }) { store in
             SharedLayout.applyToAllProjects(from: store)
         },
@@ -60,6 +60,7 @@ enum PaneCommands {
         PaneKind.all.filter { $0.kind != .shell }.map { entry in
             AppCommand(id: "pane.new.\(entry.kind.rawValue)",
                        title: "New \(entry.title) Pane",
+                       symbol: entry.symbol,
                        menuPath: ["File"],
                        binding: nil,
                        isEnabled: { ShellWorkspace.canOpenNewPane(in: $0) }) { store in
@@ -69,6 +70,7 @@ enum PaneCommands {
         + PaneKind.all.map { entry in
             AppCommand(id: "pane.change.\(entry.kind.rawValue)",
                        title: "Change Pane to \(entry.title)",
+                       symbol: entry.symbol,
                        menuPath: ["File"],
                        binding: nil,
                        isEnabled: { store in
@@ -86,13 +88,13 @@ enum PaneCommands {
     /// chords nobody remembers — the palette is how these are found.
     static let folders: [AppCommand] = [
         AppCommand(id: "pane.folder.choose", title: "Set Pane Folder…",
-                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+                   symbol: "folder", menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
             guard let root = ShellWorkspace.tileRoot(store.tree.focused, in: store),
                   let url = chooseTileFolder(title: "Pane Folder", directory: root) else { return }
             ShellWorkspace.setFolder(url, of: store.tree.focused, in: store)
         },
         AppCommand(id: "pane.folder.up", title: "Pane Folder: Go Up",
-                   menuPath: ["Pane", "Folder"],
+                   symbol: "arrow.turn.left.up", menuPath: ["Pane", "Folder"],
                    isEnabled: { store in
                        guard canRetargetFocused(store),
                              let root = ShellWorkspace.tileRoot(store.tree.focused, in: store)
@@ -104,14 +106,14 @@ enum PaneCommands {
                                      of: store.tree.focused, in: store)
         },
         AppCommand(id: "pane.folder.shell", title: "Pane Folder: Follow Shell",
-                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+                   symbol: "apple.terminal", menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
             let shell = ShellWorkspace.Registry
                 .workingDirectory(in: store.workspaceID,
                                   fallback: ShellWorkspace.projectFolder(of: store))
             ShellWorkspace.setFolder(shell, of: store.tree.focused, in: store)
         },
         AppCommand(id: "pane.folder.project", title: "Pane Folder: Project Folder",
-                   menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+                   symbol: "house", menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
             ShellWorkspace.setFolder(ShellWorkspace.projectFolder(of: store),
                                      of: store.tree.focused, in: store)
         },
@@ -124,13 +126,17 @@ enum PaneCommands {
     }
 
     static let splits: [AppCommand] = [
-        AppCommand(id: "pane.split.right", title: "Split Right", menuPath: ["Pane", "Split"],
+        AppCommand(id: "pane.split.right", title: "Split Right",
+                   symbol: "rectangle.righthalf.inset.filled", menuPath: ["Pane", "Split"],
                    binding: KeyBinding("d", [.command])) { $0.split(edge: .right) },
-        AppCommand(id: "pane.split.down", title: "Split Down", menuPath: ["Pane", "Split"],
+        AppCommand(id: "pane.split.down", title: "Split Down",
+                   symbol: "rectangle.bottomhalf.inset.filled", menuPath: ["Pane", "Split"],
                    binding: KeyBinding("d", [.command, .shift])) { $0.split(edge: .bottom) },
-        AppCommand(id: "pane.split.left", title: "Split Left", menuPath: ["Pane", "Split"],
+        AppCommand(id: "pane.split.left", title: "Split Left",
+                   symbol: "rectangle.lefthalf.inset.filled", menuPath: ["Pane", "Split"],
                    binding: KeyBinding("d", [.command, .option])) { $0.split(edge: .left) },
-        AppCommand(id: "pane.split.up", title: "Split Up", menuPath: ["Pane", "Split"],
+        AppCommand(id: "pane.split.up", title: "Split Up",
+                   symbol: "rectangle.tophalf.inset.filled", menuPath: ["Pane", "Split"],
                    binding: KeyBinding("d", [.command, .option, .shift])) { $0.split(edge: .top) },
     ]
 
@@ -140,6 +146,7 @@ enum PaneCommands {
     ].map { edge, key in
         AppCommand(id: "pane.focus.\(edge.rawValue)",
                    title: "Focus \(edge.actionName)",
+                   symbol: "arrow.\(edge.actionName.lowercased())",
                    menuPath: ["Pane", "Focus"],
                    binding: KeyBinding(key, [.command, .option])) { $0.moveFocus(edge) }
     }
@@ -150,6 +157,7 @@ enum PaneCommands {
     ].map { edge, key in
         AppCommand(id: "pane.resize.\(edge.rawValue)",
                    title: "Grow \(edge.actionName)",
+                   symbol: "arrow.\(edge.actionName.lowercased()).to.line",
                    menuPath: ["Pane", "Resize"],
                    binding: KeyBinding(key, [.command, .control])) { $0.resizeFocused(edge, by: 16) }
     }
@@ -159,6 +167,7 @@ enum PaneCommands {
     static let numbered: [AppCommand] = (1...9).map { number in
         AppCommand(id: "pane.focus.index.\(number)",
                    title: "Focus Pane \(number)",
+                   symbol: "\(number).square",
                    menuPath: ["Pane", "Focus"],
                    binding: KeyBinding(KeyEquivalent(Character("\(number)")), [.command]),
                    isEnabled: { $0.layoutResult.visualOrder.count >= number }) {
@@ -174,7 +183,7 @@ enum PaneCommands {
         // are inside is what ⌘W means everywhere else, and when the pane IS the window, the
         // window is the smallest thing. `performClose` rather than a direct close, so the
         // window still runs its own teardown: scrollback saved, layout persisted.
-        AppCommand(id: "pane.close", title: "Close Pane", menuPath: ["Pane"],
+        AppCommand(id: "pane.close", title: "Close Pane", symbol: "xmark", menuPath: ["Pane"],
                    binding: KeyBinding("w", [.command])) { store in
             guard store.tree.paneCount > 1 else {
                 ShellWorkspace.Registry.windows[store.workspaceID]?.performClose(nil)
@@ -182,13 +191,15 @@ enum PaneCommands {
             }
             store.closeFocused()
         },
-        AppCommand(id: "pane.zoom", title: "Toggle Zoom", menuPath: ["Pane"],
+        AppCommand(id: "pane.zoom", title: "Toggle Zoom",
+                   symbol: "arrow.up.left.and.arrow.down.right", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.toggleZoom() },
-        AppCommand(id: "pane.equalize", title: "Equalize Panes", menuPath: ["Pane"],
+        AppCommand(id: "pane.equalize", title: "Equalize Panes", symbol: "equal", menuPath: ["Pane"],
                    binding: KeyBinding("=", [.command]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeFocusedContainer() },
-        AppCommand(id: "pane.equalizeAll", title: "Equalize All Panes", menuPath: ["Pane"],
+        AppCommand(id: "pane.equalizeAll", title: "Equalize All Panes", symbol: "equal.square",
+                   menuPath: ["Pane"],
                    binding: KeyBinding("=", [.command, .option]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeAll() },
     ]
@@ -201,6 +212,16 @@ enum PaneCommands {
             guard let binding = command.defaultBinding else { continue }
             assert(!ReservedTerminalKeys.conflicts(binding),
                    "\(command.id) binds \(binding.display), which a terminal owns")
+        }
+    }
+
+    /// Every symbol must be one this OS ships. A misspelt name does not fail — SwiftUI
+    /// draws nothing — so the palette would show a blank slot that nobody notices until a
+    /// user does. Checked at launch in debug builds, beside the binding check.
+    static func assertEverySymbolResolves() {
+        for command in all {
+            assert(NSImage(systemSymbolName: command.symbol, accessibilityDescription: nil) != nil,
+                   "\(command.id) names symbol \"\(command.symbol)\", which does not exist")
         }
     }
 }

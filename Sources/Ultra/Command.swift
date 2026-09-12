@@ -12,6 +12,10 @@ struct AppCommand: Identifiable {
     /// drops their binding.
     let id: String
     let title: String
+    /// The SF Symbol the palette draws beside the title. Required, not optional: a row
+    /// with no glyph in a list where every other row has one reads as a missing asset,
+    /// and a command with nothing to draw is a command that has not been thought about.
+    let symbol: String
     let menuPath: [String]
     let defaultBinding: KeyBinding?
     let isEnabled: @MainActor (LayoutStore) -> Bool
@@ -19,12 +23,14 @@ struct AppCommand: Identifiable {
 
     init(id: String,
          title: String,
+         symbol: String,
          menuPath: [String],
          binding: KeyBinding? = nil,
          isEnabled: @escaping @MainActor (LayoutStore) -> Bool = { _ in true },
          run: @escaping @MainActor (LayoutStore) -> Void) {
         self.id = id
         self.title = title
+        self.symbol = symbol
         self.menuPath = menuPath
         self.defaultBinding = binding
         self.isEnabled = isEnabled

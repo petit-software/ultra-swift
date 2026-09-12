@@ -39,6 +39,7 @@ struct UltraApp: App {
     init() {
         #if DEBUG
         PaneCommands.assertNoTerminalConflicts()
+        PaneCommands.assertEverySymbolResolves()
         #endif
         // An SPM executable has no bundle, so it needs to ask for a regular app's
         // activation policy. The Xcode app target (M8) will not need this.

@@ -98,7 +98,25 @@ public final class SplitCanvasView: NSView {
     public func sync() {
         reconcile()
         needsLayout = true
-        assertKeyboardFocus()
+        // Follows the model only when the keyboard is already ours, or has been asked for.
+        // A sync runs on any store change — and on any re-evaluation of the view above —
+        // so one that took the keyboard from a field OUTSIDE the canvas was the terminal
+        // typing over whatever the user had opened on top of it: the command palette's
+        // field lost the caret the moment it arrived, some of the time.
+        if pendingFocusRevision != nil || keyboardIsInCanvas { assertKeyboardFocus() }
+    }
+
+    /// Whether the window's first responder is nothing, the window itself, or a view in
+    /// this canvas — the cases where following the model's focus takes nothing from
+    /// anyone. A field editor answers for the control it is editing.
+    private var keyboardIsInCanvas: Bool {
+        guard let window else { return true }
+        var responder = window.firstResponder as? NSView
+        if let editor = responder as? NSTextView, editor.isFieldEditor {
+            responder = editor.delegate as? NSView ?? responder
+        }
+        guard let responder else { return true }
+        return responder.isDescendant(of: self)
     }
 
     /// Model focus drives AppKit focus, never the other way round — two sources of truth
