@@ -1,5 +1,8 @@
+- [x] Every project created in Ultra should have an AGENTS.md file created telling how to use ultra for the best like using todo.md for planning what else those md files should say?
 - [ ] New task
-- [ ] BUG : Doing cmd z operation close Editor pane????
+- [x] New Project sheet: New Folder / Clone Repository keep the same height when switching tabs, no jump
+- [x] BUG : Doing cmd z operation close Editor pane????
+- [x] Chat pane: OpenRouter with just an API key, OpenAI removed from the providers
 - [x] Open Router support
 - [x] Explor Swift packages if nothing available how to have an AI chat experience to create a chat like expeirence with ChatGPT / Claude / Gemini something like : https://github.com/sachaservan/SwiftChat - we want to have a chat as a pane
 - [x] todo pane, when task is empty - after remoing it with backspace and accepting with enter should remove the empty task line
