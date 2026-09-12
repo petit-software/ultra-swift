@@ -105,6 +105,9 @@ public final class ChatStore {
     /// Why not, when `canSend` is false.
     public var blockedReason: String? {
         if current.provider == .apple { return appleUnavailable }
+        if current.provider.isRetired {
+            return "\(current.provider.title) is no longer offered. Choose another provider below."
+        }
         return ChatCredentials.isConfigured(current.provider) ? nil
             : "No API key for \(current.provider.title). Add one in Settings ▸ Chat."
     }

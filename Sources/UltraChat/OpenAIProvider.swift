@@ -1,9 +1,11 @@
 import Foundation
 
-/// OpenAI's chat completions API — and, at another base URL, everything that imitates it.
+/// OpenAI's chat completions API, as spoken by OpenRouter — and, at its original base URL,
+/// by OpenAI itself.
 ///
-/// One type serves two providers. `.openAI` points at api.openai.com; `.openRouter` at
-/// openrouter.ai, which fronts many vendors' models behind one key.
+/// One type serves two providers. `.openRouter`, the one offered, points at openrouter.ai,
+/// which fronts many vendors' models behind one key. `.openAI` points at api.openai.com
+/// and is retired: it exists so a conversation saved on it still opens, not for new ones.
 public struct OpenAIProvider: ChatProvider {
     public let id: ChatProviderID
     let credential: ChatCredential
@@ -12,7 +14,7 @@ public struct OpenAIProvider: ChatProvider {
     public static let defaultBaseURL = URL(string: "https://api.openai.com/v1")!
     public static let openRouterBaseURL = URL(string: "https://openrouter.ai/api/v1")!
 
-    public init(id: ChatProviderID = .openAI, credential: ChatCredential,
+    public init(id: ChatProviderID = .openRouter, credential: ChatCredential,
                 transport: ChatTransport = URLSessionTransport()) {
         self.id = id
         self.credential = credential

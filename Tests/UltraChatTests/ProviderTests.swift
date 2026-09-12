@@ -236,13 +236,33 @@ struct OpenAIProviderTests {
     func request() throws {
         let provider = OpenAIProvider(credential: ChatCredential(apiKey: "sk"))
         let request = try provider.makeRequest(sample)
-        #expect(request.url?.absoluteString == "https://api.openai.com/v1/chat/completions")
+        // OpenRouter is where this type goes unless told otherwise; OpenAI itself is retired.
+        #expect(request.url?.absoluteString == "https://openrouter.ai/api/v1/chat/completions")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer sk")
         let json = body(of: request)
         let messages = json["messages"] as? [[String: String]]
         #expect(messages?.first == ["role": "system", "content": "Be terse."])
         #expect(messages?.count == 4)
         #expect((json["stream_options"] as? [String: Bool])?["include_usage"] == true)
+    }
+
+    /// Retired, not removed: a conversation saved on it still decodes, but nothing offers
+    /// it, nothing sends on it, and a default left pointing at it falls back to Apple.
+    @Test("OpenAI is retired")
+    func openAIIsRetired() throws {
+        #expect(!ChatProviderID.offered.contains(.openAI))
+        #expect(ChatProviderID.offered.contains(.openRouter))
+        #expect(ChatProviderID.openAI.isRetired)
+        #expect(try JSONDecoder().decode(ChatProviderID.self, from: Data("\"openAI\"".utf8)) == .openAI)
+        #expect(!ChatCredentials.isConfigured(.openAI))
+
+        let before = UserDefaults.standard.string(forKey: ChatDefaults.providerKey)
+        defer { UserDefaults.standard.set(before, forKey: ChatDefaults.providerKey) }
+        UserDefaults.standard.set("openAI", forKey: ChatDefaults.providerKey)
+        #expect(ChatDefaults.provider == .apple)
+
+        let provider = OpenAIProvider(id: .openAI, credential: ChatCredential(apiKey: "sk"))
+        #expect(try provider.makeRequest(sample).url?.host() == "api.openai.com")
     }
 
     @Test("OpenRouter is the same API at its own URL, with the app named for attribution")

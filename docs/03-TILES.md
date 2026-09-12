@@ -247,16 +247,19 @@ Listening TCP ports, and which pane owns them.
 
 ## 7. Chat
 
-A conversation with a model, beside the terminal. Five providers behind one protocol
+A conversation with a model, beside the terminal. Four providers behind one protocol
 (`UltraChat.ChatProvider`): Apple's on-device model through Foundation Models, which needs
-no key and is the default; Anthropic; OpenAI; Gemini; and OpenRouter, many vendors' models
-behind one key. OpenRouter shares the OpenAI provider type, differing only in base URL.
-A local server (Ollama, LM Studio) was once a sixth, "OpenAI-compatible", and was dropped:
-a base URL, an optional key and a model name that had to be typed was more setup than it
-was worth. Each is raw HTTP
-over `URLSession.bytes` with a small SSE parser — no SDK, because none of the three ships
-a Swift one and the community packages lag the APIs. Every provider is tested against a
-recorded transcript.
+no key and is the default; Anthropic; Gemini; and OpenRouter, many vendors' models behind
+one key — an API key is the whole of its setup. OpenRouter speaks OpenAI's chat API, so it
+is served by the OpenAI provider type at its own base URL. OpenAI itself was offered and
+is retired: OpenRouter reaches its models and everyone else's with the one key, so a second
+key-and-vendor row bought nothing. The case stays in `ChatProviderID` so a conversation
+saved on it still opens; nothing offers it, and a default left pointing at it falls back to
+Apple. A local server (Ollama, LM Studio) was once offered too, "OpenAI-compatible", and was
+dropped: a base URL, an optional key and a model name that had to be typed was more setup
+than it was worth. Each is raw HTTP over `URLSession.bytes` with a small SSE parser — no
+SDK, because none of the services ships a Swift one and the community packages lag the
+APIs. Every provider is tested against a recorded transcript.
 
 - Conversations are files: `.ultra/chats/<id>.json`, beside the todo and context lists,
   newest first in the pane's clock menu. A conversation carries its own provider and model.

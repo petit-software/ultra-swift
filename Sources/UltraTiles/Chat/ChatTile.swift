@@ -179,7 +179,7 @@ public struct ChatTile: View {
 
     private var modelEntries: [ChromeMenuEntry] {
         var entries: [ChromeMenuEntry] = [.caption("Provider")]
-        for provider in ChatProviderID.allCases {
+        for provider in ChatProviderID.offered {
             let usable = provider == .apple ? store.appleUnavailable == nil : ChatCredentials.isConfigured(provider)
             entries.append(.item(title: provider.title,
                                  isOn: provider == store.current.provider,

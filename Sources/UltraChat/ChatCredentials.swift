@@ -52,7 +52,11 @@ public enum ChatCredentials {
 
     /// Whether a conversation on this provider can be sent right now.
     public static func isConfigured(_ provider: ChatProviderID) -> Bool {
-        !provider.requiresCredential || hasAPIKey(for: provider)
+        // A retired provider cannot be sent on even if a key is still in the keychain from
+        // before: there is no row in Settings to see or clear it, and a chat that works
+        // for reasons nothing on screen explains is worse than one that says why not.
+        if provider.isRetired { return false }
+        return !provider.requiresCredential || hasAPIKey(for: provider)
     }
 
     // MARK: Providers
@@ -77,8 +81,10 @@ public enum ChatDefaults {
     /// before a key has been pasted anywhere.
     public static var provider: ChatProviderID {
         get {
-            UserDefaults.standard.string(forKey: providerKey)
+            let stored = UserDefaults.standard.string(forKey: providerKey)
                 .flatMap(ChatProviderID.init(rawValue:)) ?? .apple
+            // A default chosen while a provider was offered, outliving the offer.
+            return stored.isRetired ? .apple : stored
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: providerKey) }
     }

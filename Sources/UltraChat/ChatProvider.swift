@@ -7,6 +7,9 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
     /// Apple's on-device model. No key, no network, and the one that always works.
     case apple
     case anthropic
+    /// RETIRED. Not offered anywhere in the app; the case stays so a conversation file
+    /// written while it was can still be read. OpenRouter reaches the same models, and
+    /// every other vendor's, behind one key — a second key for one vendor bought nothing.
     case openAI
     case gemini
     /// Many vendors' models behind one key, through OpenAI's chat API at a fixed URL.
@@ -14,6 +17,13 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
     case openRouter
 
     public var id: String { rawValue }
+
+    /// The services a pane or Settings will offer. `allCases` still includes the retired
+    /// one, because decoding does.
+    public static let offered: [ChatProviderID] = [.apple, .anthropic, .gemini, .openRouter]
+
+    /// Kept for old files, never for new conversations.
+    public var isRetired: Bool { !Self.offered.contains(self) }
 
     public var title: String {
         switch self {

@@ -9,7 +9,6 @@ import UltraDesign
 struct ChatSettings: View {
     @State private var defaultProvider = ChatDefaults.provider
     @State private var anthropicKey = ChatCredentials.apiKey(for: .anthropic)
-    @State private var openAIKey = ChatCredentials.apiKey(for: .openAI)
     @State private var geminiKey = ChatCredentials.apiKey(for: .gemini)
     @State private var openRouterKey = ChatCredentials.apiKey(for: .openRouter)
 
@@ -17,7 +16,7 @@ struct ChatSettings: View {
         Form {
             Section {
                 Picker("New chats use", selection: $defaultProvider) {
-                    ForEach(ChatProviderID.allCases) { provider in
+                    ForEach(ChatProviderID.offered) { provider in
                         Text(provider.title).tag(provider)
                     }
                 }
@@ -34,7 +33,6 @@ struct ChatSettings: View {
             Section {
                 keyRow("Anthropic", key: $anthropicKey, provider: .anthropic,
                        placeholder: "sk-ant-…")
-                keyRow("OpenAI", key: $openAIKey, provider: .openAI, placeholder: "sk-…")
                 keyRow("Google Gemini", key: $geminiKey, provider: .gemini, placeholder: "AIza…")
                 keyRow("OpenRouter", key: $openRouterKey, provider: .openRouter,
                        placeholder: "sk-or-…")
@@ -43,7 +41,8 @@ struct ChatSettings: View {
             } footer: {
                 SettingNote("Stored in your keychain, never in a file. Each service's own "
                             + "model list is fetched when a pane opens on it. OpenRouter "
-                            + "offers many vendors' models behind one key, named vendor/model.")
+                            + "offers many vendors' models — OpenAI's included — behind one "
+                            + "key, named vendor/model. Nothing else to set up.")
             }
         }
         .formStyle(.grouped)
