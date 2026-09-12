@@ -179,18 +179,10 @@ public struct TodoTile: View {
     }
 
     private func noticeBar(_ notice: TodoStore.Notice) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: notice == .reloadedFromDisk
-                  ? "arrow.clockwise" : "exclamationmark.triangle")
-            Text(message(for: notice))
-                .lineLimit(2)
-            Spacer(minLength: 0)
-        }
-        .font(Token.Type_.monoSmall)
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
-        .background(Token.Colour.accentWash)
+        NoticeBar(symbol: notice == .reloadedFromDisk
+                          ? "arrow.clockwise.circle.fill" : "exclamationmark.triangle.fill",
+                  message: message(for: notice),
+                  dismiss: { store.dismissNotice() })
     }
 
     private func message(for notice: TodoStore.Notice) -> String {

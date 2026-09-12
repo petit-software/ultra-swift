@@ -6,11 +6,16 @@ import UltraTiles
 
 /// The Settings window (⌘,).
 ///
-/// One tab per THING the app has — the terminal, the tiles, the agents, the window, the
-/// panes — rather than one General tab holding everything that is not a colour. General
-/// held seven sections and Appearance six, and finding "how often does the Git tile
-/// refresh" meant reading both to learn which one had been chosen for it. Now the tab
-/// names answer that before it is asked.
+/// One tab per THING the app has — the terminal, the tiles, the agents — rather than one
+/// General tab holding everything that is not a colour. General held seven sections and
+/// Appearance six, and finding "how often does the Git tile refresh" meant reading both to
+/// learn which one had been chosen for it. Now the tab names answer that before it is asked.
+///
+/// There is no Appearance tab and no Panes tab. The twenty numbers the look is made of —
+/// glass, corners, shadows, the window's tint and edge — were sliders while the look was
+/// being found, and once it was found the sliders came out: what they settled on is the
+/// default in `Appearance`, and a tab of them only invited undoing it. Theme and accent are
+/// the two choices that survived, and they sit with the terminal, which is what they colour.
 struct UltraSettings: View {
     var body: some View {
         TabView {
@@ -19,8 +24,6 @@ struct UltraSettings: View {
             Tab("Tiles", systemImage: "square.grid.2x2") { TileSettings() }
             Tab("Agents", systemImage: "sparkles") { AgentSettings() }
             Tab("Chat", systemImage: "text.bubble") { ChatSettings() }
-            Tab("Appearance", systemImage: "paintbrush") { AppearanceSettings() }
-            Tab("Panes", systemImage: "square.split.2x1") { PaneAppearanceSettings() }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
         .frame(width: 560)
@@ -146,12 +149,37 @@ private struct GeneralSettings: View {
     }
 }
 
-/// The shell panes: how they draw and what they are allowed to do.
+/// The shell panes: what colours they wear, how they draw, and what they are allowed to do.
 private struct TerminalSettings: View {
     @State private var prefs = PreferencesModel.shared
 
     var body: some View {
         Form {
+            Section {
+                Picker("Theme", selection: prefs.theme()) {
+                    ForEach(Preferences.ThemeMode.allCases) { Text($0.title).tag($0) }
+                }
+
+                Picker("Accent", selection: prefs.accent()) {
+                    ForEach(Preferences.AccentColour.allCases) { choice in
+                        Label {
+                            Text(choice.title)
+                        } icon: {
+                            Circle().fill(choice.color).frame(width: 12, height: 12)
+                        }
+                        .tag(choice)
+                    }
+                }
+            } header: {
+                Text("Theme")
+            } footer: {
+                SettingNote("""
+                            One accent, used everywhere the app tints something — focus \
+                            rings, checkboxes, drop targets, selected rows. There is no \
+                            second accent to fall out of step.
+                            """)
+            }
+
             Section("Text") {
                 LabeledContent("Font size") {
                     HStack {
@@ -195,7 +223,7 @@ private struct TerminalSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 400)
+        .frame(height: 480)
     }
 }
 

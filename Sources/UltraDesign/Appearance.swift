@@ -10,8 +10,11 @@ import SwiftUI
 /// to be tried against a real desktop rather than argued about.
 ///
 /// The rule the constants already followed still holds: **today's value is the default**.
-/// Nothing here changes how the app looks until someone moves a control, and `reset()` puts
-/// every one of them back.
+/// The defaults are the look that was tuned against a real desktop with every one of these
+/// as a slider, and then the sliders were taken out of Settings: the look is decided, and a
+/// tab of twenty numbers only invited undoing it. Every value is still a preference —
+/// `defaults write software.petit.ultra appearance.paneGutter 20` — and `reset()` still
+/// puts every one of them back; there is just no control for them in the app.
 ///
 /// Shares `Preferences.store` and `Preferences.didChange`, so one observer covers both and
 /// a look change reaches live views by the same path a font-size change does.
@@ -22,8 +25,8 @@ public enum Appearance {
     /// Which of the two materials `NSGlassEffectView` offers.
     ///
     /// `.regular` is the standard Liquid Glass; `.clear` is the thinner, more transparent
-    /// one. The app has only ever used `.regular` — `style` was never set at all — so this
-    /// is the first time the other is reachable without a rebuild.
+    /// one. The app ships on `.clear`: over the window's own darkened material the regular
+    /// glass read as a second, milkier surface on top of the first.
     public enum GlassStyle: String, CaseIterable, Sendable, Identifiable {
         case regular, clear
         public var id: String { rawValue }
@@ -92,7 +95,7 @@ public enum Appearance {
     // MARK: - Glass
 
     public static var glassStyle: GlassStyle {
-        get { choice("glassStyle", default: .regular) }
+        get { choice("glassStyle", default: .clear) }
         set { setChoice("glassStyle", newValue, current: glassStyle) }
     }
 
@@ -103,7 +106,7 @@ public enum Appearance {
 
     /// How much of the accent a tinted pane carries. Ignored while `glassTint` is `off`.
     public static var glassTintStrength: CGFloat {
-        get { PreferenceStore.number(key("glassTintStrength"), default: 0.20, in: 0...0.6) }
+        get { PreferenceStore.number(key("glassTintStrength"), default: 0.60, in: 0...0.6) }
         set { PreferenceStore.setNumber(key("glassTintStrength"), newValue,
                                         current: glassTintStrength, in: 0...0.6) }
     }
@@ -135,20 +138,21 @@ public enum Appearance {
     /// Pane corner radius. See `Token.Space.paneRadius` for why it is not concentric with
     /// the window's.
     public static var paneRadius: CGFloat {
-        get { PreferenceStore.number(key("paneRadius"), default: 18, in: 0...36) }
+        get { PreferenceStore.number(key("paneRadius"), default: 19, in: 0...36) }
         set { PreferenceStore.setNumber(key("paneRadius"), newValue, current: paneRadius, in: 0...36) }
     }
 
     /// How far a pane lifts off the material behind it. Depth, not borders, is what makes a
-    /// grid of panes read as separate surfaces.
+    /// grid of panes read as separate surfaces. Wide and faint: a soft 12pt shadow at 8%
+    /// separates the panes without drawing a dark halo round each one.
     public static var paneShadowRadius: CGFloat {
-        get { PreferenceStore.number(key("paneShadowRadius"), default: 10, in: 0...36) }
+        get { PreferenceStore.number(key("paneShadowRadius"), default: 12, in: 0...36) }
         set { PreferenceStore.setNumber(key("paneShadowRadius"), newValue,
                                         current: paneShadowRadius, in: 0...36) }
     }
 
     public static var paneShadowOpacity: CGFloat {
-        get { PreferenceStore.number(key("paneShadowOpacity"), default: 0.28, in: 0...1) }
+        get { PreferenceStore.number(key("paneShadowOpacity"), default: 0.08, in: 0...1) }
         set { PreferenceStore.setNumber(key("paneShadowOpacity"), newValue,
                                         current: paneShadowOpacity, in: 0...1) }
     }
@@ -184,7 +188,7 @@ public enum Appearance {
     }
 
     public static var focusRingWidth: CGFloat {
-        get { PreferenceStore.number(key("focusRingWidth"), default: 2, in: 0...6) }
+        get { PreferenceStore.number(key("focusRingWidth"), default: 1, in: 0...6) }
         set { PreferenceStore.setNumber(key("focusRingWidth"), newValue,
                                         current: focusRingWidth, in: 0...6) }
     }
@@ -199,22 +203,23 @@ public enum Appearance {
 
     // MARK: - Window
 
-    /// `.hudWindow` rather than `.underWindowBackground`, which the app shipped with.
+    /// `.popover` rather than `.underWindowBackground`, which the app first shipped with.
     ///
-    /// The HUD material is darker and less transparent, and that is what a window full of
-    /// terminals wants: `.underWindowBackground` is tuned for a document window sitting over
-    /// a desktop, so whatever happened to be behind Ultra came through the gutters and read
-    /// as noise between the panes rather than as one surface. The rest of the list is still
-    /// there to be compared against it.
+    /// A window full of terminals wants a darker, less transparent material than a document
+    /// window does: `.underWindowBackground` is tuned for sitting over a desktop, so whatever
+    /// happened to be behind Ultra came through the gutters and read as noise between the
+    /// panes rather than as one surface. Popover, under a 72% dark tint, is the one that
+    /// settled into a single quiet surface. The rest of the list is still there for anyone
+    /// comparing through `defaults write`.
     public static var windowMaterial: WindowMaterial {
-        get { choice("windowMaterial", default: .hudWindow) }
+        get { choice("windowMaterial", default: .popover) }
         set { setChoice("windowMaterial", newValue, current: windowMaterial) }
     }
 
     /// How much black is laid over the material in dark appearance, so the glass reads as
     /// smoked rather than as clear frost.
     public static var windowTintDark: CGFloat {
-        get { PreferenceStore.number(key("windowTintDark"), default: 0.30, in: 0...1) }
+        get { PreferenceStore.number(key("windowTintDark"), default: 0.72, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowTintDark"), newValue,
                                         current: windowTintDark, in: 0...1) }
     }
@@ -228,15 +233,16 @@ public enum Appearance {
                                         current: windowTintLight, in: 0...1) }
     }
 
-    /// The window's visible corner radius.
+    /// The window's visible corner radius. Ships AT the system's own mask, so the window's
+    /// corner is exactly macOS's corner.
     ///
     /// The floor is not a taste decision: AppKit masks a titled window to 15.5pt, so a
     /// LARGER radius draws strictly inside that mask and only our arc is ever seen. Going
     /// below it pokes outside the mask and produces two concentric arcs at every corner.
-    /// The range starts where the system's mask does, so the control cannot reach the bug.
+    /// The range starts where the system's mask does, so no value can reach the bug.
     public static var windowRadius: CGFloat {
         get {
-            PreferenceStore.number(key("windowRadius"), default: 24,
+            PreferenceStore.number(key("windowRadius"), default: Token.Space.systemWindowRadius,
                                    in: Token.Space.systemWindowRadius...44)
         }
         set {
@@ -256,7 +262,7 @@ public enum Appearance {
     /// How strongly that edge reads. Light in dark appearance, dark in light — one number
     /// for both, because it is one idea.
     public static var windowBorderStrength: CGFloat {
-        get { PreferenceStore.number(key("windowBorderStrength"), default: 0.22, in: 0...1) }
+        get { PreferenceStore.number(key("windowBorderStrength"), default: 0.20, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowBorderStrength"), newValue,
                                         current: windowBorderStrength, in: 0...1) }
     }
@@ -275,7 +281,7 @@ public enum Appearance {
     /// Blur separates a title from a busy backdrop; over a near-uniform one this is what
     /// does the work.
     public static var headerTintOpacity: CGFloat {
-        get { PreferenceStore.number(key("headerTintOpacity"), default: 0.28, in: 0...1) }
+        get { PreferenceStore.number(key("headerTintOpacity"), default: 0.14, in: 0...1) }
         set { PreferenceStore.setNumber(key("headerTintOpacity"), newValue,
                                         current: headerTintOpacity, in: 0...1) }
     }

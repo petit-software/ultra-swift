@@ -20,29 +20,29 @@ struct AppearanceTests {
     @Test("an untouched install looks exactly like the constants it replaced")
     func defaultsAreTheShippedLook() {
         clean {
-            #expect(Appearance.glassStyle == .regular)
+            #expect(Appearance.glassStyle == .clear)
             #expect(Appearance.glassTint == .off)
-            #expect(Appearance.glassTintStrength == 0.20)
+            #expect(Appearance.glassTintStrength == 0.60)
             #expect(Appearance.mergesPaneGlass == false)
             #expect(Appearance.glassMergeSpacing == 0)
 
-            #expect(Appearance.paneRadius == 18)
-            #expect(Appearance.paneShadowRadius == 10)
-            #expect(Appearance.paneShadowOpacity == 0.28)
+            #expect(Appearance.paneRadius == 19)
+            #expect(Appearance.paneShadowRadius == 12)
+            #expect(Appearance.paneShadowOpacity == 0.08)
             #expect(Appearance.paneGutter == 12)
-            #expect(Appearance.focusRingWidth == 2)
+            #expect(Appearance.focusRingWidth == 1)
             #expect(Appearance.focusRingStrength == 0.25)
 
-            #expect(Appearance.windowMaterial == .hudWindow)
-            #expect(Appearance.windowTintDark == 0.30)
+            #expect(Appearance.windowMaterial == .popover)
+            #expect(Appearance.windowTintDark == 0.72)
             #expect(Appearance.windowTintLight == 0.45)
-            #expect(Appearance.windowRadius == 24)
+            #expect(Appearance.windowRadius == Token.Space.systemWindowRadius)
             #expect(Appearance.windowPadding == 8)
             #expect(Appearance.windowBorderWidth == 1.5)
-            #expect(Appearance.windowBorderStrength == 0.22)
+            #expect(Appearance.windowBorderStrength == 0.20)
 
             #expect(Appearance.headerBlurRadius == 14)
-            #expect(Appearance.headerTintOpacity == 0.28)
+            #expect(Appearance.headerTintOpacity == 0.14)
         }
     }
 
@@ -110,7 +110,9 @@ struct AppearanceTests {
     @Test("reset reaches every setting there is")
     func resetReachesEverything() {
         clean {
-            Appearance.glassStyle = .clear
+            // Every value here is NOT the default — the setter skips a write that would not
+            // change anything, so a default would leave its key empty and fail the guard.
+            Appearance.glassStyle = .regular
             Appearance.glassTint = .accent
             Appearance.glassTintStrength = 0.5
             Appearance.mergesPaneGlass = true
@@ -121,10 +123,7 @@ struct AppearanceTests {
             Appearance.paneGutter = 36
             Appearance.focusRingWidth = 6
             Appearance.focusRingStrength = 0.9
-            // NOT `.hudWindow` — that is the default now, and the setter skips a write
-            // that would not change anything, so this test would leave the key empty and
-            // then fail on its own guard.
-            Appearance.windowMaterial = .popover
+            Appearance.windowMaterial = .hudWindow
             Appearance.windowTintDark = 0.9
             Appearance.windowTintLight = 0.1
             Appearance.windowRadius = 40
@@ -146,9 +145,9 @@ struct AppearanceTests {
                 #expect(Preferences.store.object(forKey: "appearance." + name) == nil,
                         "\(name) survived a reset")
             }
-            #expect(Appearance.glassStyle == .regular)
-            #expect(Appearance.paneRadius == 18)
-            #expect(Appearance.windowMaterial == .hudWindow)
+            #expect(Appearance.glassStyle == .clear)
+            #expect(Appearance.paneRadius == 19)
+            #expect(Appearance.windowMaterial == .popover)
         }
     }
 
@@ -169,7 +168,7 @@ struct AppearanceTests {
 
             Preferences.reset()
 
-            #expect(Appearance.paneRadius == 18)
+            #expect(Appearance.paneRadius == 19)
             #expect(Preferences.terminalFontSize == 13)
             #expect(count == 1, "one reset is one announcement, not one per namespace")
         }
@@ -188,9 +187,9 @@ struct AppearanceTests {
             #expect(count == 1)
             Appearance.paneRadius = 20
             #expect(count == 1, "a no-op must not wake every view in the app")
-            Appearance.glassStyle = .clear
+            Appearance.glassStyle = .regular
             #expect(count == 2)
-            Appearance.glassStyle = .clear
+            Appearance.glassStyle = .regular
             #expect(count == 2)
         }
     }

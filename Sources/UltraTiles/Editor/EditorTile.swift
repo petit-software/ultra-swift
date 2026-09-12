@@ -237,35 +237,26 @@ private struct FilePane: View {
         }
     }
 
-    @ViewBuilder
     private func noticeBar(_ notice: EditorDocument.Notice) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon(for: notice))
-            Text(message(for: notice)).lineLimit(2)
-            Spacer(minLength: 4)
+        NoticeBar(symbol: icon(for: notice),
+                  message: message(for: notice),
+                  tint: notice == .conflict ? Color.orange.opacity(0.18)
+                                            : Token.Colour.accentWash,
+                  // Closing a conflict keeps YOUR edits: the buffer is left exactly as it
+                  // is and the strip goes away. The one thing that drops them is Reload,
+                  // which is why it is the only other control here.
+                  dismiss: { document.dismissNotice() }) {
             if notice == .conflict {
-                // Both ways out, named for what they do to YOUR edits.
-                Button("Keep Mine") { document.dismissNotice() }
                 Button("Reload") { document.revert(); document.externalChange() }
-            } else {
-                Button("Dismiss") { document.dismissNotice() }
             }
         }
-        .buttonStyle(.plain)
-        .font(Token.Type_.monoSmall)
-        .foregroundStyle(Token.Colour.secondaryLabel)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(notice == .conflict
-                    ? Color.orange.opacity(0.18)
-                    : Token.Colour.accent.opacity(0.12))
     }
 
     private func icon(for notice: EditorDocument.Notice) -> String {
         switch notice {
-        case .reloadedFromDisk: "arrow.clockwise"
+        case .reloadedFromDisk: "arrow.clockwise.circle.fill"
         case .conflict: "exclamationmark.triangle.fill"
-        case .failed: "xmark.octagon"
+        case .failed: "xmark.octagon.fill"
         }
     }
 

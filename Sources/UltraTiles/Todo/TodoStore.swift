@@ -189,6 +189,10 @@ public final class TodoStore {
         watchers.sources.append(source)
     }
 
+    /// Close the notice strip. The next save or reload would clear it anyway; this is for
+    /// not waiting.
+    public func dismissNotice() { notice = nil }
+
     private func externalChange() {
         guard let data = try? Data(contentsOf: url),
               let text = String(data: data, encoding: .utf8) else { return }
