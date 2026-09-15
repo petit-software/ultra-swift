@@ -4,6 +4,13 @@
 - [x] Notice banners in Todo and Editor panes: filled symbols, an X button closes the banner
 - [x] Command palette: results list arrives without the scroller gutter on the right, and every command has an icon
 - [x] Command palette: ⌘K keeps the caret in the field on every press, no rule under the field, icons in one column with the ⌘, "No command found" for an empty query
+- [x] Panes: gutter between tiles down 4pt (12 to 8)
+- [x] Window: the custom 1.5pt edge stroke is gone
+- [x] Panes: corner radius down 4pt (19 to 15)
+- [x] Todo: hover controls float over the row on a glass pill instead of pushing the text
 - [x] Agents: `.ultra/agents.json` holds the project's agent commands (claude, codex, gemini by default), written when a project is created or cloned
 - [x] Agents: the session Customize popover edits the project's agent list
 - [x] Agents: an Agent pane kind — a shell that runs one of the project's agents; New Agent Pane and Change Pane to Agent
+- [x] Git, Context, Ports: row controls float over the row on the same glass pill as Todo
+- [x] Todo: the composer placeholder no longer jumps a point on click (AppKit field, single-line mode)
+- [x] New Project: Create / Clone label greys out with the button
