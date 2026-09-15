@@ -335,9 +335,12 @@ private struct ChangeRow: View {
                     .help("Staged")
             }
 
-            // Always laid out, only faded. A cluster that arrives on hover pushes the
-            // checkmark and the name's truncation point sideways, and a row that moves under
-            // the pointer is a row you cannot aim at. Same three widths whether staged or not.
+        }
+        // Floating over the row's trailing end — see `tileHoverControls`. The cluster was a
+        // column of this row, always laid out and only faded, so that nothing moved on
+        // hover; that cost every path three glyphs' width of its head at rest. Same three
+        // widths whether staged or not, so the pill is the same size on every row.
+        .tileHoverControls(isHovering) {
             HStack(spacing: 8) {
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send path to shell")
@@ -351,8 +354,6 @@ private struct ChangeRow: View {
                 Button(action: discard) { Image(systemName: "arrow.uturn.backward") }
                     .help("Discard changes")
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)

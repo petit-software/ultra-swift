@@ -18,7 +18,7 @@ public enum Token {
         /// Wide enough that the frosted material between panes is actually visible.
         /// At 6pt the glass was there and invisible, which is the worst of both.
         public static let canvasPadding: CGFloat = 8
-        /// Now a setting — see `Appearance.paneGutter`. The default is still 12.
+        /// Now a setting — see `Appearance.paneGutter`. The default is 8.
         public static var gutter: CGFloat { Appearance.paneGutter }
         public static let dividerLine: CGFloat = 1
         public static let dividerHit: CGFloat = 16
@@ -109,7 +109,7 @@ public enum Token {
         ///
         /// It inverts in light appearance for the obvious reason — translucent white on a
         /// light sidebar is not a selection, it is nothing — and takes a little less of
-        /// itself there, the same correction `windowBorder` makes.
+        /// itself there: dark-on-light needs less of itself to read as the same wash.
         ///
         /// It was `sidebarSelection` while the sidebar was the only thing that had a
         /// selection. Two washes at two strengths is exactly the drift this file exists to
@@ -121,18 +121,6 @@ public enum Token {
                     : NSColor.black.withAlphaComponent(0.10)
             }
         )
-
-        /// The window's edge. Light in dark appearance, dark in light — it separates the
-        /// window from the desktop in both directions.
-        public static var windowBorder: NSColor {
-            NSColor(name: nil) { appearance in
-                let strength = Appearance.windowBorderStrength
-                return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-                    ? NSColor.white.withAlphaComponent(strength)
-                    // Dark-on-light needs a little less of itself to read as the same edge.
-                    : NSColor.black.withAlphaComponent(strength * 0.82)
-            }
-        }
 
         /// The label colour that reads ON a solid accent fill.
         ///
@@ -209,6 +197,9 @@ public enum Token {
     public enum Type_ {
         public static let tileTitle = Font.system(size: 15, weight: .medium)
         public static let tileSubtitle = Font.system(size: 15, weight: .regular)
+        /// The same face for an AppKit control that has to sit beside SwiftUI text. Computed,
+        /// not stored: `NSFont` is not `Sendable`, so a stored global would be a data race.
+        public static var tileSubtitleFont: NSFont { .systemFont(ofSize: 15, weight: .regular) }
         public static let body = Font.system(size: 13)
         public static let monoSmall = Font.system(size: 11, design: .monospaced)
         /// A path or file name meant to be READ, not glanced at: body size, fixed pitch.

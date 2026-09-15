@@ -107,10 +107,6 @@ extension Token.Space {
     /// used to warn about. Increasing is safe; decreasing below 15.5 is not.
     public static var windowRadius: CGFloat { Appearance.windowRadius }
 
-    /// The window's edge stroke. Thicker than a hairline so the window still has a defined
-    /// boundary once its surface is dark glass over an arbitrary desktop.
-    public static var windowBorderWidth: CGFloat { Appearance.windowBorderWidth }
-
     /// Pane corner radius. Deliberately NOT `systemWindowRadius - canvasPadding` (which
     /// would be 3.5pt and look mean): with a 12pt gutter the panes are visually separate
     /// surfaces floating on the material, not nested containers, so strict concentricity

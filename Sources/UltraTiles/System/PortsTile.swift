@@ -74,10 +74,21 @@ private struct PortRow: View {
             // carried by colour alone, which is the quieter signal and the one that survives
             // a row being read at a glance.
             //
-            // Given up to the actions on hover instead of squeezing alongside them. A tile is
-            // ~340pt wide; three buttons and an address both fitting means the command — the
-            // thing being looked FOR — is what gets truncated to make room.
-            if isHovering {
+            // Covered by the actions on hover rather than swapped out for them: the row keeps
+            // its shape and the command keeps its truncation point. A tile is ~340pt wide;
+            // three buttons and an address both fitting means the command — the thing being
+            // looked FOR — is what gets truncated to make room.
+            Text("\(port.address) · pid \(port.pid)")
+                .font(Token.Type_.tileSubtitle.monospacedDigit())
+                .foregroundStyle(Token.Colour.tertiaryLabel)
+                .lineLimit(1)
+                // Never the side that truncates: losing the tail of this costs the pid,
+                // which is the number the SIGTERM button acts on.
+                .layoutPriority(1)
+        }
+        // Floating over the address — see `tileHoverControls`.
+        .tileHoverControls(isHovering) {
+            HStack(spacing: 8) {
                 if let url = port.url {
                     Button { NSWorkspace.shared.open(url) } label: {
                         Image(systemName: "safari")
@@ -91,14 +102,6 @@ private struct PortRow: View {
                     .help("Copy port")
                 Button { model.terminate(port) } label: { Image(systemName: "stop.circle") }
                     .help("Send SIGTERM to pid \(port.pid)")
-            } else {
-                Text("\(port.address) · pid \(port.pid)")
-                    .font(Token.Type_.tileSubtitle.monospacedDigit())
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .lineLimit(1)
-                    // Never the side that truncates: losing the tail of this costs the pid,
-                    // which is the number the SIGTERM button acts on.
-                    .layoutPriority(1)
             }
         }
         .buttonStyle(.plain)

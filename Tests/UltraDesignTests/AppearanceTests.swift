@@ -26,10 +26,10 @@ struct AppearanceTests {
             #expect(Appearance.mergesPaneGlass == false)
             #expect(Appearance.glassMergeSpacing == 0)
 
-            #expect(Appearance.paneRadius == 19)
+            #expect(Appearance.paneRadius == 15)
             #expect(Appearance.paneShadowRadius == 12)
             #expect(Appearance.paneShadowOpacity == 0.08)
-            #expect(Appearance.paneGutter == 12)
+            #expect(Appearance.paneGutter == 8)
             #expect(Appearance.focusRingWidth == 1)
             #expect(Appearance.focusRingStrength == 0.25)
 
@@ -38,8 +38,6 @@ struct AppearanceTests {
             #expect(Appearance.windowTintLight == 0.45)
             #expect(Appearance.windowRadius == Token.Space.systemWindowRadius)
             #expect(Appearance.windowPadding == 8)
-            #expect(Appearance.windowBorderWidth == 1.5)
-            #expect(Appearance.windowBorderStrength == 0.20)
 
             #expect(Appearance.headerBlurRadius == 14)
             #expect(Appearance.headerTintOpacity == 0.14)
@@ -57,7 +55,6 @@ struct AppearanceTests {
             Appearance.paneShadowRadius = 2
             Appearance.paneShadowOpacity = 0.9
             Appearance.windowRadius = 40
-            Appearance.windowBorderWidth = 3
             Appearance.headerBlurRadius = 25
             Appearance.headerTintOpacity = 0.5
             Appearance.focusRingStrength = 0.75
@@ -68,7 +65,6 @@ struct AppearanceTests {
             #expect(Token.Space.paneShadowRadius == 2)
             #expect(abs(Token.Space.paneShadowOpacity - 0.9) < 0.0001)
             #expect(Token.Space.windowRadius == 40)
-            #expect(Token.Space.windowBorderWidth == 3)
             #expect(Token.Space.headerBlurRadius == 25)
             #expect(Token.Space.headerTintOpacity == 0.5)
             #expect(abs(Token.Colour.accentMutedStrength - 0.75) < 0.0001)
@@ -128,8 +124,6 @@ struct AppearanceTests {
             Appearance.windowTintLight = 0.1
             Appearance.windowRadius = 40
             Appearance.windowPadding = 40
-            Appearance.windowBorderWidth = 4
-            Appearance.windowBorderStrength = 0.9
             Appearance.headerBlurRadius = 35
             Appearance.headerTintOpacity = 0.9
 
@@ -146,7 +140,7 @@ struct AppearanceTests {
                         "\(name) survived a reset")
             }
             #expect(Appearance.glassStyle == .clear)
-            #expect(Appearance.paneRadius == 19)
+            #expect(Appearance.paneRadius == 15)
             #expect(Appearance.windowMaterial == .popover)
         }
     }
@@ -168,7 +162,7 @@ struct AppearanceTests {
 
             Preferences.reset()
 
-            #expect(Appearance.paneRadius == 19)
+            #expect(Appearance.paneRadius == 15)
             #expect(Preferences.terminalFontSize == 13)
             #expect(count == 1, "one reset is one announcement, not one per namespace")
         }

@@ -160,10 +160,12 @@ private struct ContextRow: View {
                     .font(.system(size: 9))
                     .foregroundStyle(Token.Colour.accent)
             }
-
-            // Always laid out, only faded. A cluster that arrives on hover — and a weight
-            // that leaves to make room for it — moves the name, the number and the pin
-            // sideways, and a row that moves under the pointer is a row you cannot aim at.
+        }
+        // Floating over the row's trailing end — see `tileHoverControls`. The cluster was a
+        // column of this row, always laid out and only faded, so that nothing moved on
+        // hover; that held the name to two-thirds of a narrow tile at rest for controls
+        // nobody was reaching for. Over the weight and the pin instead, on demand.
+        .tileHoverControls(isHovering) {
             HStack(spacing: 7) {
                 // The tile's headline verb, per row. The footer sends the WHOLE list, which
                 // is the wrong granularity for most prompts: a list gathered over a session
@@ -188,8 +190,6 @@ private struct ContextRow: View {
                 Button(action: remove) { Image(systemName: "minus.circle") }
                     .help("Remove from list")
             }
-            .opacity(isHovering ? 1 : 0)
-            .allowsHitTesting(isHovering)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)

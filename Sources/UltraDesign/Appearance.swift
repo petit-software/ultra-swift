@@ -138,7 +138,7 @@ public enum Appearance {
     /// Pane corner radius. See `Token.Space.paneRadius` for why it is not concentric with
     /// the window's.
     public static var paneRadius: CGFloat {
-        get { PreferenceStore.number(key("paneRadius"), default: 19, in: 0...36) }
+        get { PreferenceStore.number(key("paneRadius"), default: 15, in: 0...36) }
         set { PreferenceStore.setNumber(key("paneRadius"), newValue, current: paneRadius, in: 0...36) }
     }
 
@@ -160,9 +160,10 @@ public enum Appearance {
     /// The gutter between panes — how much of the window's material is actually visible.
     ///
     /// The reason the glass reads at all. At 6pt it was there and invisible, which is the
-    /// worst of both, and that is why the shipped value is twice that.
+    /// worst of both. It shipped at 12 for that reason and came down to 8: still a visible
+    /// band of material, without the panes drifting apart on a wide window.
     public static var paneGutter: CGFloat {
-        get { PreferenceStore.number(key("paneGutter"), default: 12, in: 0...40) }
+        get { PreferenceStore.number(key("paneGutter"), default: 8, in: 0...40) }
         set { PreferenceStore.setNumber(key("paneGutter"), newValue, current: paneGutter, in: 0...40) }
     }
 
@@ -251,22 +252,6 @@ public enum Appearance {
         }
     }
 
-    /// The window's edge. Thicker than a hairline so the window still has a boundary once
-    /// its surface is glass over an arbitrary desktop.
-    public static var windowBorderWidth: CGFloat {
-        get { PreferenceStore.number(key("windowBorderWidth"), default: 1.5, in: 0...4) }
-        set { PreferenceStore.setNumber(key("windowBorderWidth"), newValue,
-                                        current: windowBorderWidth, in: 0...4) }
-    }
-
-    /// How strongly that edge reads. Light in dark appearance, dark in light — one number
-    /// for both, because it is one idea.
-    public static var windowBorderStrength: CGFloat {
-        get { PreferenceStore.number(key("windowBorderStrength"), default: 0.20, in: 0...1) }
-        set { PreferenceStore.setNumber(key("windowBorderStrength"), newValue,
-                                        current: windowBorderStrength, in: 0...1) }
-    }
-
     // MARK: - Pane headers
 
     /// Gaussian radius behind a pane's title, so text passing under the header genuinely
@@ -299,7 +284,6 @@ public enum Appearance {
         "paneRadius", "paneShadowRadius", "paneShadowOpacity", "paneGutter",
         "focusRingWidth", "focusRingStrength",
         "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",
-        "windowBorderWidth", "windowBorderStrength",
         "headerBlurRadius", "headerTintOpacity",
     ]
 

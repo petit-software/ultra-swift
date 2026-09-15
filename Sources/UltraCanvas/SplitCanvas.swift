@@ -195,7 +195,7 @@ public struct WindowChrome: NSViewRepresentable {
 /// The window's own surface: ONE glass material running edge to edge, header included.
 ///
 /// Placed by the APP behind the whole window, not by `CanvasSurface` behind the canvas. It
-/// draws the window's rounded corner and its edge stroke, and once the window gained a
+/// draws the window's rounded corner, and once the window gained a
 /// sidebar the canvas stopped being the window — so a surface scoped to the canvas drew the
 /// window's border around the detail column, as a bordered card sitting next to the sidebar.
 ///
@@ -259,7 +259,6 @@ final class WindowSurfaceView: NSVisualEffectView {
         layer.cornerRadius = Token.Space.windowRadius
         layer.cornerCurve = .continuous
         layer.masksToBounds = true
-        layer.borderWidth = Token.Space.windowBorderWidth
 
         if tint.superlayer == nil { layer.addSublayer(tint) }
         tint.frame = bounds
@@ -272,19 +271,23 @@ final class WindowSurfaceView: NSVisualEffectView {
         window?.invalidateShadow()
     }
 
-    /// The border and the tint are both dynamic colours, and `NSColor.cgColor` is where a
-    /// dynamic colour COLLAPSES — against whatever appearance is current at that instant,
-    /// which outside a draw is the light one whatever the window is wearing.
+    /// The tint is a dynamic colour, and `NSColor.cgColor` is where a dynamic colour
+    /// COLLAPSES — against whatever appearance is current at that instant, which outside a
+    /// draw is the light one whatever the window is wearing.
+    ///
+    /// No edge stroke. The window used to draw its own 1.5pt border on this layer, on the
+    /// reasoning that glass over an arbitrary desktop needs a boundary; the window's own
+    /// shadow and the system's mask turned out to be boundary enough, and the stroke read
+    /// as a frame around the glass rather than as the glass's edge.
     private func applyColours() {
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
-            layer?.borderColor = Token.Colour.windowBorder.cgColor
             tint.backgroundColor = Token.Colour.windowTint.cgColor
         }
     }
 
-    /// Both colours were flattened against the appearance that was current when they were
-    /// last set, so a theme change has to ask for them again. Nothing else invalidates
-    /// them: the bounds have not moved, so `layout()` is never called.
+    /// The colour was flattened against the appearance that was current when it was last
+    /// set, so a theme change has to ask for it again. Nothing else invalidates it: the
+    /// bounds have not moved, so `layout()` is never called.
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         CATransaction.begin()

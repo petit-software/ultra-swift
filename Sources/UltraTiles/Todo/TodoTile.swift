@@ -7,7 +7,7 @@ import UltraDesign
 public struct TodoTile: View {
     @State private var store: TodoStore
     @State private var draft: String = ""
-    @FocusState private var draftFocused: Bool
+    @State private var draftFocused = false
     /// The row a drag is currently over, so the insertion line follows the pointer.
     @State private var dropTarget: Int?
     /// The task being edited, if any.
@@ -97,12 +97,10 @@ public struct TodoTile: View {
     /// fill alone says "input"; the border said it a second time and boxed the pill in.
     private var composer: some View {
         HStack(alignment: .center, spacing: 6) {
-            TextField("Add a task", text: $draft)
-                .textFieldStyle(.plain)
-                .font(Token.Type_.tileSubtitle)
-                .foregroundStyle(Token.Colour.label)
-                .focused($draftFocused)
-                .onSubmit(add)
+            // Not a `TextField`: see `SingleLineField` for the point the placeholder jumped
+            // on every click.
+            SingleLineField(placeholder: "Add a task", text: $draft,
+                            isFocused: $draftFocused, onSubmit: add)
 
             // The slot is always here; only the glyph inside it comes and goes. Appearing
             // and disappearing, the button changed the composer's height as well as its
@@ -238,7 +236,11 @@ private struct TodoRow: View {
             Button(action: toggle) {
                 Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 14))
-                    .foregroundStyle(item.isDone ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+                    // A done task is GREYED, glyph and text alike: the filled check is what
+                    // says "done", it does not need the accent to say it louder. It wore the
+                    // accent, and the accent ships as white — which on a light pane is a
+                    // white disc on a white surface, a task with no checkbox at all.
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)
@@ -286,16 +288,16 @@ private struct TodoRow: View {
                             }
                     }
                 }
-
-            // Three slots, always the same three columns, whatever is in them. The row used
-            // to carry three controls on hover and a single one while editing, so pressing
-            // the pencil re-flowed the cluster and every icon landed somewhere else —
-            // including under the pointer that had just pressed one.
-            //
-            // The cluster appears with the hover and stays for the edit, rather than sitting
-            // there empty on every row: a todo pane is narrow, and 62pt held open on the
-            // right of a resting list wraps task text for controls nobody is reaching for.
-            if isHovering || isEditing {
+        }
+        // The controls float over the row's trailing end — see `tileHoverControls` for why
+        // they are no longer a column of the `HStack`. Top-aligned rather than centred so
+        // they sit on the FIRST line of a task, whether it has one line or four.
+        //
+        // Three slots, always the same three columns, whatever is in them. The cluster used
+        // to carry three controls on hover and a single one while editing, so pressing the
+        // pencil re-flowed it and every icon landed somewhere else — including under the
+        // pointer that had just pressed one.
+        .tileHoverControls(isHovering || isEditing, alignment: .topTrailing) {
                 HStack(spacing: 4) {
                     TodoRowSlot {
                         // Save takes the PENCIL's slot: it is the same verb at its other end —
@@ -333,7 +335,7 @@ private struct TodoRow: View {
                         }
                     }
                 }
-            }
+                .offset(y: -3)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
