@@ -17,16 +17,20 @@ struct ProjectAgentsTests {
         return url
     }
 
-    @Test("a project with no file reads as the built-in defaults, and gets no file for it")
+    @Test("a project with no file reads as having no agents, and gets no file for it")
     func defaultsWhenAbsent() throws {
         let root = try sandbox()
-        #expect(ProjectAgents.load(in: root) == AgentDefinition.builtIns)
+        #expect(ProjectAgents.load(in: root) == AgentDefinition.defaults)
+        #expect(ProjectAgents.load(in: root).isEmpty)
         #expect(!ProjectAgents.exists(in: root), "reading must not write")
     }
 
-    @Test("the defaults are the three CLIs a new project is expected to use")
-    func defaultsAreTheKnownAgents() {
-        #expect(AgentDefinition.builtIns.map(\.binary) == ["claude", "codex", "gemini"])
+    /// A project starts with no agents; the three CLIs are what the sidebar RECOGNISES
+    /// when one runs, which is a different question from what a project offers.
+    @Test("the defaults are empty and the known agents are the three CLIs")
+    func defaultsAreEmptyAndKnownAreTheCLIs() {
+        #expect(AgentDefinition.defaults.isEmpty)
+        #expect(AgentDefinition.known.map(\.binary) == ["claude", "codex", "gemini"])
     }
 
     @Test("a saved list comes back in order, creating .ultra on the way")
@@ -41,11 +45,11 @@ struct ProjectAgentsTests {
             atPath: root.appendingPathComponent(".ultra").path))
     }
 
-    @Test("install writes the defaults once and never over an edited list")
+    @Test("install writes nothing while the defaults are empty, and never over an edited list")
     func installIsOneShot() throws {
         let root = try sandbox()
-        #expect(try ProjectAgents.install(in: root))
-        #expect(ProjectAgents.load(in: root) == AgentDefinition.builtIns)
+        #expect(try ProjectAgents.install(in: root) == false)
+        #expect(!ProjectAgents.exists(in: root), "no defaults, so no file saying so")
 
         let edited = [AgentDefinition(name: "Only", command: "only")]
         try ProjectAgents.save(edited, in: root)
@@ -70,7 +74,7 @@ struct ProjectAgentsTests {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)
         try "{ not json".write(to: url, atomically: true, encoding: .utf8)
-        #expect(ProjectAgents.load(in: root) == AgentDefinition.builtIns)
+        #expect(ProjectAgents.load(in: root) == AgentDefinition.defaults)
         #expect(try String(contentsOf: url, encoding: .utf8) == "{ not json",
                 "a file in someone's repository is not this app's to rewrite")
     }

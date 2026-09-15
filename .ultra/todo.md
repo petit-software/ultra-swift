@@ -14,3 +14,11 @@
 - [x] Git, Context, Ports: row controls float over the row on the same glass pill as Todo
 - [x] Todo: the composer placeholder no longer jumps a point on click (AppKit field, single-line mode)
 - [x] New Project: Create / Clone label greys out with the button
+- [x] Customize popover: fields on the app's own wash instead of the black system bezel; the symbol grid uses the pane scroll bar
+- [x] Customize popover: agents shown as rows (name over command), edited in place with Save / Cancel; the symbol grid sits leading so its scroll bar has the margin
+- [x] Customize is a sheet in the new-project sheet's dress, with the agents as form rows edited in place
+- [x] Settings: the theme picker is hidden; the app is dark for now
+- [x] Customize: the symbol grid's scroll bar sits 6pt from the popover's edge, outside the grid
+- [x] The app pins its appearance at launch, so a window with no session no longer opens light
+- [x] Customize: agent rows wear the task rows' floating pill; the picker grids sit at their own width on the leading edge
+- [x] Agents: a project starts with none; the three CLIs stay known for the running-agent badge

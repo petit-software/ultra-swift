@@ -340,7 +340,7 @@ struct WorkspaceCommands: Commands {
                     .keyboardShortcut("]", modifiers: [.command, .option, .shift])
                     .disabled(!(sessions?.canMoveSelected(by: 1) ?? false))
                 Divider()
-                // The keyboard path to the sidebar's Customize popover. It is also on the
+                // The keyboard path to the sidebar's Customize sheet. It is also on the
                 // row's context menu, and a command reachable ONLY from a context menu is
                 // the anti-pattern the `keyboard-first` skill names outright — a terminal
                 // user's hands are on the keys.
@@ -352,7 +352,7 @@ struct WorkspaceCommands: Commands {
                     .keyboardShortcut("i", modifiers: [.control, .command])
                     // Dims rather than vanishing: a command that disappears is a command
                     // nobody learns. A session with no project folder has nowhere to file
-                    // an icon, so there is nothing for the popover to save.
+                    // an icon, so there is nothing for the sheet to save.
                     .disabled(store?.workspaceDirectory == nil)
 
                 // The keyboard path to what a new project gets for free: the AGENTS.md

@@ -1,0 +1,13 @@
+{
+  "agents" : [
+    {
+      "command" : "claude",
+      "name" : "Claude Code"
+    },
+    {
+      "command" : "codex",
+      "name" : "Codex"
+    }
+  ],
+  "version" : 1
+}

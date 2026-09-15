@@ -13,7 +13,7 @@ import UltraDesign
 /// Full label colour for the glyphs, not the tertiary grey a row's margin uses: these have
 /// just appeared to be pressed, and grey on glass is a control that looks disabled. The
 /// colour is dynamic, so the pill reads dark-on-light and light-on-dark alike.
-extension View {
+public extension View {
     func tileHoverControls<Controls: View>(
         _ shown: Bool,
         alignment: Alignment = .trailing,

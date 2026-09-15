@@ -76,11 +76,13 @@ The primary tile. A login shell, usually with an agent CLI running in it.
 - **Spawn**: `zsh -l` in the pane's cwd. An agent session runs `zsh -l -c "exec <command>"` so
   the CLI inherits the user's full PATH/env and gets a real TTY for its own TUI. This is exactly
   the Electron app's approach and it is the right one — Ultra is a harness, not an agent loop.
-- **Agent registry**: `{ name, command }` entries in `<project>/.ultra/agents.json`, seeded
-  with `claude`, `codex` and `gemini` when a project is created or cloned (`ProjectAgents`).
-  A project without the file reads as the defaults and nothing is written until the list is
-  edited — from the session's Customize popover in the sidebar. The file is committed, like
-  the todo list: which agents a project is worked on with travels with the checkout.
+- **Agent registry**: `{ name, command }` entries in `<project>/.ultra/agents.json`
+  (`ProjectAgents`). A project starts with NONE: no file is written when it is created, and a
+  project without the file reads as having no agents, so File ▸ New Agent Pane is empty until
+  the user adds one from the session's Customize sheet. `claude`, `codex` and `gemini` stay
+  KNOWN — `AgentDefinition.known` — so a pane running one of them still lights the sidebar's
+  agent badge whether or not this project lists it. The file is committed, like the todo
+  list: which agents a project is worked on with travels with the checkout.
   Availability probed with `command -v` through a login shell, once per binary per launch;
   unavailable agents are shown disabled with the binary they were looking for.
 - **Agent pane**: its own `PaneRecord.Kind` (`agent`), built by the same factory as a shell —

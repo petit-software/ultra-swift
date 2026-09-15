@@ -19,9 +19,18 @@ public struct AgentDefinition: Codable, Equatable, Sendable, Identifiable {
         self.command = command
     }
 
-    /// Shipped defaults, and what a project gets when it is created. Users edit their own
-    /// list per project; nothing here is special-cased.
-    public static let builtIns: [AgentDefinition] = [
+    /// What a project starts with: NOTHING. Agents are added per project in the session's
+    /// Customize sheet, and a project with no file reads as having none — the New Agent
+    /// menu is empty until the user says which agents this project is worked on with.
+    /// These used to be `known`, and every new project was handed three CLIs it may not
+    /// have installed.
+    public static let defaults: [AgentDefinition] = []
+
+    /// The CLIs recognised as agents when one is seen RUNNING in a pane — what lights the
+    /// sidebar's agent badge. Separate from `defaults`: a shell running `claude` is an agent
+    /// pane whether or not this project has listed it, and detection must not depend on
+    /// the user having filled in a form first.
+    public static let known: [AgentDefinition] = [
         AgentDefinition(name: "Claude Code", command: "claude"),
         AgentDefinition(name: "Codex", command: "codex"),
         AgentDefinition(name: "Gemini", command: "gemini"),
@@ -62,7 +71,7 @@ public enum ProjectAgents {
         var agents: [AgentDefinition]
     }
 
-    /// The project's agents, or the defaults when the project has no file.
+    /// The project's agents, or the defaults — none — when the project has no file.
     ///
     /// An unreadable file is ALSO the defaults, and the file is left alone: the user's own
     /// edit will replace it, and quarantining or deleting a file in someone's repository over
@@ -70,7 +79,7 @@ public enum ProjectAgents {
     public static func load(in root: URL, fileManager: FileManager = .default) -> [AgentDefinition] {
         guard let data = fileManager.contents(atPath: url(in: root).path),
               let file = try? JSONDecoder().decode(File.self, from: data)
-        else { return AgentDefinition.builtIns }
+        else { return AgentDefinition.defaults }
         return file.agents
     }
 
@@ -100,10 +109,14 @@ public enum ProjectAgents {
 
     /// Give a new project the defaults. Nothing happens to a project that already has a
     /// file — the moment for this is creation, and a second call must not undo an edit.
+    /// Nothing happens either while the defaults are empty: a file saying "no agents" is
+    /// what a project with no file already means, and creating a project must not drop a
+    /// file into it that says nothing.
     @discardableResult
     public static func install(in root: URL, fileManager: FileManager = .default) throws -> Bool {
-        guard !exists(in: root, fileManager: fileManager) else { return false }
-        try save(AgentDefinition.builtIns, in: root, fileManager: fileManager)
+        guard !AgentDefinition.defaults.isEmpty,
+              !exists(in: root, fileManager: fileManager) else { return false }
+        try save(AgentDefinition.defaults, in: root, fileManager: fileManager)
         return true
     }
 

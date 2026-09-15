@@ -19,7 +19,7 @@ import UltraTerminal
 /// worse copy of AppKit.
 struct SessionSidebar: View {
     @Bindable var sessions: SessionList
-    /// The window's UI state, for two flags: whether the selected row's customise popover is
+    /// The window's UI state, for two flags: whether the selected row's customise sheet is
     /// open, and whether the new-project sheet is up. Both live up there because File ▸
     /// Session ▸ Customize Session… and File ▸ New Project… have to be able to open them
     /// without going through the sidebar at all.
@@ -78,9 +78,9 @@ struct SessionSidebar: View {
         // explains itself. The editor's sidebar has two sections because it holds two kinds.
         .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
         .accessibilityLabel("Sessions")
-        // The flag is window-level but the popover is anchored to the SELECTED row, so a
+        // The flag is window-level but the sheet is opened from the SELECTED row, so a
         // session switch while it is open — ⌥⌘] does this without touching the mouse — would
-        // leave the flag set and reopen the popover on whatever row was landed on.
+        // leave the flag set and reopen the sheet on whatever row was landed on.
         .onChange(of: sessions.selectedID) { _, _ in ui.isCustomizingSession = false }
         // Under the list, which is where every source list on this platform puts "add" —
         // Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a toolbar item, up
@@ -211,7 +211,7 @@ private struct SessionRow: View {
     /// SwiftUI keeps this per row IDENTITY, and a row's identity is its session.
     @State private var appearance: SessionAppearance
     /// The project's agent list, seeded from `.ultra/agents.json` the same way the icon is
-    /// seeded from its store, and for the same reason: the popover must open on what is
+    /// seeded from its store, and for the same reason: the sheet must open on what is
     /// on disk, not on the defaults and then correct itself.
     @State private var agents: [AgentDefinition]
 
@@ -233,7 +233,7 @@ private struct SessionRow: View {
     /// The defaults for a workspace with no directory: there is no file to read, and no
     /// file to write, which is why Customize is dimmed on such a row.
     private static func loadAgents(forDirectory directory: String?) -> [AgentDefinition] {
-        guard let directory else { return AgentDefinition.builtIns }
+        guard let directory else { return AgentDefinition.defaults }
         return ProjectAgents.load(in: URL(fileURLWithPath: directory, isDirectory: true))
     }
 
@@ -247,7 +247,7 @@ private struct SessionRow: View {
     }
 
     /// A window-level flag, read through this row's own selection. Only the selected row
-    /// answers true, so the one flag cannot open a dozen popovers at once.
+    /// answers true, so the one flag cannot open a dozen sheets at once.
     private var isCustomizing: Binding<Bool> {
         Binding(get: { isSelected && ui.isCustomizingSession },
                 set: { ui.isCustomizingSession = $0 })
@@ -354,15 +354,17 @@ private struct SessionRow: View {
                 Button("Close Session", action: close)
             }
         }
-        .popover(isPresented: isCustomizing, arrowEdge: .trailing) {
+        // A SHEET, not a popover off the row: it holds a list of agents being edited, and a
+        // popover closes the moment the pointer strays. See `SessionCustomizer`.
+        .sheet(isPresented: isCustomizing) {
             SessionCustomizer(name: name, appearance: $appearance, agents: $agents,
                               defaultName: defaultName) {
                 appearance = .default
-                agents = AgentDefinition.builtIns
+                agents = AgentDefinition.defaults
                 rename(defaultName)
             }
-            // A popover is its own window. Dismissing it hands key status back to this one,
-            // and AppKit restores whatever first responder it had — which, since the popover
+            // A sheet is its own window. Dismissing it hands key status back to this one,
+            // and AppKit restores whatever first responder it had — which, since the sheet
             // was opened from the sidebar, is the sidebar.
             .onDisappear { store.reclaimKeyboardFocus() }
         }
@@ -400,7 +402,7 @@ private struct SessionRow: View {
                             ?? "Session, \(store.workspaceTitle)")
     }
 
-    /// Select first, then open. The popover is anchored to the SELECTED row, and macOS lets
+    /// Select first, then open. The sheet is opened from the SELECTED row, and macOS lets
     /// you right-click a row without selecting it — without this, customising the second row
     /// would open a popover on the first.
     private func beginCustomizing() {

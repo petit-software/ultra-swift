@@ -1,6 +1,7 @@
 import SwiftUI
 import UltraCore
 import UltraDesign
+import UltraTiles
 
 /// The colour and the symbol a session's sidebar row is drawn with.
 ///
@@ -27,18 +28,52 @@ struct SessionAppearancePicker: View {
 
     /// The width both callers give the picker, so the grids are never re-flowed.
     static let width: CGFloat = 232
+    /// What the six fixed columns and their gaps actually measure — the width both grids
+    /// are held to, so neither can centre itself in the picker.
+    static let gridWidth: CGFloat = CGFloat(SessionSymbols.columns) * 28
+        + CGFloat(SessionSymbols.columns - 1) * 6
+    /// The padding both callers wrap the picker in — what the symbol grid's scroll view
+    /// borrows on its trailing side so its bar can sit at the popover's edge.
+    static let popoverPadding: CGFloat = 14
+    /// How far in from that edge the bar sits.
+    static let scrollBarEdgeInset: CGFloat = 6
 
     private var tint: SessionTint { SessionTint(storedValue: appearance.tint) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            section("Color") { colourGrid }
+            section("Color") {
+                HStack(spacing: 0) {
+                    colourGrid.frame(width: Self.gridWidth)
+                    Spacer(minLength: 0)
+                }
+            }
             section("Symbol") {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        symbolGrid
+                        // LEADING, at the grid's own width. A scroll view offers its content
+                        // the full width and a grid of fixed columns centres itself in
+                        // whatever it is given — which put the symbols a margin's worth to
+                        // the right of where the colours sit, and the last column under the
+                        // scroll bar. Sized to its six columns and pushed to the leading
+                        // edge by the spacer, the grid starts where the colours do and the
+                        // bar has the rest of the width to itself.
+                        HStack(spacing: 0) {
+                            symbolGrid.frame(width: Self.gridWidth)
+                            Spacer(minLength: 0)
+                        }
                     }
+                    // The panes' own scroller, not the system's: with "Show scroll bars:
+                    // Always" the system one is a legacy scroller that reserves a grey
+                    // gutter down the grid's right edge — the same defect every pane
+                    // already solved, showing up in the one scroll view that had not.
+                    //
+                    // At the popover's own edge, not the grid's. The scroll view reaches out
+                    // through the popover's padding, and the bar sits 6pt in from the edge
+                    // it reaches — beside the symbols, with the whole margin between.
+                    .tileScrollBar(sideInset: Self.scrollBarEdgeInset)
                     .frame(height: Self.symbolGridHeight)
+                    .padding(.trailing, -Self.popoverPadding)
                     .scrollBounceBehavior(.basedOnSize)
                     .onAppear {
                         // A mark chosen from the bottom of the list would otherwise open to

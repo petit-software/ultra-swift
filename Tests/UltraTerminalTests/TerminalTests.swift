@@ -112,7 +112,7 @@ struct ShellLauncherTests {
     @Test("an agent's probe target is the first word of its command")
     func binaryExtraction() {
         #expect(AgentDefinition(name: "x", command: "codex --model o3").binary == "codex")
-        #expect(AgentDefinition.builtIns.map(\.binary) == ["claude", "codex", "gemini"])
+        #expect(AgentDefinition.known.map(\.binary) == ["claude", "codex", "gemini"])
     }
 
     /// An agent pane is its own kind, so a layout can offer it and name it; a plain shell

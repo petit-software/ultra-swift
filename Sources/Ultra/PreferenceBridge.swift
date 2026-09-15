@@ -24,6 +24,12 @@ enum PreferenceBridge {
     /// Idempotent — every window calls it, one observer runs.
     static func start() {
         guard observer == nil else { return }
+        // Pinned NOW, before any window exists, not only when a preference changes. The
+        // pin used to be applied by the canvas as it configured its window, which meant a
+        // window with no canvas — a launch that restored no session, or a second instance
+        // — followed the system and opened light against a dark preference, and every
+        // sheet and popover it spawned came up light with it.
+        syncAppAppearance()
         observer = NotificationCenter.default.addObserver(
             forName: Preferences.didChange, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { apply() }

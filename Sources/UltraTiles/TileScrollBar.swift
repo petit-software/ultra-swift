@@ -39,11 +39,16 @@ public struct TileScrollBar: View {
     let isScrollable: Bool
     /// The height available to travel in.
     let trackHeight: CGFloat
+    /// Inset from the trailing edge for THIS bar. The pane default is `sideInset`; a scroll
+    /// view that overhangs its container's margin passes what is left of that margin.
+    let inset: CGFloat
 
-    public init(progress: Double, isScrollable: Bool, trackHeight: CGFloat) {
+    public init(progress: Double, isScrollable: Bool, trackHeight: CGFloat,
+                sideInset: CGFloat = TileScrollBar.sideInset) {
         self.progress = progress
         self.isScrollable = isScrollable
         self.trackHeight = trackHeight
+        self.inset = sideInset
     }
 
     /// The travel available to the knob, never negative — a pane shorter than the knob has
@@ -67,7 +72,7 @@ public struct TileScrollBar: View {
                     .offset(y: travel * clamped(progress))
             }
             .frame(width: Self.thickness, height: trackHeight, alignment: .top)
-            .padding(.trailing, Self.sideInset)
+            .padding(.trailing, inset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             // No hit testing: this REPORTS position, it is not a control. A drag target here
             // would compete with the content underneath for a gesture the wheel and trackpad
@@ -89,12 +94,17 @@ public extension View {
     /// Applied to the ScrollView itself rather than a container: `onScrollGeometryChange`
     /// reads the nearest scroll view, and the overlay has to sit in its coordinate space to
     /// line up with the content it describes.
-    func tileScrollBar() -> some View {
-        modifier(TileScrollBarModifier())
+    ///
+    /// `sideInset` is how far the bar sits from the scroll view's trailing edge. The pane
+    /// default suits content that stops short of the edge; a scroll view reaching into its
+    /// container's margin passes the part of that margin the bar should leave alone.
+    func tileScrollBar(sideInset: CGFloat = TileScrollBar.sideInset) -> some View {
+        modifier(TileScrollBarModifier(sideInset: sideInset))
     }
 }
 
 private struct TileScrollBarModifier: ViewModifier {
+    let sideInset: CGFloat
     @State private var progress: Double = 0
     @State private var isScrollable = false
     @State private var trackHeight: CGFloat = 0
@@ -154,7 +164,8 @@ private struct TileScrollBarModifier: ViewModifier {
                     // stretch of travel was hidden behind the footer.
                     TileScrollBar(progress: progress,
                                   isScrollable: isScrollable,
-                                  trackHeight: max(0, proxy.size.height - bottomInset))
+                                  trackHeight: max(0, proxy.size.height - bottomInset),
+                                  sideInset: sideInset)
                         .opacity(isHovering ? 1 : 0)
                         .animation(Token.Motion.chromeFade, value: isHovering)
                 }

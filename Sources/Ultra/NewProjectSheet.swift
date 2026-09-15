@@ -115,7 +115,7 @@ struct NewProjectSheet: View {
         .help("Choose the colour and symbol this project's sidebar row will wear")
         .popover(isPresented: $isChoosingAppearance, arrowEdge: .bottom) {
             SessionAppearancePicker(appearance: $appearance)
-                .padding(14)
+                .padding(SessionAppearancePicker.popoverPadding)
                 .frame(width: SessionAppearancePicker.width)
         }
     }

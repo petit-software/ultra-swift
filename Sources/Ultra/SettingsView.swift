@@ -14,8 +14,14 @@ import UltraTiles
 /// There is no Appearance tab and no Panes tab. The twenty numbers the look is made of —
 /// glass, corners, shadows, the window's tint and edge — were sliders while the look was
 /// being found, and once it was found the sliders came out: what they settled on is the
-/// default in `Appearance`, and a tab of them only invited undoing it. Theme and accent are
-/// the two choices that survived, and they sit with the terminal, which is what they colour.
+/// default in `Appearance`, and a tab of them only invited undoing it. The accent is the
+/// one choice that survived, and it sits with the terminal, which is what it colours.
+///
+/// The theme picker is gone too, for now: the app is DARK. Light and Follow System are
+/// still there underneath — `Preferences.themeMode` reads them and the tests hold them —
+/// but the light look has not been tuned the way the dark one has, and a control that
+/// offers an untuned look is a control that offers a worse app. It comes back when light
+/// is worth choosing.
 struct UltraSettings: View {
     var body: some View {
         TabView {
@@ -156,10 +162,6 @@ private struct TerminalSettings: View {
     var body: some View {
         Form {
             Section {
-                Picker("Theme", selection: prefs.theme()) {
-                    ForEach(Preferences.ThemeMode.allCases) { Text($0.title).tag($0) }
-                }
-
                 Picker("Accent", selection: prefs.accent()) {
                     ForEach(Preferences.AccentColour.allCases) { choice in
                         Label {
@@ -171,7 +173,7 @@ private struct TerminalSettings: View {
                     }
                 }
             } header: {
-                Text("Theme")
+                Text("Accent")
             } footer: {
                 SettingNote("""
                             One accent, used everywhere the app tints something — focus \
@@ -275,9 +277,9 @@ private struct TileSettings: View {
                             + "telling an agent to plan in the todo list and how to treat the "
                             + "other files here, plus a CLAUDE.md that imports it. Opening a "
                             + "folder never writes into it; use File ▸ Session ▸ Write "
-                            + "AGENTS.md for those. A new project also gets .ultra/agents.json, "
-                            + "the agents File ▸ New Agent Pane lists — edit the list from the "
-                            + "session's Customize popover.")
+                            + "AGENTS.md for those. The agents File ▸ New Agent Pane lists are "
+                            + "added per project in the session's Customize sheet and kept in "
+                            + ".ultra/agents.json.")
             }
 
             Section {

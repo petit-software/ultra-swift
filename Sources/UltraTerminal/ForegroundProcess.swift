@@ -86,7 +86,7 @@ public enum ForegroundProcess {
     /// compared against each agent's `binary` — the first word of its command line, which is
     /// the same string `which` is given when probing availability.
     public static func activity(ofTerminal fd: Int32,
-                                agents: [AgentDefinition] = AgentDefinition.builtIns) -> PaneActivity? {
+                                agents: [AgentDefinition] = AgentDefinition.known) -> PaneActivity? {
         guard let command = name(ofTerminal: fd) else { return nil }
         return PaneActivity(command: command, isAgent: isAgent(command, in: agents))
     }
@@ -99,7 +99,7 @@ public enum ForegroundProcess {
     /// would never be recognised while running, which is a silent half-failure: the pane
     /// works, and simply never reports itself as an agent.
     public static func isAgent(_ command: String,
-                               in agents: [AgentDefinition] = AgentDefinition.builtIns) -> Bool {
+                               in agents: [AgentDefinition] = AgentDefinition.known) -> Bool {
         let name = (command as NSString).lastPathComponent
         guard !name.isEmpty else { return false }
         return agents.contains { ($0.binary as NSString).lastPathComponent == name }
