@@ -210,6 +210,10 @@ private struct SessionRow: View {
     /// wearing its icon on the frame it is drawn in rather than flashing the default first.
     /// SwiftUI keeps this per row IDENTITY, and a row's identity is its session.
     @State private var appearance: SessionAppearance
+    /// The project's agent list, seeded from `.ultra/agents.json` the same way the icon is
+    /// seeded from its store, and for the same reason: the popover must open on what is
+    /// on disk, not on the defaults and then correct itself.
+    @State private var agents: [AgentDefinition]
 
     init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
          select: @escaping () -> Void, rename: @escaping (String) -> Void,
@@ -223,6 +227,14 @@ private struct SessionRow: View {
         self.close = close
         _appearance = State(initialValue: SessionAppearanceStore.appearance(
             forDirectory: store.workspaceDirectory))
+        _agents = State(initialValue: Self.loadAgents(forDirectory: store.workspaceDirectory))
+    }
+
+    /// The defaults for a workspace with no directory: there is no file to read, and no
+    /// file to write, which is why Customize is dimmed on such a row.
+    private static func loadAgents(forDirectory directory: String?) -> [AgentDefinition] {
+        guard let directory else { return AgentDefinition.builtIns }
+        return ProjectAgents.load(in: URL(fileURLWithPath: directory, isDirectory: true))
     }
 
     private var tint: SessionTint { SessionTint(storedValue: appearance.tint) }
@@ -343,8 +355,10 @@ private struct SessionRow: View {
             }
         }
         .popover(isPresented: isCustomizing, arrowEdge: .trailing) {
-            SessionCustomizer(name: name, appearance: $appearance, defaultName: defaultName) {
+            SessionCustomizer(name: name, appearance: $appearance, agents: $agents,
+                              defaultName: defaultName) {
                 appearance = .default
+                agents = AgentDefinition.builtIns
                 rename(defaultName)
             }
             // A popover is its own window. Dismissing it hands key status back to this one,
@@ -357,12 +371,25 @@ private struct SessionRow: View {
         .onChange(of: appearance) { _, new in
             SessionAppearanceStore.set(new, forDirectory: store.workspaceDirectory)
         }
+        // Written through on every edit, like the icon. The file is the project's, so a
+        // list that matches what is already on disk — a row untouched, a Reset on a project
+        // that never had a file — is not written: opening Customize must not dirty a
+        // checkout. And a fresh command is the moment to re-probe what is installed.
+        .onChange(of: agents) { _, new in
+            guard let directory = store.workspaceDirectory else { return }
+            let root = URL(fileURLWithPath: directory, isDirectory: true)
+            if new != ProjectAgents.load(in: root) {
+                try? ProjectAgents.save(new, in: root)
+            }
+            ShellWorkspace.forgetAvailability()
+        }
         // The seed in `init` reads whatever the store knows AT THAT MOMENT, and a session
         // being restored can learn its project a beat later. Without this, such a row would
         // hold the default icon for the rest of the launch — the customisation would look
         // like it had not been saved at all.
         .onChange(of: store.workspaceDirectory) { _, directory in
             appearance = SessionAppearanceStore.appearance(forDirectory: directory)
+            agents = Self.loadAgents(forDirectory: directory)
         }
         .accessibilityElement(children: .combine)
         // The status is SPOKEN, not only coloured. A row whose whole meaning is a hue is a

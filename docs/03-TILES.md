@@ -76,8 +76,19 @@ The primary tile. A login shell, usually with an agent CLI running in it.
 - **Spawn**: `zsh -l` in the pane's cwd. An agent session runs `zsh -l -c "exec <command>"` so
   the CLI inherits the user's full PATH/env and gets a real TTY for its own TUI. This is exactly
   the Electron app's approach and it is the right one — Ultra is a harness, not an agent loop.
-- **Agent registry**: `{ name, command }` entries, persisted, seeded with `claude` and `codex`.
-  Availability probed with `which`; unavailable agents are shown disabled with a hint.
+- **Agent registry**: `{ name, command }` entries in `<project>/.ultra/agents.json`, seeded
+  with `claude`, `codex` and `gemini` when a project is created or cloned (`ProjectAgents`).
+  A project without the file reads as the defaults and nothing is written until the list is
+  edited — from the session's Customize popover in the sidebar. The file is committed, like
+  the todo list: which agents a project is worked on with travels with the checkout.
+  Availability probed with `command -v` through a login shell, once per binary per launch;
+  unavailable agents are shown disabled with the binary they were looking for.
+- **Agent pane**: its own `PaneRecord.Kind` (`agent`), built by the same factory as a shell —
+  a shell whose `command` is one of the registry's entries, launched with `exec` as above. Being
+  a kind is what lets "Agent" sit beside "Todo" in every pane menu, name itself in the header,
+  and be told apart from a plain shell in a layout. File ▸ New Agent Pane lists the project's
+  agents; ⌥⌘A and the palette's "New Agent Pane" open the first installed one. A `shell`
+  record written before the kind existed, carrying a command, restores as an agent.
 - **Resize**: driven by the coalescing rules in `01-SPLIT-ENGINE.md` § 6.
 - **Scrollback**: kept in the live `Terminal` for the process lifetime. On quit, the last N lines
   are written to `~/Library/Application Support/Ultra/scrollback/<paneID>.txt` and restored as

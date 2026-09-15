@@ -325,9 +325,28 @@ enum ShellWorkspace {
     /// refused split has to clear the staging again, or the next successful split silently
     /// becomes a tile the user asked for minutes ago and had already given up on.
     static func openTile(_ kind: PaneRecord.Kind, in store: LayoutStore) {
+        // The two shell kinds are not tiles. Routed from here rather than refused so every
+        // list built from `PaneKind.all` — the palette, the toolbar, the pane's own menu —
+        // can offer "Agent" beside "Todo" without knowing which factory builds it.
+        switch kind {
+        case .shell: openShell(in: store); return
+        case .agent:
+            guard let agent = defaultAgent(in: store) else { NSSound.beep(); return }
+            openShell(agent: agent, in: store)
+            return
+        default: break
+        }
         guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
         stageTile(kind, for: store)
         if !store.split(edge: edge) { stageTile(nil, for: store) }
+    }
+
+    /// Whether "New <kind> Pane" can do anything right now. Room on the canvas for every
+    /// kind; for an agent, also an agent to run — a project whose list has been emptied has
+    /// nothing to open, and the command says so by dimming rather than by beeping.
+    static func canOpen(_ kind: PaneRecord.Kind, in store: LayoutStore) -> Bool {
+        guard canOpenNewPane(in: store) else { return false }
+        return kind != .agent || defaultAgent(in: store) != nil
     }
 
     /// Show a file — or a file's diff — in an editor.
@@ -454,9 +473,33 @@ enum ShellWorkspace {
     /// offering it as a view toggle.
     static func convert(_ paneID: PaneID, to kind: PaneRecord.Kind, in store: LayoutStore) {
         guard store.surfaces.surfaceRecord(for: paneID).kind != kind else { return }
+        if kind == .agent {
+            guard let agent = defaultAgent(in: store) else { NSSound.beep(); return }
+            convert(paneID, toAgent: agent, in: store)
+            return
+        }
         Registry.tiles[store.workspaceID]?.forget(paneID)
         Registry.tiles[store.workspaceID]?.stage(TileFactory.supported.contains(kind) ? kind : nil)
+        // The shell factory forgets too, so a pane restored as an agent comes back as the
+        // plain shell that was asked for rather than relaunching what it was.
+        Registry.factories[store.workspaceID]?.forget(paneID)
         store.replaceContent(of: paneID)
+    }
+
+    /// Turn an existing pane into a pane running THIS agent, in place.
+    ///
+    /// Not guarded on "already an agent": an agent pane changed to a different agent is a
+    /// real request, and the pane it replaces is exited by the swap the way a shell is.
+    static func convert(_ paneID: PaneID, toAgent agent: AgentDefinition, in store: LayoutStore) {
+        Registry.tiles[store.workspaceID]?.forget(paneID)
+        Registry.tiles[store.workspaceID]?.stage(nil)
+        Registry.factories[store.workspaceID]?.forget(paneID)
+        stageAgent(agent, for: store)
+        store.replaceContent(of: paneID)
+        // Built now rather than on the next layout pass, so a staging that somehow found no
+        // pane to land in cannot lie in wait for the next split.
+        _ = store.surfaces.surfaceRecord(for: paneID)
+        stageAgent(nil, for: store)
     }
 
     /// Every kind a pane can be, in menu order.
@@ -468,10 +511,48 @@ enum ShellWorkspace {
         Registry.tiles[store.workspaceID]?.stage(kind)
     }
 
-    /// Agents that are actually installed, probed through a login shell.
-    static func availableAgents() -> [AgentDefinition] {
-        AgentDefinition.builtIns.filter { ShellLauncher.isAvailable($0.binary) }
+    // MARK: Agents
+
+    /// The project's agents, in the order the user keeps them — `.ultra/agents.json`, or
+    /// the defaults for a project without one. Read from disk each time: the file is tiny,
+    /// and the Customize popover writes it while the menus that read it are live.
+    static func agents(in store: LayoutStore) -> [AgentDefinition] {
+        ProjectAgents.load(in: projectFolder(of: store))
     }
+
+    /// The project's agents that are actually installed, probed through a login shell.
+    static func availableAgents(in store: LayoutStore) -> [AgentDefinition] {
+        agents(in: store).filter { isAvailable($0) }
+    }
+
+    /// What "New Agent Pane" opens when it is not asked which: the first agent in the
+    /// project's list that is installed, or — with none installed — the first in the list,
+    /// so the pane at least says `command not found` where the agent would have been rather
+    /// than the command silently doing nothing. Nil only for an empty list.
+    static func defaultAgent(in store: LayoutStore) -> AgentDefinition? {
+        let agents = agents(in: store)
+        return agents.first { isAvailable($0) } ?? agents.first
+    }
+
+    /// Whether an agent's binary is on the user's PATH.
+    ///
+    /// Remembered per binary for the life of the process. The probe forks a login shell,
+    /// which is tens of milliseconds a time and the File menu asks for every agent each
+    /// time it is built — with the answer uncached, opening the menu was a visible stall.
+    /// The cost is that a CLI installed while Ultra runs is not seen until relaunch, or
+    /// until the project's agent list is edited, which clears the cache.
+    static func isAvailable(_ agent: AgentDefinition) -> Bool {
+        if let known = availability[agent.binary] { return known }
+        let answer = ShellLauncher.isAvailable(agent.binary)
+        availability[agent.binary] = answer
+        return answer
+    }
+
+    /// Forget every probe result. Called when an agent list is edited: a new command is the
+    /// one moment the user is likely to have just installed something.
+    static func forgetAvailability() { availability.removeAll() }
+
+    private static var availability: [String: Bool] = [:]
 }
 
 
@@ -485,9 +566,12 @@ struct PaneKind: Identifiable, Sendable {
     /// The same symbol the pane wears in its header, so the menu and the icon agree.
     let symbol: String
     var id: PaneRecord.Kind { kind }
+    /// Built by the shell factory rather than as a tile: Shell and Agent.
+    var isShell: Bool { kind == .shell || kind == .agent }
 
     static let all: [PaneKind] = [
         PaneKind(kind: .shell, title: "Shell", symbol: "apple.terminal"),
+        PaneKind(kind: .agent, title: "Agent", symbol: "sparkles"),
         PaneKind(kind: .fileTree, title: "File Tree", symbol: "folder"),
         PaneKind(kind: .editor, title: "Editor", symbol: "doc.text"),
         PaneKind(kind: .todo, title: "Todo", symbol: "checklist"),

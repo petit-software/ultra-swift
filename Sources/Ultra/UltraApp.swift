@@ -391,10 +391,34 @@ struct WorkspaceCommands: Commands {
             .keyboardShortcut("t", modifiers: [.command, .option])
             .disabled(store == nil)
 
-            // Every non-shell kind, from one list — a new kind must not need three
-            // separate edits to become openable.
+            // The project's agents, from `.ultra/agents.json`. The FIRST installed one is
+            // the default — what ⌥⌘A and "New Agent Pane" in the palette open — and it
+            // carries the key so the menu teaches it. An agent that is not installed stays
+            // in the list, dimmed, with the binary it was looking for: hidden, it would look
+            // like the project had forgotten it.
+            Menu("New Agent Pane") {
+                let agents = store.map(ShellWorkspace.agents(in:)) ?? []
+                let preferred = store.flatMap(ShellWorkspace.defaultAgent(in:))
+                ForEach(agents) { agent in
+                    let available = ShellWorkspace.isAvailable(agent)
+                    Button(agent.name) {
+                        guard let store else { return }
+                        ShellWorkspace.openShell(agent: agent, in: store)
+                    }
+                    .modifier(AgentShortcut(isDefault: agent == preferred))
+                    .disabled(!available)
+                    .help(available ? agent.command : "\(agent.binary) is not installed")
+                }
+                if agents.isEmpty {
+                    Text("No agents — add one under Customize")
+                }
+            }
+            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
+
+            // Every tile kind, from one list — a new kind must not need three separate
+            // edits to become openable. The two shell kinds have their own items above.
             Menu("New Tile Pane") {
-                ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
+                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
                     Button(entry.title) {
                         guard let store else { return }
                         ShellWorkspace.openTile(entry.kind, in: store)
@@ -418,12 +442,15 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(store == nil)
 
-            Menu("New Agent Pane") {
-                ForEach(ShellWorkspace.availableAgents()) { agent in
+            // Switching an existing pane to a PARTICULAR agent. "Change Pane To ▸ Agent"
+            // above takes the default; this is for a project with more than one.
+            Menu("Change Pane to Agent") {
+                ForEach(store.map(ShellWorkspace.agents(in:)) ?? []) { agent in
                     Button(agent.name) {
                         guard let store else { return }
-                        ShellWorkspace.openShell(agent: agent, in: store)
+                        ShellWorkspace.convert(store.tree.focused, toAgent: agent, in: store)
                     }
+                    .disabled(!ShellWorkspace.isAvailable(agent))
                 }
             }
             .disabled(store == nil)
@@ -652,9 +679,19 @@ struct RootView: View {
                             Button("Shell") {
                                 if let store { ShellWorkspace.openShell(in: store) }
                             }
-                            ForEach(PaneKind.all.filter { $0.kind != .shell }) { entry in
+                            ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
                                 Button(entry.title) {
                                     if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                                }
+                            }
+                        }
+                        // Each agent by name, the way the File menu has them: "Agent" on
+                        // its own would open the default and leave the rest undiscoverable
+                        // from the one place a new user looks.
+                        Section("New Agent Pane") {
+                            ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
+                                Button(agent.name) {
+                                    if let store { ShellWorkspace.openShell(agent: agent, in: store) }
                                 }
                             }
                         }
@@ -754,6 +791,21 @@ func chooseProjectFolders() -> [String] {
 
 /// Default shortcuts for the tile kinds that earn one. Kinds without a binding are still
 /// reachable from the menu and the palette — a shortcut nobody can remember is not a feature.
+/// ⌥⌘A on the default agent only. Beside ⌥⌘T for a shell: the two kinds of pane that
+/// run something. ⌃A alone is readline's start-of-line and ⌘A is Select All, so the pair
+/// with ⌥ is the free one.
+private struct AgentShortcut: ViewModifier {
+    let isDefault: Bool
+
+    func body(content: Content) -> some View {
+        if isDefault {
+            content.keyboardShortcut("a", modifiers: [.command, .option])
+        } else {
+            content
+        }
+    }
+}
+
 private struct TileShortcut: ViewModifier {
     let kind: PaneRecord.Kind
 

@@ -238,7 +238,7 @@ struct NewProjectSheet: View {
                 // white by default, so the stock pairing is a white button with a white word
                 // on it.
                 Button(action: submit) {
-                    Text(mode.action).foregroundStyle(Token.Colour.onAccent)
+                    SubmitLabel(title: mode.action)
                 }
                     .buttonStyle(.borderedProminent)
                     .buttonBorderShape(.capsule)
@@ -296,6 +296,11 @@ struct NewProjectSheet: View {
         // The one moment a file may be written into a project unasked: it is Ultra's own
         // project, seconds old. See `AgentInstructions`.
         ProjectInstructions.installIfWanted(in: url)
+        // The agent list too. Not behind the AGENTS.md setting: that one is about writing a
+        // file the agent reads, this is about which agents the New Agent menu offers — a
+        // project's own answer, committed with it. A folder that cannot be written to is
+        // still a project; it just reads as the defaults.
+        try? ProjectAgents.install(in: url)
         guard addsToSidebar else {
             // Made, but not opened. Remembered all the same, so it is one press of the
             // sidebar's folder button away rather than something the user has to go and find
@@ -373,6 +378,23 @@ struct NewProjectSheet: View {
     private func abbreviated(_ url: URL) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return url.path.hasPrefix(home) ? "~" + url.path.dropFirst(home.count) : url.path
+    }
+}
+
+
+/// The submit button's word, in a colour that knows whether the button is live.
+///
+/// The label is coloured by hand so it reads on a white accent — and a hand-set colour
+/// does not dim when the button is disabled, which left "Create" and "Clone" printed in
+/// full black on the grey a dead prominent button turns. The environment carries the
+/// button's enabled state into its label, so this is where the two colours meet.
+private struct SubmitLabel: View {
+    let title: String
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Text(title)
+            .foregroundStyle(isEnabled ? Token.Colour.onAccent : Token.Colour.tertiaryLabel)
     }
 }
 

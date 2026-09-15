@@ -1,31 +1,10 @@
 import Foundation
+import UltraCore
 
-/// An agent CLI the user can launch in a pane.
-///
-/// Ultra is a harness, not an agent loop: the agent's own interface lives in the terminal,
-/// and Ultra provides the project, files, and session around it. See docs/03-TILES.md.
-public struct AgentDefinition: Codable, Equatable, Sendable, Identifiable {
-    public var id: String { name }
-    public var name: String
-    /// The command line, run through a login shell so it inherits the user's environment.
-    public var command: String
-
-    public init(name: String, command: String) {
-        self.name = name
-        self.command = command
-    }
-
-    /// Shipped defaults. Users can add their own; nothing here is special-cased.
-    public static let builtIns: [AgentDefinition] = [
-        AgentDefinition(name: "Claude Code", command: "claude"),
-        AgentDefinition(name: "Codex", command: "codex"),
-    ]
-
-    /// The binary to probe for availability — the first word of the command line.
-    public var binary: String {
-        String(command.split(separator: " ").first ?? "")
-    }
-}
+/// The definition lives in `UltraCore` now, beside the file it is read from
+/// (`ProjectAgents`). Re-exported under its old name so nothing above this module has to
+/// know where it moved.
+public typealias AgentDefinition = UltraCore.AgentDefinition
 
 public enum ShellLauncher {
 

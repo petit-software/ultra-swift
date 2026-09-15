@@ -100,7 +100,7 @@ enum SharedLayout {
         }
         let id = store.workspaceID
         ShellWorkspace.Registry.factories[id]?
-            .adopt(records: records.filter { $0.value.kind == .shell })
+            .adopt(records: records.filter { $0.value.isShell })
         ShellWorkspace.Registry.tiles[id]?
             .adopt(records: records.filter { TileFactory.supported.contains($0.value.kind) })
         store.adopt(tree: document.tree)

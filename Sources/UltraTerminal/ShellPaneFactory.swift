@@ -87,6 +87,13 @@ public final class ShellPaneFactory {
         pendingAgent = agent
     }
 
+    /// Forget what a pane was RESTORED as, so its next build is what was staged and nothing
+    /// more. Without this, an agent pane restored from disk and then changed into a plain
+    /// shell would see its old record on the rebuild and quietly relaunch the agent.
+    public func forget(_ paneID: PaneID) {
+        restored.removeValue(forKey: paneID)
+    }
+
     /// Records for panes that do not exist yet, on top of what was restored at launch.
     ///
     /// A layout adopted from another project arrives after this factory was built, with
@@ -212,7 +219,7 @@ public final class ShellPaneFactory {
         // A shell pane is identified by WHERE IT IS. The folder name alone is ambiguous
         // across checkouts, and name-plus-path said the same thing twice, so the header
         // carries the path and nothing else. An agent pane still says which agent it runs.
-        PaneRecord(kind: .shell,
+        PaneRecord(kind: agent == nil ? .shell : .agent,
                    title: agent ?? (cwd.map { abbreviate($0) } ?? "shell"),
                    subtitle: agent == nil ? nil : cwd.map { abbreviate($0) },
                    icon: agent == nil ? "apple.terminal" : "sparkles",

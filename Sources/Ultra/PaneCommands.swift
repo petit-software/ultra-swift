@@ -63,7 +63,7 @@ enum PaneCommands {
                        symbol: entry.symbol,
                        menuPath: ["File"],
                        binding: nil,
-                       isEnabled: { ShellWorkspace.canOpenNewPane(in: $0) }) { store in
+                       isEnabled: { ShellWorkspace.canOpen(entry.kind, in: $0) }) { store in
                 ShellWorkspace.openTile(entry.kind, in: store)
             }
         }

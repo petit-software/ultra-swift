@@ -275,7 +275,9 @@ private struct TileSettings: View {
                             + "telling an agent to plan in the todo list and how to treat the "
                             + "other files here, plus a CLAUDE.md that imports it. Opening a "
                             + "folder never writes into it; use File ▸ Session ▸ Write "
-                            + "AGENTS.md for those.")
+                            + "AGENTS.md for those. A new project also gets .ultra/agents.json, "
+                            + "the agents File ▸ New Agent Pane lists — edit the list from the "
+                            + "session's Customize popover.")
             }
 
             Section {

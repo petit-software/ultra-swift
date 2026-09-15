@@ -599,6 +599,7 @@ public final class PaneContainerView: NSView {
     private static func name(of kind: PaneRecord.Kind) -> String {
         switch kind {
         case .shell: "Shell"
+        case .agent: "Agent"
         case .fileTree: "File Tree"
         case .editor: "Editor"
         case .todo: "Todo"

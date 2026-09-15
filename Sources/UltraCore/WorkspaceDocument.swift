@@ -5,10 +5,19 @@ import UltraLayout
 /// What a pane is, on disk. Enough to rebuild it — never a serialized process.
 ///
 /// From M2 a shell pane restores by spawning a fresh PTY with the recorded cwd and command.
+///
+/// `agent` is a shell whose `command` is one of the project's agents (see `ProjectAgents`).
+/// It is its own kind rather than a shell with a command set so a pane menu can offer it, a
+/// header can name it, and a layout can be told apart from one holding plain shells — but
+/// the shell factory builds both, and a document written before the kind existed, with a
+/// `shell` record carrying a command, restores as an agent all the same.
 public struct PaneRecord: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case shell, fileTree, editor, todo, ports, resources, git, context, chat, placeholder
+        case shell, agent, fileTree, editor, todo, ports, resources, git, context, chat, placeholder
     }
+
+    /// Both kinds the shell factory owns.
+    public var isShell: Bool { kind == .shell || kind == .agent }
 
     public var kind: Kind
     public var title: String

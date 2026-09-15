@@ -284,6 +284,7 @@ public final class TileFactory {
         case .git: "arrow.trianglehead.branch"
         case .context: "paperclip"
         case .chat: "text.bubble"
+        case .agent: "sparkles"
         case .shell, .placeholder: "apple.terminal"
         }
     }

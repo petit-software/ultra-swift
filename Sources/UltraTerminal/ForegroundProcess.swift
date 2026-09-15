@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import UltraCore
 
 /// What a pane is actually doing right now, read from its pty rather than from what the app
 /// remembers launching.

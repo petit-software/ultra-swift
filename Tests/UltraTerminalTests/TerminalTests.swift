@@ -112,7 +112,27 @@ struct ShellLauncherTests {
     @Test("an agent's probe target is the first word of its command")
     func binaryExtraction() {
         #expect(AgentDefinition(name: "x", command: "codex --model o3").binary == "codex")
-        #expect(AgentDefinition.builtIns.map(\.binary) == ["claude", "codex"])
+        #expect(AgentDefinition.builtIns.map(\.binary) == ["claude", "codex", "gemini"])
+    }
+
+    /// An agent pane is its own kind, so a layout can offer it and name it; a plain shell
+    /// is not. The record is rebuilt from the spec on every build, which is also how a
+    /// `shell` record with a command from before the kind existed comes back as an agent.
+    @Test("a pane launched with an agent records as an agent pane, a plain one as a shell")
+    @MainActor
+    func recordKind() {
+        let spec = ShellSpec(cwd: "/tmp", agentCommand: nil, theme: .dark)
+        let shell = ShellPaneFactory.record(for: spec, agent: nil, cwd: "/tmp")
+        #expect(shell.kind == .shell)
+        #expect(shell.isShell)
+        #expect(shell.command == nil)
+
+        let agent = ShellPaneFactory.record(for: spec, agent: "claude --resume", cwd: "/tmp")
+        #expect(agent.kind == .agent)
+        #expect(agent.isShell)
+        #expect(agent.command == "claude --resume")
+        #expect(agent.title == "claude --resume")
+        #expect(agent.icon == "sparkles")
     }
 
     @Test("a missing directory is refused, never silently swapped for $HOME")

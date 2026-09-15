@@ -262,7 +262,7 @@ public final class LayoutStore {
     /// has no record to read, which is why this is a no-op rather than a guess.
     private func noteShellFocus(_ paneID: PaneID) {
         switch surfaces.records[paneID]?.kind {
-        case .shell: lastFocusedShell = paneID
+        case .shell, .agent: lastFocusedShell = paneID
         case .editor: lastFocusedEditor = paneID
         default: break
         }
