@@ -248,13 +248,13 @@ private struct ChatMessageView: View {
             }
         case .assistant:
             VStack(alignment: .leading, spacing: 8) {
-                if message.text.isEmpty, isArriving {
+                if message.isEmpty, isArriving {
                     // Something is on its way. Three dots rather than nothing: a sent
                     // question with no reply under it reads as a send that failed.
                     Text("…")
                         .font(Token.Type_.tileSubtitle)
                         .foregroundStyle(Token.Colour.tertiaryLabel)
-                } else {
+                } else if !message.text.isEmpty {
                     ForEach(Array(MarkdownBlocks.split(message.text).enumerated()), id: \.offset) { _, block in
                         switch block {
                         case .prose(let text):
@@ -262,6 +262,18 @@ private struct ChatMessageView: View {
                         case .code(let language, let code):
                             CodeBlockView(language: language, code: code, sendToShell: sendToShell)
                         }
+                    }
+                }
+                if let calls = message.toolCalls, !calls.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(calls) { ToolCallRow(call: $0) }
+                    }
+                    // The tools have answered and the model has not yet gone on: the same
+                    // three dots, so the wait for the next turn does not read as the end.
+                    if isArriving, calls.allSatisfy({ $0.result != nil }) {
+                        Text("…")
+                            .font(Token.Type_.tileSubtitle)
+                            .foregroundStyle(Token.Colour.tertiaryLabel)
                     }
                 }
                 if let note = message.note {
@@ -272,6 +284,34 @@ private struct ChatMessageView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 20)
+        }
+    }
+}
+
+/// One thing the model looked at on the way to its answer: "Read Package.swift". Quiet —
+/// it is provenance, not content — and the whole of what is shown; what came back is for
+/// the model, and the file is a pane away.
+private struct ToolCallRow: View {
+    let call: ChatToolCall
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol)
+                .frame(width: 14)
+            Text(ProjectFiles.summary(of: call))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .font(Token.Type_.monoSmall)
+        .foregroundStyle(Token.Colour.tertiaryLabel)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var symbol: String {
+        switch call.name {
+        case "read_file": "doc.text"
+        case "list_files": "folder"
+        default: "magnifyingglass"
         }
     }
 }

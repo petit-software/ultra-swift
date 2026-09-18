@@ -32,15 +32,26 @@ public struct AnthropicProvider: ChatProvider {
     /// rather than the chat simply stopping. A service that does not know the parameter
     /// answers 400, and `stream` retries once without it.
     public func makeRequest(_ request: ChatRequest, withFallbacks: Bool = true) throws -> URLRequest {
+        try makeRequest(request, messages: Self.wireMessages(request.messages),
+                        withFallbacks: withFallbacks)
+    }
+
+    /// The same, with the messages already in the API's shape — which is how a round of
+    /// the tool loop asks again, its own turns appended exactly as they arrived.
+    func makeRequest(_ request: ChatRequest, messages: [[String: Any]],
+                     withFallbacks: Bool) throws -> URLRequest {
         var body: [String: Any] = [
             "model": request.model,
             "max_tokens": Self.maxTokens,
             "stream": true,
-            "messages": request.messages.map { message in
-                ["role": message.role.rawValue, "content": message.text]
-            },
+            "messages": messages,
         ]
         if let system = request.system, !system.isEmpty { body["system"] = system }
+        if !request.tools.isEmpty {
+            body["tools"] = request.tools.map { tool in
+                ["name": tool.name, "description": tool.description, "input_schema": tool.schema()]
+            }
+        }
         if withFallbacks { body["fallbacks"] = "default" }
 
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("v1/messages"))
@@ -55,6 +66,32 @@ public struct AnthropicProvider: ChatProvider {
         return urlRequest
     }
 
+    /// The conversation in the API's shape. A turn that called tools becomes two messages:
+    /// the assistant's, with a `tool_use` block per call, and a user's carrying every
+    /// result — all of them in the one message, which is what keeps the model calling
+    /// tools side by side.
+    static func wireMessages(_ messages: [ChatMessage]) -> [[String: Any]] {
+        var wire: [[String: Any]] = []
+        for message in messages where !message.isEmpty {
+            guard message.role == .assistant, let calls = message.toolCalls, !calls.isEmpty else {
+                wire.append(["role": message.role.rawValue, "content": message.text])
+                continue
+            }
+            var content: [[String: Any]] = message.text.isEmpty ? [] : [["type": "text", "text": message.text]]
+            content += calls.map { call in
+                ["type": "tool_use", "id": call.id, "name": call.name, "input": call.argumentValues]
+            }
+            wire.append(["role": "assistant", "content": content])
+            wire.append(["role": "user", "content": calls.map(Self.toolResult)])
+        }
+        return wire
+    }
+
+    private static func toolResult(_ call: ChatToolCall) -> [String: Any] {
+        ["type": "tool_result", "tool_use_id": call.id,
+         "content": call.result ?? ChatToolCall.missingResult]
+    }
+
     // MARK: Stream
 
     public func stream(_ request: ChatRequest) -> AsyncThrowingStream<ChatEvent, Error> {
@@ -62,36 +99,69 @@ public struct AnthropicProvider: ChatProvider {
             let task = Task {
                 do {
                     guard !credential.apiKey.isEmpty else { throw ChatError.missingCredential(id) }
-                    var (status, lines) = try await transport.lines(for: makeRequest(request))
-                    if status == 400 {
-                        // Possibly a service that does not know `fallbacks`. One retry
-                        // without; a second 400 is the real error.
-                        let body = await HTTPProviderSupport.drain(lines)
-                        if body.contains("fallbacks") || body.contains("anthropic-beta") {
-                            (status, lines) = try await transport.lines(
-                                for: makeRequest(request, withFallbacks: false))
-                        } else {
+                    var messages = Self.wireMessages(request.messages)
+                    var withFallbacks = true
+                    for round in 1...maxToolRounds {
+                        var (status, lines) = try await transport.lines(
+                            for: makeRequest(request, messages: messages, withFallbacks: withFallbacks))
+                        if status == 400, withFallbacks {
+                            // Possibly a service that does not know `fallbacks`. One retry
+                            // without; a second 400 is the real error.
+                            let body = await HTTPProviderSupport.drain(lines)
+                            if body.contains("fallbacks") || body.contains("anthropic-beta") {
+                                withFallbacks = false
+                                (status, lines) = try await transport.lines(
+                                    for: makeRequest(request, messages: messages, withFallbacks: false))
+                            } else {
+                                throw HTTPProviderSupport.errorMessage(from: body, status: status)
+                            }
+                        }
+                        guard (200..<300).contains(status) else {
+                            let body = await HTTPProviderSupport.drain(lines)
                             throw HTTPProviderSupport.errorMessage(from: body, status: status)
                         }
-                    }
-                    guard (200..<300).contains(status) else {
-                        let body = await HTTPProviderSupport.drain(lines)
-                        throw HTTPProviderSupport.errorMessage(from: body, status: status)
-                    }
-                    var parser = SSEParser()
-                    var state = StreamState()
-                    for try await line in lines {
-                        if let event = parser.feed(line),
-                           let out = try Self.handle(event, state: &state) {
-                            continuation.yield(out)
+                        var parser = SSEParser()
+                        var state = StreamState()
+                        for try await line in lines {
+                            // `.finished` is held back: whether this round is the end
+                            // is only known once its tool calls have been counted.
+                            if let event = parser.feed(line),
+                               case .text(let text)? = try Self.handle(event, state: &state) {
+                                continuation.yield(.text(text))
+                            }
                         }
-                    }
-                    if let event = parser.finish(),
-                       let out = try Self.handle(event, state: &state) {
-                        continuation.yield(out)
-                    }
-                    if !state.finished {
-                        continuation.yield(.finished(state.finish()))
+                        if let event = parser.finish(),
+                           case .text(let text)? = try Self.handle(event, state: &state) {
+                            continuation.yield(.text(text))
+                        }
+
+                        // Only a turn that STOPPED to call tools has calls worth running:
+                        // one cut off by the output cap may hold half a call.
+                        let calls = state.stopReason == "tool_use" ? state.toolCalls : []
+                        guard let toolbox = request.toolbox, !calls.isEmpty else {
+                            continuation.yield(.finished(state.finish()))
+                            break
+                        }
+                        guard round < maxToolRounds else {
+                            continuation.yield(.finished(ChatFinish(
+                                reason: .other, detail: "too many tool calls in one answer")))
+                            break
+                        }
+                        var results: [[String: Any]] = []
+                        // Every call of the round is announced before any is run, so
+                        // the store can tell one round's calls from the next round's.
+                        for call in calls { continuation.yield(.toolCall(call)) }
+                        for var call in calls {
+                            try Task.checkCancellation()
+                            let result = await toolbox.run(call)
+                            continuation.yield(.toolResult(id: call.id, result: result))
+                            call.result = result
+                            results.append(Self.toolResult(call))
+                        }
+                        // The turn goes back exactly as it arrived — thinking blocks and
+                        // their signatures included, which the API checks — then the results.
+                        messages.append(["role": "assistant", "content": state.content])
+                        messages.append(["role": "user", "content": results])
                     }
                     continuation.finish()
                 } catch {
@@ -103,12 +173,48 @@ public struct AnthropicProvider: ChatProvider {
     }
 
     /// What has been learned about the response so far. `message_delta` carries the stop
-    /// reason and the usage; `message_stop` is when they are reported.
+    /// reason and the usage; `message_stop` is when they are reported. The content blocks
+    /// are kept whole, keyed by their index, so a turn that calls tools can be sent back.
     struct StreamState {
         var stopReason: String?
         var inputTokens: Int?
         var outputTokens: Int?
         var finished = false
+        var blocks: [Int: [String: Any]] = [:]
+        /// A tool call's arguments arrive as pieces of JSON text, per block.
+        var partialInput: [Int: String] = [:]
+
+        /// The turn's content, in order, as the API wants it back. An empty text block is
+        /// dropped: the API sends them and then refuses them.
+        var content: [[String: Any]] {
+            blocks.keys.sorted().compactMap { index in
+                guard var block = blocks[index] else { return nil }
+                switch block["type"] as? String {
+                case "text":
+                    return (block["text"] as? String ?? "").isEmpty ? nil : block
+                case "tool_use":
+                    let text = partialInput[index] ?? ""
+                    block["input"] = text.data(using: .utf8).flatMap(HTTPProviderSupport.object) ?? [:]
+                    return block
+                default:
+                    return block
+                }
+            }
+        }
+
+        /// More of a block's text, thinking or signature, all of which arrive in pieces.
+        mutating func append(_ piece: String, to key: String, at index: Int) {
+            blocks[index, default: [:]][key] = (blocks[index]?[key] as? String ?? "") + piece
+        }
+
+        var toolCalls: [ChatToolCall] {
+            blocks.keys.sorted().compactMap { index in
+                guard let block = blocks[index], block["type"] as? String == "tool_use",
+                      let id = block["id"] as? String, let name = block["name"] as? String else { return nil }
+                let input = partialInput[index] ?? ""
+                return ChatToolCall(id: id, name: name, arguments: input.isEmpty ? "{}" : input)
+            }
+        }
 
         mutating func finish() -> ChatFinish {
             finished = true
@@ -137,11 +243,30 @@ public struct AnthropicProvider: ChatProvider {
             throw ChatError.malformed("not JSON: \(event.data.prefix(80))")
         }
         switch object["type"] as? String ?? event.event {
+        case "content_block_start":
+            if let index = object["index"] as? Int, let block = object["content_block"] as? [String: Any] {
+                state.blocks[index] = block
+            }
+            return nil
         case "content_block_delta":
-            guard let delta = object["delta"] as? [String: Any],
-                  delta["type"] as? String == "text_delta",
-                  let text = delta["text"] as? String, !text.isEmpty else { return nil }
-            return .text(text)
+            guard let delta = object["delta"] as? [String: Any] else { return nil }
+            let index = object["index"] as? Int ?? 0
+            switch delta["type"] as? String {
+            case "text_delta":
+                guard let text = delta["text"] as? String, !text.isEmpty else { return nil }
+                if state.blocks[index] == nil { state.blocks[index] = ["type": "text"] }
+                state.append(text, to: "text", at: index)
+                return .text(text)
+            case "input_json_delta":
+                state.partialInput[index, default: ""] += delta["partial_json"] as? String ?? ""
+            case "thinking_delta":
+                state.append(delta["thinking"] as? String ?? "", to: "thinking", at: index)
+            case "signature_delta":
+                state.append(delta["signature"] as? String ?? "", to: "signature", at: index)
+            default:
+                break
+            }
+            return nil
         case "message_start":
             if let message = object["message"] as? [String: Any],
                let usage = message["usage"] as? [String: Any] {

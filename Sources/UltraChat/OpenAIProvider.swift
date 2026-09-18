@@ -39,24 +39,64 @@ public struct OpenAIProvider: ChatProvider {
     // MARK: Request
 
     public func makeRequest(_ request: ChatRequest) throws -> URLRequest {
-        var messages: [[String: Any]] = []
-        if let system = request.system, !system.isEmpty {
-            messages.append(["role": "system", "content": system])
-        }
-        messages += request.messages.map { ["role": $0.role.rawValue, "content": $0.text] }
-        let body: [String: Any] = [
+        try makeRequest(request, messages: Self.wireMessages(request))
+    }
+
+    /// The same, with the messages already in the API's shape, for a round of the tool loop.
+    func makeRequest(_ request: ChatRequest, messages: [[String: Any]]) throws -> URLRequest {
+        var body: [String: Any] = [
             "model": request.model,
             "stream": true,
             // Usage arrives in one last chunk; without asking, it never arrives at all.
             "stream_options": ["include_usage": true],
             "messages": messages,
         ]
+        if !request.tools.isEmpty {
+            body["tools"] = request.tools.map { tool in
+                ["type": "function",
+                 "function": ["name": tool.name, "description": tool.description,
+                              "parameters": tool.schema()]]
+            }
+        }
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         authorize(&urlRequest)
         urlRequest.httpBody = try HTTPProviderSupport.json(body)
         return urlRequest
+    }
+
+    /// The conversation in the API's shape: the system prompt first, and a turn that called
+    /// tools as the assistant's message with its `tool_calls`, then one `tool` message per
+    /// result.
+    static func wireMessages(_ request: ChatRequest) -> [[String: Any]] {
+        var wire: [[String: Any]] = []
+        if let system = request.system, !system.isEmpty {
+            wire.append(["role": "system", "content": system])
+        }
+        for message in request.messages where !message.isEmpty {
+            guard message.role == .assistant, let calls = message.toolCalls, !calls.isEmpty else {
+                wire.append(["role": message.role.rawValue, "content": message.text])
+                continue
+            }
+            wire.append(assistantMessage(text: message.text, calls: calls))
+            wire += calls.map(toolMessage)
+        }
+        return wire
+    }
+
+    private static func assistantMessage(text: String, calls: [ChatToolCall]) -> [String: Any] {
+        ["role": "assistant",
+         "content": text.isEmpty ? NSNull() : text,
+         "tool_calls": calls.map { call in
+             ["id": call.id, "type": "function",
+              "function": ["name": call.name, "arguments": call.arguments]]
+         }]
+    }
+
+    private static func toolMessage(_ call: ChatToolCall) -> [String: Any] {
+        ["role": "tool", "tool_call_id": call.id,
+         "content": call.result ?? ChatToolCall.missingResult]
     }
 
     // MARK: Stream
@@ -68,24 +108,52 @@ public struct OpenAIProvider: ChatProvider {
                     if id.requiresCredential, credential.apiKey.isEmpty {
                         throw ChatError.missingCredential(id)
                     }
-                    let (status, lines) = try await transport.lines(for: makeRequest(request))
-                    guard (200..<300).contains(status) else {
-                        let body = await HTTPProviderSupport.drain(lines)
-                        throw HTTPProviderSupport.errorMessage(from: body, status: status)
-                    }
-                    var parser = SSEParser()
-                    var state = StreamState()
-                    for try await line in lines {
-                        if let event = parser.feed(line),
-                           let out = try Self.handle(event, state: &state) {
-                            continuation.yield(out)
+                    var messages = Self.wireMessages(request)
+                    for round in 1...maxToolRounds {
+                        let (status, lines) = try await transport.lines(
+                            for: makeRequest(request, messages: messages))
+                        guard (200..<300).contains(status) else {
+                            let body = await HTTPProviderSupport.drain(lines)
+                            throw HTTPProviderSupport.errorMessage(from: body, status: status)
+                        }
+                        var parser = SSEParser()
+                        var state = StreamState()
+                        for try await line in lines {
+                            // `.finished` is held back: whether this round is the end
+                            // is only known once its tool calls have been counted.
+                            if let event = parser.feed(line),
+                               case .text(let text)? = try Self.handle(event, state: &state) {
+                                continuation.yield(.text(text))
+                            }
+                        }
+                        if let event = parser.finish(),
+                           case .text(let text)? = try Self.handle(event, state: &state) {
+                            continuation.yield(.text(text))
+                        }
+
+                        // A turn cut off by the output cap may hold half a call.
+                        let calls = state.finishReason == "length" ? [] : state.toolCalls
+                        guard let toolbox = request.toolbox, !calls.isEmpty else {
+                            continuation.yield(.finished(state.finish()))
+                            break
+                        }
+                        guard round < maxToolRounds else {
+                            continuation.yield(.finished(ChatFinish(
+                                reason: .other, detail: "too many tool calls in one answer")))
+                            break
+                        }
+                        messages.append(Self.assistantMessage(text: state.text, calls: calls))
+                        // Every call of the round is announced before any is run, so
+                        // the store can tell one round's calls from the next round's.
+                        for call in calls { continuation.yield(.toolCall(call)) }
+                        for var call in calls {
+                            try Task.checkCancellation()
+                            let result = await toolbox.run(call)
+                            continuation.yield(.toolResult(id: call.id, result: result))
+                            call.result = result
+                            messages.append(Self.toolMessage(call))
                         }
                     }
-                    if let event = parser.finish(),
-                       let out = try Self.handle(event, state: &state) {
-                        continuation.yield(out)
-                    }
-                    if !state.finished { continuation.yield(.finished(state.finish())) }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -100,6 +168,19 @@ public struct OpenAIProvider: ChatProvider {
         var inputTokens: Int?
         var outputTokens: Int?
         var finished = false
+        /// Everything said this turn, which goes back with the turn's tool calls.
+        var text = ""
+        /// Tool calls arrive in pieces keyed by index: the id and name once, the
+        /// arguments a fragment of JSON text at a time.
+        var partialCalls: [Int: (id: String, name: String, arguments: String)] = [:]
+
+        var toolCalls: [ChatToolCall] {
+            partialCalls.keys.sorted().compactMap { index in
+                guard let call = partialCalls[index], !call.name.isEmpty else { return nil }
+                return ChatToolCall(id: call.id.isEmpty ? "call_\(index)" : call.id, name: call.name,
+                                    arguments: call.arguments.isEmpty ? "{}" : call.arguments)
+            }
+        }
 
         mutating func finish() -> ChatFinish {
             finished = true
@@ -137,8 +218,18 @@ public struct OpenAIProvider: ChatProvider {
         }
         guard let choice = (object["choices"] as? [[String: Any]])?.first else { return nil }
         if let reason = choice["finish_reason"] as? String { state.finishReason = reason }
-        guard let delta = choice["delta"] as? [String: Any],
-              let text = delta["content"] as? String, !text.isEmpty else { return nil }
+        guard let delta = choice["delta"] as? [String: Any] else { return nil }
+        for piece in delta["tool_calls"] as? [[String: Any]] ?? [] {
+            let index = piece["index"] as? Int ?? 0
+            var call = state.partialCalls[index] ?? (id: "", name: "", arguments: "")
+            let function = piece["function"] as? [String: Any]
+            call.id += piece["id"] as? String ?? ""
+            call.name += function?["name"] as? String ?? ""
+            call.arguments += function?["arguments"] as? String ?? ""
+            state.partialCalls[index] = call
+        }
+        guard let text = delta["content"] as? String, !text.isEmpty else { return nil }
+        state.text += text
         return .text(text)
     }
 

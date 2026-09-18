@@ -1,3 +1,8 @@
+- [x] Chat pane should have access to all the files in the project
+  - [x] Chat: tool calls in the model (`ChatTool`, `ChatToolCall`, `ChatToolbox`) and a read-only `ProjectFiles` toolbox — list, find, read, search, confined to the project root
+  - [x] Chat: Anthropic, OpenRouter, Gemini and Apple providers run the tool loop
+  - [x] Chat: the store records tool calls on the message; the pane shows them as rows
+  - [x] Chat: tests and docs for file access
 - [x] Using open router shows error could nor read the response : not JSON { id : ....}
 - [x] Chat: OpenRouter's model picker lists every model, grouped by vendor
 - [x] Take all apperance and pane settinsg values and set them as defaults then hide the controls from settings except theme. pane should dissaper from settings and appaarcen too besides theme and accent that should go under tab Terminal.

@@ -51,8 +51,13 @@ public struct AppleProvider: ChatProvider {
                     guard let last = request.messages.last, last.role == .user else {
                         throw ChatError.malformed("nothing to answer")
                     }
-                    let session = LanguageModelSession(transcript: Self.transcript(
-                        system: request.system, history: request.messages.dropLast()))
+                    let tools: [any Tool] = request.toolbox.map { toolbox in
+                        toolbox.tools.compactMap { tool in
+                            BridgedTool(tool, toolbox: toolbox) { continuation.yield($0) }
+                        }
+                    } ?? []
+                    let session = LanguageModelSession(tools: tools, transcript: Self.transcript(
+                        system: request.system, history: request.messages.dropLast(), tools: tools))
                     // Snapshots are CUMULATIVE — each carries the whole answer so far — and
                     // the chat wants deltas, so the previously seen prefix is subtracted.
                     var seen = ""
@@ -86,14 +91,65 @@ public struct AppleProvider: ChatProvider {
     public func models() async throws -> [String] { [ChatProviderID.apple.defaultModel] }
 
     #if canImport(FoundationModels)
-    /// The framework's transcript, from ours.
-    static func transcript(system: String?, history: ArraySlice<ChatMessage>) -> Transcript {
+    /// One of our tools, as the framework's. The session runs the loop itself — it calls
+    /// this, reads what comes back, and goes on — so all that is left to do is say so to
+    /// the pane, through `report`.
+    struct BridgedTool: Tool {
+        /// The on-device model's whole context is a few thousand tokens. A result is cut
+        /// to a size that leaves room for the question and the answer; the cut is said in
+        /// the text, so the model knows there was more and can ask for a narrower piece.
+        static let maxResultCharacters = 3_000
+
+        let name: String
+        let description: String
+        let parameters: GenerationSchema
+        let toolbox: any ChatToolbox
+        let report: @Sendable (ChatEvent) -> Void
+
+        /// Nil if the schema cannot be built, in which case the tool is simply not offered.
+        init?(_ tool: ChatTool, toolbox: any ChatToolbox, report: @escaping @Sendable (ChatEvent) -> Void) {
+            let properties = tool.parameters.map { parameter in
+                DynamicGenerationSchema.Property(
+                    name: parameter.name, description: parameter.description,
+                    schema: parameter.kind == .integer
+                        ? DynamicGenerationSchema(type: Int.self)
+                        : DynamicGenerationSchema(type: String.self),
+                    isOptional: !parameter.isRequired)
+            }
+            let root = DynamicGenerationSchema(name: tool.name, description: tool.description,
+                                               properties: properties)
+            guard let schema = try? GenerationSchema(root: root, dependencies: []) else { return nil }
+            self.name = tool.name
+            self.description = tool.description
+            self.parameters = schema
+            self.toolbox = toolbox
+            self.report = report
+        }
+
+        func call(arguments: GeneratedContent) async throws -> String {
+            let call = ChatToolCall(id: UUID().uuidString, name: name, arguments: arguments.jsonString)
+            report(.toolCall(call))
+            var result = await toolbox.run(call)
+            if result.count > Self.maxResultCharacters {
+                result = String(result.prefix(Self.maxResultCharacters))
+                    + "\n… cut off: the on-device model can only take in a little at a time."
+            }
+            report(.toolResult(id: call.id, result: result))
+            return result
+        }
+    }
+
+    /// The framework's transcript, from ours. Earlier turns go in as their text alone:
+    /// what a tool returned three questions ago is not worth the little context there is.
+    static func transcript(system: String?, history: ArraySlice<ChatMessage>,
+                           tools: [any Tool] = []) -> Transcript {
         var entries: [Transcript.Entry] = []
         if let system, !system.isEmpty {
             entries.append(.instructions(Transcript.Instructions(
-                segments: [.text(Transcript.TextSegment(content: system))], toolDefinitions: [])))
+                segments: [.text(Transcript.TextSegment(content: system))],
+                toolDefinitions: tools.map { Transcript.ToolDefinition(tool: $0) })))
         }
-        for message in history {
+        for message in history where !message.text.isEmpty {
             let segment = Transcript.Segment.text(Transcript.TextSegment(content: message.text))
             switch message.role {
             case .user:

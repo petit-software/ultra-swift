@@ -30,12 +30,16 @@ public final class ChatStore {
     private let archive: ChatArchive
     private let root: URL
     private let makeProvider: (ChatProviderID) -> any ChatProvider
+    /// What the model may call while answering: the project's files, to read.
+    private let toolbox: any ChatToolbox
     private var task: Task<Void, Never>?
 
     public init(root: URL, conversationID: UUID? = nil,
+                toolbox: (any ChatToolbox)? = nil,
                 makeProvider: @escaping (ChatProviderID) -> any ChatProvider = ChatCredentials.provider(for:)) {
         self.root = root
         self.archive = ChatArchive(root: root)
+        self.toolbox = toolbox ?? ProjectFiles(root: root)
         self.makeProvider = makeProvider
         self.appleUnavailable = AppleProvider.unavailableReason
         conversations = archive.load()
@@ -126,7 +130,8 @@ public final class ChatStore {
 
         let request = ChatRequest(model: current.model,
                                   system: Self.systemPrompt(root: root),
-                                  messages: Array(current.messages.dropLast()))
+                                  messages: Array(current.messages.dropLast()),
+                                  toolbox: toolbox)
         let provider = makeProvider(current.provider)
         let conversationID = current.id
         isStreaming = true
@@ -137,6 +142,10 @@ public final class ChatStore {
                     switch event {
                     case .text(let piece):
                         self.appendToAnswer(piece)
+                    case .toolCall(let call):
+                        self.appendToAnswer(call)
+                    case .toolResult(let id, let result):
+                        self.setResult(result, ofCall: id)
                     case .finished(let finish):
                         self.note(for: finish).map { self.annotateAnswer($0) }
                     }
@@ -147,13 +156,13 @@ public final class ChatStore {
             } catch {
                 guard let self, self.current.id == conversationID else { return }
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                if self.current.messages.last?.text.isEmpty == true {
-                    // Nothing arrived: take the empty bubble away and say why above the
-                    // list. The user's question stays, so it can be sent again.
-                    self.current.messages.removeLast()
-                    self.error = message
-                } else {
+                self.dropEmptyAnswer()
+                if self.current.messages.last?.role == .assistant {
                     self.annotateAnswer(message)
+                } else {
+                    // Nothing arrived: the empty bubble is gone, and why is said above
+                    // the list. The user's question stays, so it can be sent again.
+                    self.error = message
                 }
                 self.finishStreaming()
             }
@@ -165,18 +174,46 @@ public final class ChatStore {
         guard isStreaming else { return }
         task?.cancel()
         task = nil
-        if current.messages.last?.role == .assistant, current.messages.last?.text.isEmpty == true {
-            current.messages.removeLast()
-        } else {
-            annotateAnswer("Stopped.")
-        }
+        dropEmptyAnswer()
+        if current.messages.last?.role == .assistant { annotateAnswer("Stopped.") }
         finishStreaming()
     }
 
-    private func appendToAnswer(_ piece: String) {
+    /// Take away the placeholder for an answer that never began.
+    private func dropEmptyAnswer() {
+        if let last = current.messages.last, last.role == .assistant, last.isEmpty {
+            current.messages.removeLast()
+        }
+    }
+
+    /// The turn that is arriving. Once a turn's tools have answered, whatever comes next
+    /// is the model going on with the results — a new turn, the way the services see it,
+    /// so the conversation replays to them exactly as it happened.
+    private func arrivingIndex() -> Int? {
         guard let index = current.messages.indices.last,
-              current.messages[index].role == .assistant else { return }
+              current.messages[index].role == .assistant else { return nil }
+        let calls = current.messages[index].toolCalls ?? []
+        guard calls.contains(where: { $0.result != nil }) else { return index }
+        current.messages.append(ChatMessage(role: .assistant, text: "", model: current.model))
+        return current.messages.indices.last
+    }
+
+    private func appendToAnswer(_ piece: String) {
+        guard let index = arrivingIndex() else { return }
         current.messages[index].text += piece
+    }
+
+    private func appendToAnswer(_ call: ChatToolCall) {
+        guard let index = arrivingIndex() else { return }
+        current.messages[index].toolCalls = (current.messages[index].toolCalls ?? []) + [call]
+    }
+
+    private func setResult(_ result: String, ofCall id: String) {
+        guard let index = current.messages.indices.last,
+              let call = current.messages[index].toolCalls?.firstIndex(where: { $0.id == id }) else { return }
+        current.messages[index].toolCalls?[call].result = result
+        // Saved as it goes: a long answer's reads are not lost to a crash half-way.
+        save()
     }
 
     private func annotateAnswer(_ note: String) {
@@ -244,7 +281,10 @@ public final class ChatStore {
         You are a coding assistant inside Ultra, a macOS terminal for working alongside \
         agent command-line tools. The user is working in the project folder \(root.path). \
         Be concise. Put shell commands and code in fenced code blocks with a language tag, \
-        because the user can send a block straight to their terminal.
+        because the user can send a block straight to their terminal. \
+        You can look at the project with the list_files, find_files, read_file and \
+        search_files tools: read the code a question is about before answering it, rather \
+        than guessing. The tools only read; you cannot change files or run commands.
         """
     }
 }

@@ -16,16 +16,25 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Sendable {
     /// Why the model stopped, when it was not simply done: a refusal, a length cap, an
     /// error. Shown under the message so a short answer is not mistaken for a full one.
     public var note: String?
+    /// The tools an assistant turn called after saying `text`, with what they returned.
+    /// A turn that called tools is followed by another assistant turn: the model going on
+    /// with the results in hand. Nil in every file written before tools existed.
+    public var toolCalls: [ChatToolCall]?
 
     public init(id: UUID = UUID(), role: ChatRole, text: String, createdAt: Date = Date(),
-                model: String? = nil, note: String? = nil) {
+                model: String? = nil, note: String? = nil, toolCalls: [ChatToolCall]? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.createdAt = createdAt
         self.model = model
         self.note = note
+        self.toolCalls = toolCalls
     }
+
+    /// Whether there is anything here to send back to a service. An assistant turn with
+    /// neither text nor calls is a placeholder for an answer that never came.
+    public var isEmpty: Bool { text.isEmpty && (toolCalls ?? []).isEmpty }
 }
 
 /// A conversation with one provider and one model, as a file on disk.
@@ -65,16 +74,29 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-/// What a provider is asked for: the system prompt, the history, and the model to use.
+/// What a provider is asked for: the system prompt, the history, the model to use, and
+/// the tools the model may call on the way to its answer.
 public struct ChatRequest: Sendable, Equatable {
     public var model: String
     public var system: String?
     public var messages: [ChatMessage]
+    public var toolbox: (any ChatToolbox)?
 
-    public init(model: String, system: String? = nil, messages: [ChatMessage]) {
+    public init(model: String, system: String? = nil, messages: [ChatMessage],
+                toolbox: (any ChatToolbox)? = nil) {
         self.model = model
         self.system = system
         self.messages = messages
+        self.toolbox = toolbox
+    }
+
+    public var tools: [ChatTool] { toolbox?.tools ?? [] }
+
+    /// Two requests are the same if they would put the same bytes on the wire; what runs
+    /// the tools is not part of that.
+    public static func == (lhs: ChatRequest, rhs: ChatRequest) -> Bool {
+        lhs.model == rhs.model && lhs.system == rhs.system && lhs.messages == rhs.messages
+            && lhs.tools == rhs.tools
     }
 }
 
@@ -109,6 +131,10 @@ public struct ChatFinish: Sendable, Equatable {
 public enum ChatEvent: Sendable, Equatable {
     /// More of the answer. Appended to what came before.
     case text(String)
+    /// The model called a tool. The provider runs it; this is so the pane can show it.
+    case toolCall(ChatToolCall)
+    /// What the tool returned, for the call with this id. More of the answer follows.
+    case toolResult(id: String, result: String)
     /// The end, and how it ended.
     case finished(ChatFinish)
 }

@@ -282,6 +282,19 @@ APIs. Every provider is tested against a recorded transcript.
 - The answer is rendered in blocks: prose through Foundation's Markdown parser, fenced code
   in a box with Copy and "type at the prompt" — the latter is `injectIntoShell`, the same
   verb every other tile sends with.
+- The model can read the project. Every request carries a `ChatToolbox` — `ProjectFiles`:
+  `list_files`, `find_files`, `read_file`, `search_files` — and each provider runs its own
+  tool loop, because only it knows its service's shape for a call and a result; within a
+  loop a turn goes back exactly as it arrived (Claude's thinking blocks and signatures,
+  Gemini's `thoughtSignature`). Apple's session runs the loop itself through a bridged
+  `Tool`, with results cut short for its small context. READ-ONLY, and confined to the
+  project root (`..`, absolute paths and symlinks out of it are refused): a chat that writes
+  needs a diff to approve and an undo, and the agents in the panes beside it do that job.
+  Listing and searching follow git's ignore rules; a file named outright can be read
+  whether git ignores it or not. Long files come a page at a time.
+- Tool calls are stored on the assistant's message (`ChatMessage.toolCalls`, with results),
+  one message per round, so a conversation replays to the service as it happened. The pane
+  shows each as a quiet row — "Read Package.swift" — above the answer it led to.
 - Keys live in the keychain (`ChatCredentials`); Settings ▸ Chat is where they go in.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
   Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.

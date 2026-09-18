@@ -123,6 +123,52 @@ struct ChatStoreTests {
         #expect(store.error == nil)
     }
 
+    @Test("tool calls are recorded on the turn that made them; the answer after them is a new turn")
+    func toolCalls() async throws {
+        let root = scratchRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = ChatToolCall(id: "a", name: "read_file", arguments: #"{"path":"x"}"#)
+        let b = ChatToolCall(id: "b", name: "read_file", arguments: #"{"path":"y"}"#)
+        let c = ChatToolCall(id: "c", name: "list_files", arguments: "{}")
+        let provider = ScriptedProvider(events: [
+            .text("Looking."), .toolCall(a), .toolCall(b),
+            .toolResult(id: "a", result: "X"), .toolResult(id: "b", result: "Y"),
+            .toolCall(c), .toolResult(id: "c", result: "Z"),
+            .text("Done."), .finished(ChatFinish(reason: .complete)),
+        ])
+        let store = ChatStore(root: root, makeProvider: { _ in provider })
+        store.setProvider(.anthropic)
+        store.send("Go")
+        try await settle(store)
+
+        // The request offers the project's files.
+        #expect(provider.requests.first?.tools.map(\.name).contains("read_file") == true)
+
+        let turns = Array(store.current.messages.dropFirst())
+        #expect(turns.map(\.text) == ["Looking.", "", "Done."])
+        #expect(turns[0].toolCalls?.map(\.result) == ["X", "Y"])
+        #expect(turns[1].toolCalls?.map(\.id) == ["c"])
+        #expect(turns[2].toolCalls == nil)
+        #expect(ChatArchive(root: root).load(id: store.current.id)?.messages.count == 4)
+    }
+
+    @Test("a failure after a tool call keeps the call and notes the error on it")
+    func failureAfterToolCall() async throws {
+        let root = scratchRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let provider = ScriptedProvider(
+            events: [.toolCall(ChatToolCall(id: "a", name: "read_file", arguments: "{}")),
+                     .toolResult(id: "a", result: "X")],
+            failure: ChatError.http(status: 0, message: "dropped"))
+        let store = ChatStore(root: root, makeProvider: { _ in provider })
+        store.setProvider(.anthropic)
+        store.send("Go")
+        try await settle(store)
+        #expect(store.current.messages.count == 2)
+        #expect(store.current.messages.last?.note == "dropped")
+        #expect(store.error == nil)
+    }
+
     @Test("a new conversation keeps the model, and the old one is still on disk")
     func newConversation() async throws {
         let root = scratchRoot()
