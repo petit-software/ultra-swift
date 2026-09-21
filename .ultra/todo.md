@@ -1,3 +1,11 @@
+- [x] Todo: the hover pill's icons are centred in it again — the row's 3pt lift moves the pill, not the glyphs inside it
+- [x] File tree: a New File button in the footer opens an editor on a new file
+- [x] File tree: hovering a file or folder floats Open, Send and Reveal over the row
+- [x] I want editor to be able to start a new file and save it by default in .ultra folder
+  - [x] Editor: untitled documents — `EditorDocument` with no file yet, `save(to:)`, and `EditorSessions.newFile()`
+  - [x] Editor: saving an untitled file opens the save panel on the project's `.ultra/` folder
+  - [x] Editor: New File command (⌃⌘N) in Pane ▸ Editor and the palette, plus a footer button (plus in a circle); the empty pane carries no buttons
+  - [x] Editor: tests and docs for new files
 - [x] Chat pane should have access to all the files in the project
   - [x] Chat: tool calls in the model (`ChatTool`, `ChatToolCall`, `ChatToolbox`) and a read-only `ProjectFiles` toolbox — list, find, read, search, confined to the project root
   - [x] Chat: Anthropic, OpenRouter, Gemini and Apple providers run the tool loop

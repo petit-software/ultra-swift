@@ -8,13 +8,17 @@ import Foundation
 public enum EditorRequest: Equatable, Sendable {
     case file(URL)
     case diff(DiffRequest)
+    /// A file that does not exist yet. A request like the others so it takes the same road
+    /// to a pane: into the editor already open, or a new one when there is none.
+    case newFile
 
     /// Where the request came from on disk. Used to name a pane and to decide whether it is
-    /// already open.
+    /// already open. Empty for a new file, which is nowhere on disk yet.
     public var path: String {
         switch self {
         case .file(let url): url.path
         case .diff(let request): request.absolutePath
+        case .newFile: ""
         }
     }
 }
@@ -70,7 +74,14 @@ public final class EditorSession: Identifiable {
     /// The sidebar's label. The last component only — a source list has no room for paths,
     /// and the full one is in the editor's own footer.
     public var title: String {
-        (path as NSString).lastPathComponent
+        if case .file(let document) = content { return document.displayName }
+        return (path as NSString).lastPathComponent
+    }
+
+    /// A new file that has not been saved anywhere yet.
+    public var isUntitled: Bool {
+        if case .file(let document) = content { return document.isUntitled }
+        return false
     }
 
     public var isDirty: Bool {
@@ -119,7 +130,9 @@ public final class EditorSessions {
     /// tell them apart.
     @discardableResult
     public func open(_ request: EditorRequest) -> EditorSession {
-        if let existing = sessions.first(where: { $0.path == request.path && $0.isDiff == request.isDiff }) {
+        // A new file is never reused: asking for one twice is asking for two.
+        if request != .newFile,
+           let existing = sessions.first(where: { $0.path == request.path && $0.isDiff == request.isDiff }) {
             select(existing.id)
             // A diff is a view of state that moves under it. Coming back to one after
             // staging a hunk must show what the file looks like NOW.
@@ -129,16 +142,55 @@ public final class EditorSessions {
         let session: EditorSession = switch request {
         case .file(let url): EditorSession(content: .file(EditorDocument(url: url)))
         case .diff(let diffRequest): EditorSession(content: .diff(DiffSession(request: diffRequest)))
+        case .newFile: EditorSession(content: .file(EditorDocument(untitled: nextUntitledName)))
         }
         sessions.append(session)
         select(session.id)
         return session
     }
 
+    /// Start a file that does not exist yet. It has no path until its first save, which is
+    /// `save(_:to:)`'s job.
+    @discardableResult
+    public func newFile() -> EditorSession { open(.newFile) }
+
+    /// "Untitled", then the lowest number not in use — so closing "Untitled 2" and starting
+    /// another gives "Untitled 2" back rather than counting up for the life of the pane.
+    private var nextUntitledName: String {
+        let taken = Set(sessions.filter(\.isUntitled).map(\.title))
+        if !taken.contains("Untitled") { return "Untitled" }
+        var number = 2
+        while taken.contains("Untitled \(number)") { number += 1 }
+        return "Untitled \(number)"
+    }
+
+    /// Give a file a place on disk — the first save of a new one.
+    ///
+    /// Goes through here rather than straight to the document because the session's path
+    /// is what the pane's header and its restored record are keyed on, and both have to
+    /// hear that it changed. A clean row already showing that path is closed: it is about to
+    /// be a second view of the same file, and `open` could only ever find one of them.
+    @discardableResult
+    public func save(_ session: EditorSession, to url: URL) -> Bool {
+        guard case .file(let document) = session.content, document.save(to: url) else { return false }
+        for other in sessions where other.id != session.id && !other.isDiff
+            && other.path == url.path && !other.isDirty {
+            close(other.id)
+        }
+        if session.id == selectedID { announceSelection() }
+        return true
+    }
+
     public func select(_ id: EditorSession.ID) {
         guard selectedID != id else { return }
         selectedID = id
-        onSelectionChange?(selected?.path)
+        announceSelection()
+    }
+
+    /// Nil for nothing open AND for a new file: neither has a path for a header to show.
+    private func announceSelection() {
+        let path = selected?.path ?? ""
+        onSelectionChange?(path.isEmpty ? nil : path)
     }
 
     /// Close one and land on a sensible neighbour.
@@ -150,13 +202,8 @@ public final class EditorSessions {
         let wasSelected = selectedID == id
         sessions.remove(at: index)
         guard wasSelected else { return }
-        if sessions.isEmpty {
-            selectedID = nil
-            onSelectionChange?(nil)
-        } else {
-            selectedID = sessions[max(0, index - 1)].id
-            onSelectionChange?(selected?.path)
-        }
+        selectedID = sessions.isEmpty ? nil : sessions[max(0, index - 1)].id
+        announceSelection()
     }
 
     public func closeSelected() {

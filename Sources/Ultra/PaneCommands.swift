@@ -13,7 +13,7 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + chat + paneKinds + folders
+                                 + layouts + chat + editor + paneKinds + folders
 
     /// The two verbs a chat pane has that a keystroke should reach: another thread, and
     /// stop. Both act on the focused pane and dim when it is not a chat.
@@ -30,6 +30,24 @@ enum PaneCommands {
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
+        },
+    ]
+
+    /// Starting a file that does not exist yet.
+    ///
+    /// In the registry, unlike the rest of the Editor menu, because it acts on the LAYOUT:
+    /// it lands in the editor a clicked file would have landed in, and opens one when there
+    /// is none — which is why it never dims for want of an editor, only for want of room.
+    /// Its first save offers the project's `.ultra/` folder.
+    ///
+    /// ⌃⌘N is the fourth kind of new, after ⌘N (window), ⇧⌘N (project) and ⌥⌘N (chat).
+    static let editor: [AppCommand] = [
+        AppCommand(id: "editor.newFile", title: "New File", symbol: "doc.badge.plus",
+                   menuPath: ["Pane", "Editor"],
+                   binding: KeyBinding("n", [.command, .control]),
+                   isEnabled: { ShellWorkspace.editorSessions(in: $0) != nil
+                                || ShellWorkspace.canOpen(.editor, in: $0) }) { store in
+            ShellWorkspace.showInEditor(.newFile, in: store)
         },
     ]
 
@@ -262,11 +280,15 @@ struct PaneMenuCommands: Commands {
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }
             Divider()
-            // Editor commands are not in the command registry with everything else, and
-            // deliberately: every `AppCommand` acts on a `LayoutStore`, and these act on one
+            // The editor's tab commands are not in the command registry with everything
+            // else, and deliberately: every `AppCommand` acts on a `LayoutStore`, and these act on one
             // pane's `EditorSessions`. Bending the registry to carry both would make every
             // other command's signature pay for it.
-            Menu("Editor") { editorItems }
+            Menu("Editor") {
+                ForEach(PaneCommands.editor) { item($0) }
+                Divider()
+                editorItems
+            }
         }
     }
 

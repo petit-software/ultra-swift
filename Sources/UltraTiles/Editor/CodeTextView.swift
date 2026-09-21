@@ -11,6 +11,10 @@ import UltraDesign
 struct CodeTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable: Bool = true
+    /// Asked once, as the view is made: whether it should take the keyboard when it lands
+    /// in a window. A question rather than a flag so the answer can be "yes, this once" —
+    /// see `EditorDocument.claimInitialFocus`.
+    var claimsFocus: () -> Bool = { false }
     var onSave: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -31,6 +35,7 @@ struct CodeTextView: NSViewRepresentable {
 
         let textView = SaveAwareTextView()
         textView.onSave = onSave
+        textView.focusesOnAppear = claimsFocus()
         textView.delegate = context.coordinator
         textView.isRichText = false
         textView.allowsUndo = true
@@ -113,6 +118,20 @@ struct CodeTextView: NSViewRepresentable {
 /// is not what the keystroke means.
 final class SaveAwareTextView: NSTextView {
     var onSave: () -> Void = {}
+    var focusesOnAppear = false
+
+    /// A turn later, because the view is put in the window in the middle of a layout pass,
+    /// and the canvas settles its own focus in the same pass — asking now would be asking
+    /// first and being overruled.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusesOnAppear, window != nil else { return }
+        focusesOnAppear = false
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self)
+        }
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,

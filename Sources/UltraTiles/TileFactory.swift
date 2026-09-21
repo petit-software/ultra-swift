@@ -107,7 +107,8 @@ public final class TileFactory {
             }
             pendingRequest = nil
             view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
-            if let path = open.selected?.path {
+            // A new file has no path to record: nothing of it exists to reopen.
+            if let path = open.selected?.path, !path.isEmpty {
                 let record = Self.record(for: kind, root: root,
                                          file: URL(fileURLWithPath: path))
                 records[paneID] = record

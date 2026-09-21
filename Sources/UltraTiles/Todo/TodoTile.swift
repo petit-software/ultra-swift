@@ -297,7 +297,11 @@ private struct TodoRow: View {
         // to carry three controls on hover and a single one while editing, so pressing the
         // pencil re-flowed it and every icon landed somewhere else — including under the
         // pointer that had just pressed one.
-        .tileHoverControls(isHovering || isEditing, alignment: .topTrailing) {
+        //
+        // Raised by the pill's own vertical padding, so it is the GLYPHS that sit on the
+        // first line, not the top of the glass around them.
+        .tileHoverControls(isHovering || isEditing, alignment: .topTrailing,
+                           offset: CGSize(width: 0, height: -3)) {
                 HStack(spacing: 4) {
                     TodoRowSlot {
                         // Save takes the PENCIL's slot: it is the same verb at its other end —
@@ -335,7 +339,6 @@ private struct TodoRow: View {
                         }
                     }
                 }
-                .offset(y: -3)
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)

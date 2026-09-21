@@ -17,6 +17,7 @@ public extension View {
     func tileHoverControls<Controls: View>(
         _ shown: Bool,
         alignment: Alignment = .trailing,
+        offset: CGSize = .zero,
         @ViewBuilder controls: () -> Controls
     ) -> some View {
         overlay(alignment: alignment) {
@@ -27,6 +28,10 @@ public extension View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
                     .tileHoverPill()
+                    // The PILL moves, glyphs and glass together. A caller that offset its
+                    // own controls instead slid them out from the middle of a pill that
+                    // stayed where it was.
+                    .offset(offset)
             }
         }
     }

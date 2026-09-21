@@ -113,6 +113,12 @@ The project's files, lazily expanded.
 - **Clicking a file sends its shell-quoted path** to the focused shell without submitting.
   A file tree that opened an editor would be a worse editor than the user's own; one that
   types a path for you is the thing a terminal actually lacks.
+- **Hovering a row floats Open, Send and Reveal** over its trailing end, on the same glass
+  pill as Todo, Git and Context rows. The same three on files and folders: Open puts a file
+  in the editor and re-roots the tree on a folder (a click already expands it in place).
+  All three are also on the row's context menu.
+- **New File** in the footer — the editor's own verb (⌃⌘N), offered where you notice the
+  file is missing. It opens an untitled tab; see § 1c for where its first save goes.
 
 ## 1c. Editor — the small one
 
@@ -122,6 +128,13 @@ something another editor does better.
 
 - **Open, edit, save.** ⌘S is taken by the text view itself, because the app's ⌘S saves the
   LAYOUT and while you are typing in a file that is not what the keystroke means.
+- **New File** (⌃⌘N, Pane ▸ Editor, the palette, the footer). An untitled tab in the editor
+  a clicked file would have landed in, or a new editor pane when there is none, with the
+  caret already in it. It has no path until its first ⌘S, which opens the save panel on the
+  project's `.ultra/` folder with a free name (`untitled.md`, `untitled-2.md`) — a file
+  started here is nearly always a note about the project, and that is where those live. The
+  panel is only a default; the file goes wherever it is taken. `.ultra/` is made if the
+  project has none, and removed again if the save is cancelled.
 - **Line numbers**, drawn per VISIBLE line — a 50,000-line file costs the same to scroll as
   a 50-line one.
 - **Smart substitutions off.** Curly quotes and em dashes silently replacing what you typed

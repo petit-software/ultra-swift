@@ -161,4 +161,56 @@ struct EditorSessionTests {
         guard case .diff(let model) = item.content else { Issue.record("not a diff"); return }
         #expect(model.side == .staged, "the picker must never open on an empty side")
     }
+
+    // MARK: New files
+
+    /// Unlike a file on disk, which is reused: asking for a new file twice is asking for two.
+    @Test("each new file is its own row, numbered so they can be told apart")
+    func newFilesAreNumbered() {
+        let open = EditorSessions()
+        let first = open.newFile()
+        let second = open.open(.newFile)
+        #expect(open.sessions.count == 2)
+        #expect(first.title == "Untitled")
+        #expect(second.title == "Untitled 2")
+        #expect(open.selectedID == second.id)
+        #expect(open.files.count == 2, "a new file is a file, not a change")
+
+        // The lowest free number, not a counter that only goes up.
+        open.close(second.id)
+        #expect(open.newFile().title == "Untitled 2")
+    }
+
+    @Test("a new file has no path to announce until its first save gives it one")
+    func firstSaveAnnouncesThePath() throws {
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-sessions-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let open = EditorSessions()
+        var announced: [String?] = []
+        open.onSelectionChange = { announced.append($0) }
+
+        let session = open.newFile()
+        #expect(announced == [nil], "a header cannot name a file that is nowhere")
+        #expect(session.isUntitled)
+
+        let target = folder.appendingPathComponent(".ultra/notes.md")
+        #expect(open.save(session, to: target))
+        #expect(announced.last == .some(target.path))
+        #expect(session.title == "notes.md")
+        #expect(session.isUntitled == false)
+
+        // And it is now findable the way any open file is.
+        #expect(open.open(.file(target)).id == session.id)
+    }
+
+    @Test("an empty new file is not unsaved work; one with text in it is")
+    func newFileDirtiness() {
+        let open = EditorSessions()
+        let session = open.newFile()
+        #expect(open.hasUnsavedChanges == false)
+        guard case .file(let document) = session.content else { Issue.record("not a file"); return }
+        document.text = "draft"
+        #expect(open.hasUnsavedChanges)
+    }
 }

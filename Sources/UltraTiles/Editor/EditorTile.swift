@@ -49,33 +49,42 @@ public struct EditorTile: View {
     private var content: some View {
         if let session = sessions.selected {
             switch session.content {
-            case .file(let document): FilePane(document: document)
+            case .file(let document):
+                FilePane(document: document, save: { save(session) })
+                    // Keyed, so a new file gets a text view of its own: the caret is put in
+                    // a NEW file as its view is made, and a view handed on from the tab
+                    // before it would never be made.
+                    .id(session.id)
             case .diff(let diff): DiffView(session: diff)
             }
         } else {
-            // The line says what is missing; the button under it is the sentence that used
-            // to say how to fix it. A control beats a description of one.
+            // Only the line. New and Open are in the footer, which is there in every state
+            // of this tile — a second pair of them here was the same two controls twice.
             EmptyTileState(icon: "doc.text", title: "Nothing open")
-                .overlay(alignment: .bottom) {
-                    Button("Open File…") { openPanel() }
-                        .padding(.bottom, 26)
-                }
         }
     }
 
     private var footer: some View {
         // The FULL path of what is showing. The sidebar has room only for a name, and two
         // files called `index.ts` are the normal case in any real project.
-        TileFooter(summary: sessions.selected.map { TileFactory.abbreviate($0.path) } ?? "No file",
+        TileFooter(summary: sessions.selected.map(summary(for:)) ?? "No file",
                    truncation: .head) {
-            TileFooterButton(symbol: "sidebar.left", help: "Show or hide the sidebar (⌘⌥S)",
-                             isEnabled: !sessions.isEmpty) {
-                sessions.isSidebarVisible.toggle()
+            // Absent rather than dimmed with nothing open: the sidebar lists what is open,
+            // so there is nothing for it to show or hide. The menu item is the one that
+            // dims — a footer is not where a command is learned.
+            if !sessions.isEmpty {
+                TileFooterButton(symbol: "sidebar.left", help: "Show or hide the sidebar (⌘⌥S)") {
+                    sessions.isSidebarVisible.toggle()
+                }
             }
+            TileFooterButton(symbol: "plus.circle", help: "New file (⌃⌘N)") { sessions.newFile() }
             TileFooterButton(symbol: "folder", help: "Open another file") { openPanel() }
-            if case .file(let document)? = sessions.selected?.content, !document.isBinary {
+            if let session = sessions.selected,
+               case .file(let document) = session.content, !document.isBinary {
+                // A new file can be saved while it is still empty: that is how a file gets
+                // made, and "nothing to save" would be wrong about one that is not on disk.
                 TileFooterButton(symbol: "square.and.arrow.down", help: "Save (⌘S)",
-                                 isEnabled: document.isDirty) { document.save() }
+                                 isEnabled: document.isDirty || document.isUntitled) { save(session) }
             }
             if sessions.selected?.isDirty == true {
                 Circle()
@@ -83,6 +92,36 @@ public struct EditorTile: View {
                     .frame(width: 6, height: 6)
                     .help("Unsaved changes")
             }
+        }
+    }
+
+    private func summary(for session: EditorSession) -> String {
+        session.isUntitled ? "\(session.title) — not saved yet" : TileFactory.abbreviate(session.path)
+    }
+
+    /// ⌘S and the footer's button. A file that has a place on disk goes back to it; a new
+    /// one asks where, starting in the project's `.ultra/`.
+    private func save(_ session: EditorSession) {
+        guard case .file(let document) = session.content else { return }
+        guard document.isUntitled else { document.save(); return }
+
+        let folder = EditorDocument.defaultFolder(in: context.projectRoot)
+        // The panel can only open on a folder that exists. One made for the occasion is
+        // taken away again if the save is called off, so cancelling leaves no trace.
+        let madeFolder = !FileManager.default.fileExists(atPath: folder.path)
+            && (try? FileManager.default.createDirectory(at: folder,
+                                                         withIntermediateDirectories: true)) != nil
+        let panel = NSSavePanel()
+        panel.directoryURL = folder
+        panel.nameFieldStringValue = EditorDocument.suggestedName(in: folder)
+        // `.ultra` is a dot folder, and a panel that opens inside one while hiding them
+        // cannot show where it is.
+        panel.showsHiddenFiles = true
+        let saved = panel.runModal() == .OK
+            && panel.url.map { sessions.save(session, to: $0) } == true
+        if madeFolder, !saved,
+           (try? FileManager.default.contentsOfDirectory(atPath: folder.path))?.isEmpty == true {
+            try? FileManager.default.removeItem(at: folder)
         }
     }
 
@@ -182,7 +221,7 @@ private struct SidebarRow: View {
         .padding(.vertical, 1)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
-        .help(session.path)
+        .help(session.isUntitled ? "Not saved yet" : session.path)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(session.isDiff ? "Change" : "File"), \(session.title)")
     }
@@ -223,6 +262,7 @@ private struct SidebarDivider: View {
 /// One file's text, plus whatever the document has to say about the state of it on disk.
 private struct FilePane: View {
     @Bindable var document: EditorDocument
+    let save: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -232,7 +272,10 @@ private struct FilePane: View {
                 // of this tile, including this one.
                 EmptyTileState(icon: "doc.questionmark", title: "Not a text file")
             } else {
-                CodeTextView(text: $document.text, onSave: { document.save() })
+                // A new file takes the caret as it appears: it was asked for in order to be
+                // typed into, and the first responder a pane offers is otherwise its sidebar.
+                CodeTextView(text: $document.text,
+                             claimsFocus: { document.claimInitialFocus() }, onSave: save)
             }
         }
     }

@@ -34,7 +34,10 @@ public struct FileTreeTile: View {
                     FileTreeRow(row: row,
                                 isSelected: selection == row.node.url,
                                 isExpanded: model.isExpanded(row.node),
-                                isUnreadable: model.unreadable.contains(row.node.url))
+                                isUnreadable: model.unreadable.contains(row.node.url),
+                                open: { open(row.node) },
+                                send: { send(row.node) },
+                                reveal: { context.revealInFinder(row.node.url) })
                         .contentShape(.rect)
                         .onTapGesture { activate(row.node) }
                         .contextMenu { menu(for: row.node) }
@@ -57,6 +60,11 @@ public struct FileTreeTile: View {
             // Where this tree is rooted. The `..` row walks up one level at a time; this
             // reaches anywhere, including back to the project.
             TileFolderMenu(context: context, title: "Folder to Show")
+            // The same verb, glyph and key as the editor's own footer. Here because this is
+            // where you are looking when you notice the file you want does not exist yet.
+            TileFooterButton(symbol: "plus.circle", help: "New file (⌃⌘N)") {
+                context.openInEditor(.newFile)
+            }
             TileFooterButton(symbol: model.showsHidden ? "eye" : "eye.slash",
                              help: model.showsHidden ? "Hide dotfiles" : "Show dotfiles") {
                 model.showsHidden.toggle()
@@ -70,9 +78,9 @@ public struct FileTreeTile: View {
         if node.isDirectory {
             // Descending INTO a folder, as opposed to expanding it in place: a deep tree in
             // a 300pt pane is mostly indentation, and re-rooting buys the width back.
-            Button("Show Only This Folder") { context.setRoot(node.url) }
+            Button("Show Only This Folder") { open(node) }
         } else {
-            Button("Open in Editor") { context.openInEditor(.file(node.url)) }
+            Button("Open in Editor") { open(node) }
         }
         Button("Send Path to Shell") { send(node) }
         Button("Copy Path") {
@@ -88,6 +96,17 @@ public struct FileTreeTile: View {
             model.toggle(node)
         } else {
             send(node)
+        }
+    }
+
+    /// What "open" means for each kind: a file goes to the editor, and a folder becomes the
+    /// tree's root — the one way of opening a folder that a click, which expands it in
+    /// place, does not already do.
+    private func open(_ node: FileTreeModel.Node) {
+        if node.isDirectory {
+            context.setRoot(node.url)
+        } else {
+            context.openInEditor(.file(node.url))
         }
     }
 
@@ -134,6 +153,10 @@ private struct FileTreeRow: View {
     let isSelected: Bool
     let isExpanded: Bool
     let isUnreadable: Bool
+    let open: () -> Void
+    let send: () -> Void
+    let reveal: () -> Void
+    @State private var isHovering = false
 
     private var icon: String {
         if row.node.isDirectory { return isExpanded ? "folder.fill" : "folder" }
@@ -176,9 +199,28 @@ private struct FileTreeRow: View {
             }
             Spacer(minLength: 0)
         }
+        // Floating over the row's trailing end — see `tileHoverControls`. The same three
+        // on a file and on a folder, so the pill is one size all the way down the tree;
+        // only what Open means differs. Each is also on the row's context menu.
+        .tileHoverControls(isHovering) {
+            HStack(spacing: 7) {
+                Button(action: open) {
+                    Image(systemName: row.node.isDirectory ? "arrow.turn.down.right" : "doc.text")
+                }
+                .help(row.node.isDirectory ? "Show only this folder" : "Open in the editor")
+                .disabled(isUnreadable)
+                Button(action: send) { Image(systemName: "arrow.right.to.line") }
+                    .help("Send path to shell")
+                Button(action: reveal) { Image(systemName: "magnifyingglass") }
+                    .help("Reveal in Finder")
+            }
+            .font(.system(size: 11))
+        }
         .padding(.leading, 8 + CGFloat(row.depth) * 13)
         .padding(.trailing, 8)
         .padding(.vertical, 3)
+        .contentShape(.rect)
+        .onHover { isHovering = $0 }
         .background {
             if isSelected {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)

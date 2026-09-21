@@ -107,4 +107,89 @@ struct EditorTests {
         #expect(document.text == "saved")
         #expect(document.isDirty == false)
     }
+
+    // MARK: New files
+
+    private func makeFolder() throws -> URL {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-new-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url
+    }
+
+    @Test("a new file has no path, is clean while empty, and cannot be saved in place")
+    func untitled() {
+        let document = EditorDocument(untitled: "Untitled 2")
+        #expect(document.isUntitled)
+        #expect(document.displayName == "Untitled 2")
+        #expect(document.isDirty == false, "an empty new file has nothing to lose")
+        document.text = "notes"
+        #expect(document.isDirty)
+        #expect(document.save() == false, "there is nowhere to save it until it is told where")
+        #expect(document.isDirty, "a save that went nowhere must not claim the text is safe")
+    }
+
+    @Test("the first save writes the file, makes its folder, and becomes that file")
+    func firstSave() throws {
+        let project = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: project) }
+        // A project opened rather than created here has no `.ultra/` yet.
+        let target = EditorDocument.defaultFolder(in: project).appendingPathComponent("plan.md")
+        let document = EditorDocument(untitled: "Untitled")
+        document.text = "# Plan\n"
+
+        #expect(document.save(to: target))
+        #expect(try String(contentsOf: target, encoding: .utf8) == "# Plan\n")
+        #expect(document.isUntitled == false)
+        #expect(document.displayName == "plan.md")
+        #expect(document.isDirty == false)
+
+        // From here on it is an ordinary file: ⌘S goes back to the same place.
+        document.text = "# Plan\n\n- one\n"
+        #expect(document.save())
+        #expect(try String(contentsOf: target, encoding: .utf8) == "# Plan\n\n- one\n")
+    }
+
+    @Test("a first save that fails leaves the file new and the text dirty")
+    func firstSaveFails() throws {
+        let project = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: project) }
+        // A FILE where the folder should be, so the folder cannot be made.
+        let blocker = project.appendingPathComponent("blocker")
+        try "x".write(to: blocker, atomically: true, encoding: .utf8)
+        let document = EditorDocument(untitled: "Untitled")
+        document.text = "keep me"
+
+        #expect(document.save(to: blocker.appendingPathComponent("note.md")) == false)
+        #expect(document.isUntitled, "it must not claim a path nothing was written to")
+        #expect(document.isDirty)
+        #expect(document.text == "keep me")
+        if case .failed = document.notice {} else { Issue.record("the failure was not reported") }
+    }
+
+    @Test("a new file is offered the project's .ultra folder and a name that is free")
+    func defaultLocation() throws {
+        let project = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: project) }
+        let folder = EditorDocument.defaultFolder(in: project)
+        #expect(folder.path == project.appendingPathComponent(".ultra").path)
+
+        #expect(EditorDocument.suggestedName(in: folder) == "untitled.md", "a missing folder is an empty one")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try "".write(to: folder.appendingPathComponent("untitled.md"), atomically: true, encoding: .utf8)
+        #expect(EditorDocument.suggestedName(in: folder) == "untitled-2.md")
+        try "".write(to: folder.appendingPathComponent("untitled-2.md"), atomically: true, encoding: .utf8)
+        #expect(EditorDocument.suggestedName(in: folder) == "untitled-3.md")
+    }
+
+    @Test("a new file asks for the keyboard once")
+    func initialFocus() throws {
+        let document = EditorDocument(untitled: "Untitled")
+        #expect(document.claimInitialFocus())
+        #expect(document.claimInitialFocus() == false, "a rebuilt view must not take the keyboard back")
+
+        let url = try makeFile("existing")
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(EditorDocument(url: url).claimInitialFocus() == false)
+    }
 }

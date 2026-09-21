@@ -37,10 +37,28 @@ public final class EditorDocument {
     private var savedText = ""
     private var watchers = WatchBox()
 
-    public init() {}
-    public init(url: URL) { open(url) }
+    /// What this is called until it has a file. Numbered by `EditorSessions`, so two new
+    /// files in one sidebar can be told apart.
+    private let untitledName: String
 
-    public var displayName: String { url?.lastPathComponent ?? "Untitled" }
+    public init() { untitledName = "Untitled" }
+    public init(url: URL) { untitledName = "Untitled"; open(url) }
+    /// A new file: a buffer with nowhere to go yet. The first save asks where.
+    public init(untitled name: String) { untitledName = name; wantsInitialFocus = true }
+
+    /// Whether the view showing this should take the keyboard — true exactly once, for a
+    /// new file. Once, because its view is remade whenever its tab is reselected or its pane
+    /// is rebuilt, and by then the keyboard belongs to wherever the user has taken it.
+    @ObservationIgnored private var wantsInitialFocus = false
+    public func claimInitialFocus() -> Bool {
+        defer { wantsInitialFocus = false }
+        return wantsInitialFocus
+    }
+
+    public var displayName: String { url?.lastPathComponent ?? untitledName }
+    /// True until the first save gives it a file. `save()` cannot work on one of these —
+    /// the caller has to ask where, and then `save(to:)`.
+    public var isUntitled: Bool { url == nil }
 
     // MARK: Opening and saving
 
@@ -72,9 +90,25 @@ public final class EditorDocument {
 
     @discardableResult
     public func save() -> Bool {
-        guard let url, !isBinary else { return false }
+        guard let url else { return false }
+        return save(to: url)
+    }
+
+    /// Save somewhere else, and BE that file from then on — the first save of a new file,
+    /// which is the only caller that has no `url` to fall back on.
+    ///
+    /// The folder is created when it is missing: the default home for a new file is the
+    /// project's `.ultra/`, and a project that was opened rather than created here may not
+    /// have one yet. `url` moves only once the write has landed, so a failed save leaves
+    /// the document pointing where it was.
+    @discardableResult
+    public func save(to url: URL) -> Bool {
+        guard !isBinary else { return false }
         do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
             try text.write(to: url, atomically: true, encoding: .utf8)
+            self.url = url
             savedText = text
             isDirty = false
             notice = nil
@@ -136,6 +170,29 @@ public final class EditorDocument {
     }
 
     public func dismissNotice() { notice = nil }
+}
+
+// MARK: - Where a new file goes
+
+extension EditorDocument {
+    /// The folder a new file is offered first: the project's `.ultra/`, beside its todo list
+    /// and its chats. A new file started here is nearly always a note ABOUT the project —
+    /// a plan, a scratch list, something to hand an agent — and that is where those live.
+    /// Only the default: the save panel opens on it and goes wherever it is taken.
+    public static func defaultFolder(in projectRoot: URL) -> URL {
+        projectRoot.appendingPathComponent(".ultra", isDirectory: true)
+    }
+
+    /// A name for the save panel's field that is not already taken in `folder`:
+    /// `untitled.md`, then `untitled-2.md`. Markdown, because that is what everything else
+    /// in `.ultra/` is written in; the extension is the user's to change in the panel.
+    public static func suggestedName(in folder: URL) -> String {
+        let taken = Set((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+        if !taken.contains("untitled.md") { return "untitled.md" }
+        var number = 2
+        while taken.contains("untitled-\(number).md") { number += 1 }
+        return "untitled-\(number).md"
+    }
 }
 
 /// Cancels its sources when it dies, from whatever context that happens to be.
