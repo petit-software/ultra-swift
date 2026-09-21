@@ -1,3 +1,7 @@
+- [x] Todo: a draft starting with `#` makes a section (or selects an existing one); new tasks then land in it
+- [x] Todo: section headings are rows — rename, remove (tasks stay), click to target, drop a task on one
+- [ ] #asdasd
+- [ ] ## now
 - [x] Todo: the hover pill's icons are centred in it again — the row's 3pt lift moves the pill, not the glyphs inside it
 - [x] File tree: a New File button in the footer opens an editor on a new file
 - [x] File tree: hovering a file or folder floats Open, Send and Reveal over the row

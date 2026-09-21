@@ -147,6 +147,21 @@ public final class TodoStore {
         edit { $0.prependItem(trimmed) }
     }
 
+    /// Add at the head of one section — see `TodoDocument.prependItem(_:to:)`.
+    public func prependItem(_ text: String, to section: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        edit { $0.prependItem(trimmed, to: section) }
+    }
+
+    public func addSection(_ title: String, level: Int = 2) {
+        guard !title.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        edit { $0.addSection(title, level: level) }
+    }
+
+    public func setHeading(_ title: String, for id: Int) { edit { $0.setHeading(title, for: id) } }
+    public func removeHeading(_ id: Int) { edit { $0.removeHeading(id) } }
+
     private func edit(_ change: (inout TodoDocument) -> Void) {
         change(&document)
         save()

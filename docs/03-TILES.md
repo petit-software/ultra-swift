@@ -191,6 +191,20 @@ the agent running in the next pane over.
 - **Actions**: toggle, add, remove (a **minus** — one line out of a markdown file, not a
   deletion), reorder by drag, indent/outdent, edit in place, and **Send to shell** — injects the
   task text into the focused shell without submitting.
+- **Sections from the composer.** A draft that starts with `#` is a section, not a task:
+  `# Later` appends `## Later` to the end of the file (one `#` is written as two — a single
+  `#` is the document's title, which the list does not show) and points the composer at it,
+  so the tasks typed next land at its head. Naming a section that already exists selects it
+  instead of making a twin; a bare `#` points the composer back at the top. Clicking a
+  heading does the same with the pointer, and the placeholder always says where a task will
+  go. A new section goes at the END because a heading claims every task below it.
+- **A heading is a row like a task**: pencil or double-click to rename (its level is kept),
+  Return on an emptied field or the minus to remove. Removing takes out the heading line
+  ONLY — its tasks stay and join the section above. A task dropped on a heading moves to the
+  head of that section, which is how an empty one is filled by drag.
+- **Which headings are rows.** Every heading opens a group, tasks or not, so a new section is
+  visible at once. Not shown: a title over subsections (`# Plan` directly above `## Now`), an
+  empty level-one heading opening the file, and a lone level-one heading over the whole list.
 - **Editing does not move the row.** The trailing controls sit in fixed-width slots and the row
   keeps one baseline alignment in both modes, so entering edit mode swaps the pencil for Save in
   the same column instead of re-flowing every icon out from under the pointer.

@@ -100,9 +100,32 @@ public struct TodoDocument: Equatable, Sendable {
     }
 
     static func parseHeading(_ line: String) -> String? {
+        parseHeadingLine(line)?.title
+    }
+
+    /// The title and the number of `#` in front of it. The level is what tells a document's
+    /// title (`# Plan`) from a section of it (`## Now`).
+    static func parseHeadingLine(_ line: String) -> (level: Int, title: String)? {
         guard line.hasPrefix("#") else { return nil }
-        let title = line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)
-        return title.isEmpty ? nil : title
+        let level = line.prefix { $0 == "#" }.count
+        let title = line.dropFirst(level).trimmingCharacters(in: .whitespaces)
+        return title.isEmpty ? nil : (level, title)
+    }
+
+    /// What the composer means by a draft that starts with `#`: a section, not a task.
+    ///
+    /// `nil` for an ordinary draft. An EMPTY title — a bare `#` — is a real answer too: it
+    /// is how the composer is pointed back at the top of the list from the keyboard.
+    ///
+    /// One `#` is written as two. The `#` typed here is a sigil for "section", and sections
+    /// are `##` in this format — a single `#` is the document's title, which the list does
+    /// not show. Deeper levels are kept as typed.
+    public static func sectionDraft(_ draft: String) -> (level: Int, title: String)? {
+        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("#") else { return nil }
+        let hashes = trimmed.prefix { $0 == "#" }.count
+        let title = trimmed.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+        return (max(2, hashes), title)
     }
 
     /// Every task in the file, in file order.
@@ -121,12 +144,24 @@ public struct TodoDocument: Equatable, Sendable {
         return out
     }
 
+    /// A `#` line. A row of the list in its own right: it can be renamed and removed the
+    /// way a task can, so it needs the same handle on its line that a task has.
+    public struct Heading: Identifiable, Equatable, Sendable {
+        /// The line this heading lives on. Stable for the life of one parse.
+        public let id: Int
+        public var title: String
+        /// How many `#` it is written with.
+        public var level: Int
+    }
+
     /// One heading's worth of tasks.
     public struct Group: Identifiable, Equatable, Sendable {
-        public let section: String?
+        /// Nil for the run of tasks above any heading.
+        public let heading: Heading?
         public var items: [Item]
-        /// Stable across reloads; the empty string is the run of tasks above any heading.
-        public var id: String { section ?? "" }
+        public var section: String? { heading?.title }
+        /// The heading's line, so two sections with the same title are still two rows.
+        public var id: Int { heading?.id ?? -1 }
     }
 
     /// Tasks grouped by the heading they sit under, in file order.
@@ -136,16 +171,42 @@ public struct TodoDocument: Equatable, Sendable {
     /// DOUBLE optional, so on an empty array it flattens to nil and compares equal to a task
     /// that has no section — then the append indexes `out[-1]` and traps. A file whose first
     /// tasks sit above any heading is the common case, not an edge one.
+    ///
+    /// A heading opens a group whether or not anything is under it yet — a section made
+    /// from the composer starts empty, and one that vanished until it had a task in it
+    /// would look like a command that did nothing. Two kinds of empty heading are NOT
+    /// sections and stay out of the list: a title over subsections (`# Plan` directly above
+    /// `## Now`), and a level-one heading opening the file, which names the document.
     public var grouped: [Group] {
         var out: [Group] = []
-        for item in items {
-            if let last = out.last, last.section == item.section {
-                out[out.count - 1].items.append(item)
-            } else {
-                out.append(Group(section: item.section, items: [item]))
+        for (index, line) in lines.enumerated() {
+            if let heading = Self.parseHeadingLine(line.content) {
+                out.append(Group(heading: Heading(id: index, title: heading.title,
+                                                  level: heading.level), items: []))
+            } else if let task = Self.parseTask(line.content) {
+                if out.isEmpty { out.append(Group(heading: nil, items: [])) }
+                out[out.count - 1].items.append(
+                    Item(id: index, isDone: task.done, text: task.text,
+                         indent: task.indent, section: out[out.count - 1].section))
             }
         }
-        return out
+        return out.enumerated().compactMap { index, group in
+            guard group.items.isEmpty, let heading = group.heading else { return group }
+            let next = out.indices.contains(index + 1) ? out[index + 1].heading : nil
+            if let next, next.level > heading.level { return nil }
+            if index == 0, heading.level == 1 { return nil }
+            return group
+        }
+    }
+
+    /// Whether a group's heading is worth a row.
+    ///
+    /// A lone level-one heading is the list's title, which the pane header already gives —
+    /// so it is just a word in the way. Anything written as a section (`##` and deeper) is
+    /// shown even alone: it was put there to be seen, and it is the row it is edited from.
+    public func showsHeading(of group: Group) -> Bool {
+        guard let heading = group.heading else { return false }
+        return heading.level > 1 || grouped.count > 1
     }
 
     /// Section titles in file order, including a nil entry when tasks precede any heading.
@@ -176,6 +237,90 @@ public struct TodoDocument: Equatable, Sendable {
               let task = Self.parseTask(lines[id].content) else { return }
         let prefix = String(lines[id].content[..<task.markIndex])
         lines[id].content = prefix + (task.done ? "x" : " ") + "] " + text
+    }
+
+    // MARK: Sections
+
+    /// Start a section at the END of the list.
+    ///
+    /// The end, not the top where a new task lands: a heading claims every task below it
+    /// up to the next heading, so one inserted above the list would quietly take the whole
+    /// list as its own. At the end it starts empty, which is what a new section is.
+    ///
+    /// A blank line goes above it when the line before is not already one — the shape this
+    /// file has when it is written by hand, and what keeps a renderer from reading the
+    /// heading as the tail of the last task.
+    public mutating func addSection(_ title: String, level: Int = 2) {
+        let title = title.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return }
+        let ending = Self.dominantTerminator(lines)
+        if let last = lines.indices.last {
+            if lines[last].terminator.isEmpty { lines[last].terminator = ending }
+            if !lines[last].content.trimmingCharacters(in: .whitespaces).isEmpty {
+                lines.append(Line(content: "", terminator: ending))
+            }
+        }
+        lines.append(Line(content: String(repeating: "#", count: max(1, level)) + " " + title,
+                          terminator: ending))
+    }
+
+    /// Rename a heading. Its `#`s are kept: the level is the file's business, not the row's.
+    public mutating func setHeading(_ title: String, for id: Int) {
+        guard lines.indices.contains(id),
+              let heading = Self.parseHeadingLine(lines[id].content) else { return }
+        let title = title.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return }
+        lines[id].content = String(repeating: "#", count: heading.level) + " " + title
+    }
+
+    /// Take a heading out. ONLY the heading: the tasks under it stay in the file and join
+    /// the section above, the way they would if the line were deleted by hand. Removing a
+    /// section's name is not a request to delete the work filed under it.
+    ///
+    /// One of the blank lines that fenced it goes too, when there was one on each side —
+    /// otherwise every removed heading leaves a wider gap behind it.
+    public mutating func removeHeading(_ id: Int) {
+        guard lines.indices.contains(id),
+              Self.parseHeadingLine(lines[id].content) != nil else { return }
+        func isBlank(_ index: Int) -> Bool {
+            lines.indices.contains(index)
+                && lines[index].content.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        let fenced = isBlank(id - 1) && isBlank(id + 1)
+        lines.remove(at: id)
+        if fenced { lines.remove(at: id) }
+    }
+
+    /// Insert a task at the top of one section: above its first task, or directly under the
+    /// heading when it has none. Falls back to the top of the list when no heading has that
+    /// title — the section was renamed or removed in another editor since it was chosen.
+    public mutating func prependItem(_ text: String, to section: String) {
+        guard let heading = lines.indices.first(where: {
+            Self.parseHeading(lines[$0].content) == section
+        }) else {
+            prependItem(text)
+            return
+        }
+        var firstTask: Int?
+        for index in lines.indices where index > heading {
+            if Self.parseHeading(lines[index].content) != nil { break }
+            if Self.parseTask(lines[index].content) != nil { firstTask = index; break }
+        }
+        if let firstTask {
+            let indent = Self.parseTask(lines[firstTask].content)?.indent ?? 0
+            let content = String(repeating: " ", count: indent) + "- [ ] " + text
+            lines.insert(Line(content: content, terminator: lines[firstTask].terminator),
+                         at: firstTask)
+            return
+        }
+        // An empty section. The heading may be the file's last line and have no newline of
+        // its own; it needs one now, and the new last line inherits the file's ending.
+        let fileEnding = lines[heading].terminator
+        let ending = fileEnding.isEmpty ? Self.dominantTerminator(lines) : fileEnding
+        lines[heading].terminator = ending
+        let isLast = heading == lines.count - 1
+        lines.insert(Line(content: "- [ ] " + text, terminator: isLast ? fileEnding : ending),
+                     at: heading + 1)
     }
 
     /// Append a task to the end of a section, or the end of the file when `section` is nil

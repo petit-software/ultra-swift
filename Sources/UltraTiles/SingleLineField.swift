@@ -43,6 +43,7 @@ struct SingleLineField: NSViewRepresentable {
     func updateNSView(_ field: NSTextField, context: Context) {
         context.coordinator.parent = self
         if field.stringValue != text { field.stringValue = text }
+        if field.placeholderString != placeholder { field.placeholderString = placeholder }
         // Focus follows the binding in both directions. Deferred, because this runs inside
         // a SwiftUI update and moving the first responder synchronously here re-enters it.
         let editing = field.currentEditor() != nil

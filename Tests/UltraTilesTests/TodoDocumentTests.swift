@@ -368,4 +368,118 @@ struct TodoMoveTests {
         #expect(!moved9, "the heading line is not a task")
         #expect(document.text == before)
     }
+
+    // MARK: Sections from the composer
+
+    @Test("a draft that starts with # is a section, written as ## whatever was typed")
+    func sectionDrafts() {
+        #expect(TodoDocument.sectionDraft("buy milk") == nil)
+        #expect(TodoDocument.sectionDraft("fix #42") == nil, "a # in the middle is just text")
+        #expect(TodoDocument.sectionDraft("# Later")! == (2, "Later"))
+        #expect(TodoDocument.sectionDraft("#Later")! == (2, "Later"))
+        #expect(TodoDocument.sectionDraft("  ## Later  ")! == (2, "Later"))
+        #expect(TodoDocument.sectionDraft("### Deep")! == (3, "Deep"))
+        // A bare # is an answer too: it points the composer back at the top of the list.
+        #expect(TodoDocument.sectionDraft("#")! == (2, ""))
+    }
+
+    @Test("a new section lands at the end, fenced by a blank line, and claims no one's tasks")
+    func addSection() {
+        var document = TodoDocument(text: "- [ ] a\n- [ ] b\n")
+        document.addSection("Later")
+        #expect(document.text == "- [ ] a\n- [ ] b\n\n## Later\n")
+        let groups = document.grouped
+        #expect(groups.map(\.section) == [nil, "Later"])
+        #expect(groups[0].items.count == 2, "the tasks above it are still nobody's")
+        #expect(groups[1].items.isEmpty, "and it is listed while it is still empty")
+    }
+
+    @Test("adding a section keeps the file's line endings and mends a missing final newline")
+    func addSectionEndings() {
+        var noNewline = TodoDocument(text: "- [ ] a")
+        noNewline.addSection("Later")
+        #expect(noNewline.text == "- [ ] a\n\n## Later\n")
+
+        var crlf = TodoDocument(text: "- [ ] a\r\n")
+        crlf.addSection("Later")
+        #expect(crlf.text == "- [ ] a\r\n\r\n## Later\r\n")
+
+        var blankAlready = TodoDocument(text: "- [ ] a\n\n")
+        blankAlready.addSection("Later")
+        #expect(blankAlready.text == "- [ ] a\n\n## Later\n", "no second blank line")
+
+        var empty = TodoDocument(text: "")
+        empty.addSection("First")
+        #expect(empty.text == "## First\n")
+        #expect(empty.grouped.map(\.section) == ["First"], "the first thing in a list can be a section")
+    }
+
+    @Test("a task added to a section goes to its head, or under the heading when it is empty")
+    func prependToSection() {
+        var document = TodoDocument(text: "- [ ] loose\n\n## Now\n\n- [ ] one\n\n## Later\n")
+        document.prependItem("zero", to: "Now")
+        document.prependItem("someday", to: "Later")
+        #expect(document.text == "- [ ] loose\n\n## Now\n\n- [ ] zero\n- [ ] one\n\n## Later\n- [ ] someday\n")
+
+        // The heading is the file's last line and has no newline of its own.
+        var bare = TodoDocument(text: "## Later")
+        bare.prependItem("x", to: "Later")
+        #expect(bare.text == "## Later\n- [ ] x", "the file still ends the way it did")
+
+        // A section that has gone since it was chosen: the task is not lost.
+        var gone = TodoDocument(text: "- [ ] a\n")
+        gone.prependItem("b", to: "Nowhere")
+        #expect(gone.items.map(\.text) == ["b", "a"])
+    }
+
+    @Test("renaming a heading keeps its level and touches no other line")
+    func renameHeading() {
+        var document = TodoDocument(text: "# Plan\n\n### Now\n- [ ] one\n")
+        let heading = document.grouped.first { $0.section == "Now" }!.heading!
+        #expect(heading.level == 3)
+        document.setHeading("  Today ", for: heading.id)
+        #expect(document.text == "# Plan\n\n### Today\n- [ ] one\n")
+
+        document.setHeading("   ", for: heading.id)
+        #expect(document.text == "# Plan\n\n### Today\n- [ ] one\n", "an empty name is not a rename")
+        document.setHeading("nope", for: 3)
+        #expect(document.text == "# Plan\n\n### Today\n- [ ] one\n", "a task line is not a heading")
+    }
+
+    @Test("removing a heading removes only the heading; its tasks join the section above")
+    func removeHeading() {
+        var document = TodoDocument(text: "## Now\n- [ ] one\n\n## Later\n\n- [ ] two\n")
+        let later = document.grouped[1].heading!
+        document.removeHeading(later.id)
+        #expect(document.text == "## Now\n- [ ] one\n\n- [ ] two\n", "one blank line closes the gap, not two")
+        #expect(document.grouped.map(\.section) == ["Now"])
+        #expect(document.grouped[0].items.map(\.text) == ["one", "two"])
+
+        document.removeHeading(1)
+        #expect(document.items.count == 2, "a task line is not a heading, and is left alone")
+    }
+
+    @Test("headings that are titles, not sections, stay out of the list")
+    func titlesAreNotSections() {
+        // A title over subsections, and a document title with tasks straight under it.
+        let nested = TodoDocument(text: "# Plan\n\n## Now\n- [ ] one\n\n## Later\n")
+        #expect(nested.grouped.map(\.section) == ["Now", "Later"])
+
+        let titled = TodoDocument(text: "# Todo\n- [ ] one\n")
+        #expect(titled.grouped.count == 1)
+        #expect(titled.showsHeading(of: titled.grouped[0]) == false, "the pane header already says it")
+
+        // But a section is shown even alone: it is the row it is renamed and removed from.
+        let lone = TodoDocument(text: "## Later\n- [ ] one\n")
+        #expect(lone.showsHeading(of: lone.grouped[0]))
+
+        let several = TodoDocument(text: "# Now\n- [ ] one\n# Later\n- [ ] two\n")
+        #expect(several.grouped.allSatisfy { several.showsHeading(of: $0) })
+    }
+
+    @Test("two sections with the same title are two rows")
+    func duplicateTitlesHaveDistinctIDs() {
+        let groups = TodoDocument(text: "## A\n- [ ] one\n## A\n- [ ] two\n").grouped
+        #expect(Set(groups.map(\.id)).count == 2)
+    }
 }

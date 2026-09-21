@@ -15,6 +15,12 @@ public struct TodoTile: View {
     /// Held HERE rather than in the row, so that opening one editor closes the last. Two
     /// rows in edit mode at once is two drafts of a list that has one file behind it.
     @State private var editingID: Int?
+    /// The section new tasks go to, or nil for the top of the list.
+    ///
+    /// By TITLE, not by line: every edit renumbers the lines, and the file is also edited
+    /// from outside this pane. A title that no longer matches anything is simply nil again —
+    /// see `target`.
+    @State private var targetSection: String?
     private let context: TileContext
 
     public init(context: TileContext) {
@@ -33,7 +39,9 @@ public struct TodoTile: View {
 
     @ViewBuilder
     private var list: some View {
-        if store.document.items.isEmpty {
+        // Groups, not tasks: a list whose only content is a section made a moment ago is
+        // not empty, and saying "No tasks yet" over it would hide the thing just made.
+        if store.document.grouped.isEmpty {
             // The path used to be repeated here, and the answer this tile reached — the
             // footer carries it, in every state rather than only the empty one — is now the
             // rule for all of them. So this is `EmptyTileState` rather than a copy of it.
@@ -44,17 +52,25 @@ public struct TodoTile: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(store.document.grouped) { group in
-                        // A heading earns its space only when there is something to tell
-                        // apart. One section means the title names the whole list, which
-                        // the pane header already does — so it is just a word in the way.
-                        if let section = group.section, showsSectionHeadings {
-                            Text(section)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Token.Colour.tertiaryLabel)
-                                .textCase(.uppercase)
-                                .padding(.horizontal, 12)
-                                .padding(.top, 10)
-                                .padding(.bottom, 3)
+                        // Not every heading earns a row — see `showsHeading(of:)`.
+                        if let heading = group.heading, store.document.showsHeading(of: group) {
+                            TodoHeadingRow(heading: heading,
+                                           isTarget: target == heading.title,
+                                           isDropTarget: dropTarget == heading.id,
+                                           isEditing: editingID == heading.id,
+                                           select: { toggleTarget(heading.title) },
+                                           delete: { remove(heading) },
+                                           beginEdit: { editingID = heading.id },
+                                           commitEdit: { text in commitEdit(text, for: heading) },
+                                           cancelEdit: { editingID = nil },
+                                           // INTO the section, at its head — the line after
+                                           // the heading. "Before the heading" is the end of
+                                           // the section above, which the rows there say.
+                                           onDrop: { moved in
+                                               dropTarget = nil
+                                               store.move(moved, before: heading.id + 1)
+                                           },
+                                           onDragOver: { dropTarget = $0 ? heading.id : nil })
                         }
                         ForEach(group.items) { item in
                             TodoRow(item: item,
@@ -80,9 +96,15 @@ public struct TodoTile: View {
         }
     }
 
-    /// Headings are shown only once there are several. See the comment at the call site.
-    private var showsSectionHeadings: Bool {
-        store.document.grouped.count > 1
+    /// The section the composer is pointed at, if it still exists.
+    private var target: String? {
+        guard let targetSection, store.document.sections.contains(targetSection) else { return nil }
+        return targetSection
+    }
+
+    private func toggleTarget(_ title: String) {
+        targetSection = target == title ? nil : title
+        draftFocused = true
     }
 
     /// The add field, sitting at the head of the list.
@@ -99,8 +121,12 @@ public struct TodoTile: View {
         HStack(alignment: .center, spacing: 6) {
             // Not a `TextField`: see `SingleLineField` for the point the placeholder jumped
             // on every click.
-            SingleLineField(placeholder: "Add a task", text: $draft,
-                            isFocused: $draftFocused, onSubmit: add)
+            //
+            // The placeholder is the whole manual for sections: it says where a task will
+            // go, and that `#` is how a section is made or chosen.
+            SingleLineField(placeholder: target.map { "Add a task to \($0)" }
+                                         ?? "Add a task, or # for a section",
+                            text: $draft, isFocused: $draftFocused, onSubmit: add)
 
             // The slot is always here; only the glyph inside it comes and goes. Appearing
             // and disappearing, the button changed the composer's height as well as its
@@ -110,7 +136,7 @@ public struct TodoTile: View {
                 Button(action: add) { Image(systemName: "return") }
                     .buttonStyle(.plain)
                     .foregroundStyle(Token.Colour.accent)
-                    .help("Add task")
+                    .help(TodoDocument.sectionDraft(draft) == nil ? "Add task" : "Add section")
                     .opacity(draft.isEmpty ? 0 : 1)
                     .disabled(draft.isEmpty)
             }
@@ -150,8 +176,29 @@ public struct TodoTile: View {
         store.relocate(to: url)
     }
 
+    /// A draft that starts with `#` is about SECTIONS; anything else is a task.
+    ///
+    /// `# Later` makes the section — or, when there already is one by that name, points the
+    /// composer at it instead of making a twin. Either way the tasks typed next go there,
+    /// which is what someone who has just named a section is about to do. A bare `#` points
+    /// it back at the top. That is the whole keyboard path: no row has to be clicked.
     private func add() {
-        store.prependItem(draft)
+        if let section = TodoDocument.sectionDraft(draft) {
+            if section.title.isEmpty {
+                targetSection = nil
+            } else {
+                // Matched the way a person would, not the way `==` would.
+                let existing = store.document.sections.first {
+                    $0.caseInsensitiveCompare(section.title) == .orderedSame
+                }
+                if existing == nil { store.addSection(section.title, level: section.level) }
+                targetSection = existing ?? section.title
+            }
+        } else if let target {
+            store.prependItem(draft, to: target)
+        } else {
+            store.prependItem(draft)
+        }
         draft = ""
         // Focus is kept so several tasks can be typed in a row without reaching for the
         // mouse between them.
@@ -174,6 +221,24 @@ public struct TodoTile: View {
         }
         guard trimmed != item.text else { return }
         store.setText(trimmed, for: item.id)
+    }
+
+    /// A heading follows the same rule as a task: Return on an emptied field removes it.
+    private func commitEdit(_ text: String, for heading: TodoDocument.Heading) {
+        editingID = nil
+        // Hashes typed into the field are not part of the name; the level is kept.
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let title = TodoDocument.sectionDraft(trimmed)?.title ?? trimmed
+        guard !title.isEmpty else { remove(heading); return }
+        guard title != heading.title else { return }
+        if targetSection == heading.title { targetSection = title }
+        store.setHeading(title, for: heading.id)
+    }
+
+    /// The heading line only. Its tasks stay and join the section above.
+    private func remove(_ heading: TodoDocument.Heading) {
+        if targetSection == heading.title { targetSection = nil }
+        store.removeHeading(heading.id)
     }
 
     private func noticeBar(_ notice: TodoStore.Notice) -> some View {
@@ -359,6 +424,108 @@ private struct TodoRow: View {
             onDropBefore(moved)
             return true
         } isTargeted: { onDragOver($0) }
+    }
+}
+
+/// A section's heading, as a row.
+///
+/// Edited and removed the way a task is — the same pencil, the same minus, the same Return
+/// and Escape, in the same slots — because it is the same kind of thing: one line of the
+/// file. Two slots rather than three: there is nothing to send to a shell.
+///
+/// Clicking it points the composer at the section. The accent says which one is chosen, and
+/// the composer's placeholder says it again in words, so colour is never the only signal.
+private struct TodoHeadingRow: View {
+    let heading: TodoDocument.Heading
+    let isTarget: Bool
+    let isDropTarget: Bool
+    let isEditing: Bool
+    let select: () -> Void
+    let delete: () -> Void
+    let beginEdit: () -> Void
+    let commitEdit: (String) -> Void
+    let cancelEdit: () -> Void
+    let onDrop: (Int) -> Void
+    let onDragOver: (Bool) -> Void
+    @State private var isHovering = false
+    @State private var draft = ""
+    @FocusState private var isFieldFocused: Bool
+
+    var body: some View {
+        // The label gives the row its height and the field is laid over it, for the reason
+        // `TodoRow` gives: swapping one for the other moves every row below by a point.
+        Text(heading.title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(isTarget ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+            .textCase(.uppercase)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(isEditing ? 0 : 1)
+            .overlay(alignment: .leading) {
+                if isEditing {
+                    // Not upper-cased: what is typed is what is written to the file, and a
+                    // field that shouted it back would misreport that.
+                    TextField("Section", text: $draft)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Token.Colour.label)
+                        .focused($isFieldFocused)
+                        .onSubmit { commitEdit(draft) }
+                        .onExitCommand(perform: cancelEdit)
+                        .task {
+                            draft = heading.title
+                            isFieldFocused = true
+                        }
+                }
+            }
+            .tileHoverControls(isHovering || isEditing) {
+                HStack(spacing: 4) {
+                    TodoRowSlot {
+                        if isEditing {
+                            Button { commitEdit(draft) } label: { Image(systemName: "return") }
+                                .foregroundStyle(Token.Colour.accent)
+                                .help("Save section")
+                                .pointerStyle(.link)
+                        } else {
+                            Button(action: beginEdit) { Image(systemName: "pencil") }
+                                .help("Rename section")
+                                .pointerStyle(.link)
+                        }
+                    }
+                    TodoRowSlot {
+                        if !isEditing {
+                            Button(action: delete) { Image(systemName: "minus.circle") }
+                                .help("Remove section — its tasks stay")
+                                .pointerStyle(.link)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 3)
+            .contentShape(.rect)
+            .onHover { isHovering = $0 }
+            // Counted, so the second click of a double-click does not also toggle the
+            // target the first one set.
+            .onTapGesture(count: 2) { if !isEditing { beginEdit() } }
+            .onTapGesture { if !isEditing { select() } }
+            .help(isTarget ? "New tasks go here — click to add at the top of the list instead"
+                           : "Click to add new tasks here")
+            .overlay(alignment: .bottom) {
+                if isDropTarget {
+                    Rectangle()
+                        .fill(Token.Colour.accent)
+                        .frame(height: 2)
+                }
+            }
+            .dropDestination(for: TodoDragPayload.self) { payload, _ in
+                guard let moved = payload.first?.id else { return false }
+                onDrop(moved)
+                return true
+            } isTargeted: { onDragOver($0) }
+            .accessibilityLabel("Section, \(heading.title)")
+            .accessibilityAddTraits(.isButton)
     }
 }
 
