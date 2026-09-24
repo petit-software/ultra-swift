@@ -62,6 +62,20 @@ public final class TileFactory {
     /// This pane's chat, or nil for a pane that is not one.
     public func chatStore(for paneID: PaneID) -> ChatStore? { chats[paneID] }
 
+    /// Each browser pane's page, held here for the same reason: a pane rebuilt for any
+    /// reason must not reload what it was showing.
+    private var browsers: [PaneID: BrowserSession] = [:]
+
+    /// This pane's page, or nil for a pane that is not a browser.
+    public func browserSession(for paneID: PaneID) -> BrowserSession? { browsers[paneID] }
+
+    /// Which panes are browsers, so the app can find one to send a URL to.
+    public func browserPanes() -> Set<PaneID> { Set(browsers.keys) }
+
+    /// What the next browser pane should open on. Consumed once, like the kind.
+    private var pendingBrowse: URL?
+    public func stage(browse url: URL?) { pendingBrowse = url }
+
     /// Which panes are editors, so the app can find one to send a file to.
     public func editorPanes() -> Set<PaneID> { Set(sessions.keys) }
 
@@ -72,7 +86,7 @@ public final class TileFactory {
     public var onRecordChange: ((PaneID, PaneRecord) -> Void)?
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat]
+    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser]
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? records[paneID]?.kind
@@ -142,6 +156,24 @@ public final class TileFactory {
             let record = Self.chatRecord(for: store.current, root: projectRoot)
             records[paneID] = record
             return (view, record)
+        case .browser:
+            // A staged URL wins; a restored pane reopens the page it was on.
+            let restored = records[paneID]?.command.flatMap(URL.init(string:))
+            let session = browsers[paneID] ?? BrowserSession(
+                url: pendingBrowse ?? restored,
+                isDark: records[paneID]?.appearance == .dark)
+            pendingBrowse = nil
+            browsers[paneID] = session
+            session.onChange = { [weak self] url, title in
+                self?.noteBrowser(paneID, url: url, title: title, root: root)
+            }
+            view = NSHostingView(rootView: BrowserTile(context: paneContext, session: session))
+            view.setAccessibilityLabel("Browser")
+            hosts[paneID] = view
+            let record = Self.browserRecord(url: session.requestedURL, title: session.title,
+                                            isDark: session.isDark, root: root)
+            records[paneID] = record
+            return (view, record)
         default:
             return nil
         }
@@ -156,6 +188,33 @@ public final class TileFactory {
         hosts.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
+        browsers.removeValue(forKey: paneID)?.close()
+    }
+
+    /// Keep a browser pane's header on the page's title and host, and its record on the
+    /// page, so a restored workspace reopens where it was.
+    private func noteBrowser(_ paneID: PaneID, url: URL?, title: String?, root: URL) {
+        let record = Self.browserRecord(url: url, title: title,
+                                        isDark: browsers[paneID]?.isDark ?? false, root: root)
+        guard records[paneID] != record else { return }
+        records[paneID] = record
+        onRecordChange?(paneID, record)
+    }
+
+    /// `command` carries the page's URL, the way it carries an editor's open file. The
+    /// title is the page's own, falling back to "Browser"; the subtitle is where it is.
+    ///
+    /// The page's light or dark mode is the PANE's appearance: the canvas paints the whole
+    /// pane — surface, header, glass — to match the page inside it, and the setting is saved
+    /// with the pane like its URL.
+    public static func browserRecord(url: URL?, title: String?, isDark: Bool = false,
+                                     root: URL) -> PaneRecord {
+        PaneRecord(kind: .browser,
+                   title: title ?? "Browser",
+                   subtitle: url.map(BrowserSession.place(of:)).flatMap { $0.isEmpty ? nil : $0 },
+                   icon: icon(for: .browser), cwd: root.path,
+                   command: url?.absoluteString,
+                   appearance: isDark ? .dark : .light)
     }
 
     /// Keep a chat pane's header on the model it is talking to, and its record on the
@@ -234,6 +293,7 @@ public final class TileFactory {
         records.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
+        browsers.removeValue(forKey: paneID)?.close()
     }
 
     public static func record(for kind: PaneRecord.Kind,
@@ -259,6 +319,7 @@ public final class TileFactory {
         case .editor: "Editor"
         case .context: "Context"
         case .chat: "Chat"
+        case .browser: "Browser"
         default: abbreviate(root.path)
         }
     }
@@ -285,6 +346,7 @@ public final class TileFactory {
         case .git: "arrow.trianglehead.branch"
         case .context: "paperclip"
         case .chat: "text.bubble"
+        case .browser: "globe"
         case .agent: "sparkles"
         case .shell, .placeholder: "apple.terminal"
         }

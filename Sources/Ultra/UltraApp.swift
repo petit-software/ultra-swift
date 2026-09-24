@@ -905,6 +905,7 @@ private struct TileShortcut: ViewModifier {
         case .todo: content.keyboardShortcut("y", modifiers: [.command, .option])
         case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
         case .chat: content.keyboardShortcut("c", modifiers: [.command, .option])
+        case .browser: content.keyboardShortcut("b", modifiers: [.command, .option])
         default: content
         }
     }

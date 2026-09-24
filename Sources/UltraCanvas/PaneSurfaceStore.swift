@@ -62,6 +62,7 @@ public final class PaneSurfaceStore {
                                           kind: content.record.kind,
                                           content: content.view, actions: actions,
                                           theme: theme)
+        container.paneAppearance = content.record.appearance
         containers[paneID] = container
         return container
     }
@@ -76,6 +77,7 @@ public final class PaneSurfaceStore {
         containers[paneID]?.update(descriptor: PaneDescriptor(icon: record.icon,
                                                               title: record.title,
                                                               subtitle: record.subtitle))
+        containers[paneID]?.paneAppearance = record.appearance
     }
 
     /// The record for a pane, materialising it if it has never been shown. Restore writes

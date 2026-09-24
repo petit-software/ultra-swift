@@ -72,6 +72,10 @@ enum ShellWorkspace {
             openInEditor: { request in
                 guard let store = Registry.stores[workspaceID] else { return }
                 showInEditor(request, in: store)
+            },
+            openInBrowser: { url in
+                guard let store = Registry.stores[workspaceID] else { return }
+                showInBrowser(url, in: store)
             }),
             restoring: records)
 
@@ -256,6 +260,19 @@ enum ShellWorkspace {
             return store.tree.paneIDs.first { editors.contains($0) }
         }
 
+        /// The browser pane a URL should open in, within ONE workspace: the focused pane when
+        /// it is a browser, otherwise the first browser in the layout. Nil when there is none,
+        /// which is the caller's cue to make one.
+        @MainActor static func browserTarget(in workspaceID: UUID) -> PaneID? {
+            guard let store = stores[workspaceID], let tiles = tiles[workspaceID] else {
+                return nil
+            }
+            let browsers = tiles.browserPanes()
+            let focused = store.tree.focused
+            if browsers.contains(focused) { return focused }
+            return store.tree.paneIDs.first { browsers.contains($0) }
+        }
+
         /// Where a new tile should point: the working directory of the shell a tile would
         /// type into. Pane records carry the LIVE cwd — a shell reports its directory as it
         /// changes — so this follows `cd`.
@@ -382,6 +399,46 @@ enum ShellWorkspace {
     static func editorSessions(in store: LayoutStore) -> EditorSessions? {
         guard let target = Registry.editorTarget(in: store.workspaceID) else { return nil }
         return Registry.tiles[store.workspaceID]?.editorSessions(for: target)
+    }
+
+    /// Show a page in a browser pane: the one already open, or a new one.
+    ///
+    /// The editor's rule, for the editor's reason: a Ports row clicked three times should be
+    /// one pane showing the last server, not three panes on a canvas with room for none.
+    static func showInBrowser(_ url: URL, in store: LayoutStore) {
+        if let target = Registry.browserTarget(in: store.workspaceID),
+           let session = Registry.tiles[store.workspaceID]?.browserSession(for: target) {
+            session.open(url)
+            store.focus(target)
+            return
+        }
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        Registry.tiles[store.workspaceID]?.stage(browse: url)
+        stageTile(.browser, for: store)
+        if !store.split(edge: edge) {
+            stageTile(nil, for: store)
+            Registry.tiles[store.workspaceID]?.stage(browse: nil)
+        }
+    }
+
+    /// The page a Browser command should act on: the browser pane a URL would open in.
+    /// Nil when there is none, and the menu items say so by dimming.
+    static func browserSession(in store: LayoutStore) -> BrowserSession? {
+        guard let target = Registry.browserTarget(in: store.workspaceID) else { return nil }
+        return Registry.tiles[store.workspaceID]?.browserSession(for: target)
+    }
+
+    /// Open Location: the caret in a browser pane's address field. The browser that is
+    /// already open when there is one — focused, so the typing lands where it is seen —
+    /// and a new, empty one otherwise, which starts with its caret in the field anyway.
+    static func openLocation(in store: LayoutStore) {
+        if let target = Registry.browserTarget(in: store.workspaceID),
+           let session = Registry.tiles[store.workspaceID]?.browserSession(for: target) {
+            store.focus(target)
+            session.focusAddress()
+            return
+        }
+        openTile(.browser, in: store)
     }
 
     /// The chat the focused pane holds, or nil when the focused pane is not a chat.
@@ -580,6 +637,7 @@ struct PaneKind: Identifiable, Sendable {
         PaneKind(kind: .resources, title: "Resources", symbol: "gauge.with.needle"),
         PaneKind(kind: .context, title: "Context", symbol: "paperclip"),
         PaneKind(kind: .chat, title: "Chat", symbol: "text.bubble"),
+        PaneKind(kind: .browser, title: "Browser", symbol: "globe"),
     ]
 
     /// Handed to the canvas so a pane's own icon can offer the list.

@@ -13,7 +13,7 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + chat + editor + paneKinds + folders
+                                 + layouts + chat + editor + browser + paneKinds + folders
 
     /// The two verbs a chat pane has that a keystroke should reach: another thread, and
     /// stop. Both act on the focused pane and dim when it is not a chat.
@@ -30,6 +30,53 @@ enum PaneCommands {
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
+        },
+    ]
+
+    /// A browser pane's verbs, with the keys every browser on the Mac uses for them.
+    ///
+    /// All on ⌘, which a terminal never sees — so they are safe beside a shell — and each
+    /// acts on the browser a URL would open in (the focused one, else the first), dimming
+    /// when there is none. Except Open Location, which opens a browser when there is none:
+    /// ⌘L is how a page is asked for, and asking should not need a pane made first.
+    static let browser: [AppCommand] = [
+        AppCommand(id: "browser.openLocation", title: "Open Location", symbol: "globe",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("l", [.command]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0) != nil
+                                || ShellWorkspace.canOpen(.browser, in: $0) }) { store in
+            ShellWorkspace.openLocation(in: store)
+        },
+        AppCommand(id: "browser.reload", title: "Reload Page", symbol: "arrow.clockwise",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("r", [.command]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0)?.requestedURL != nil }) {
+            ShellWorkspace.browserSession(in: $0)?.reload()
+        },
+        AppCommand(id: "browser.back", title: "Back", symbol: "chevron.backward",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("[", [.command]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0)?.canGoBack ?? false }) {
+            ShellWorkspace.browserSession(in: $0)?.goBack()
+        },
+        AppCommand(id: "browser.forward", title: "Forward", symbol: "chevron.forward",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("]", [.command]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0)?.canGoForward ?? false }) {
+            ShellWorkspace.browserSession(in: $0)?.goForward()
+        },
+        // ⌃⌘, the safest of the app's modifier sets: ⌘D and its variants are the splits,
+        // and ⌃⌘D is the system's Look Up. L for light.
+        AppCommand(id: "browser.toggleDark", title: "Toggle Dark Page", symbol: "moon",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("l", [.command, .control]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0) != nil }) {
+            ShellWorkspace.browserSession(in: $0)?.toggleDark()
+        },
+        AppCommand(id: "browser.openExternally", title: "Open in Default Browser",
+                   symbol: "safari", menuPath: ["Pane", "Browser"],
+                   isEnabled: { ShellWorkspace.browserSession(in: $0)?.requestedURL != nil }) {
+            ShellWorkspace.browserSession(in: $0)?.openInDefaultBrowser()
         },
     ]
 
@@ -276,6 +323,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Chat") {
                 ForEach(PaneCommands.chat) { item($0) }
+            }
+            Menu("Browser") {
+                ForEach(PaneCommands.browser) { item($0) }
             }
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }

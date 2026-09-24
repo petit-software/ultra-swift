@@ -13,7 +13,8 @@ import UltraLayout
 /// `shell` record carrying a command, restores as an agent all the same.
 public struct PaneRecord: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case shell, agent, fileTree, editor, todo, ports, resources, git, context, chat, placeholder
+        case shell, agent, fileTree, editor, todo, ports, resources, git, context, chat, browser,
+             placeholder
     }
 
     /// Both kinds the shell factory owns.
@@ -29,10 +30,23 @@ public struct PaneRecord: Codable, Equatable, Sendable {
     public var command: String?
     /// Opaque per-tile state, decoded by the tile itself.
     public var tileState: Data?
+    /// A light or dark look pinned to this ONE pane, whatever the window's own appearance.
+    /// Nil — every pane until one asks — follows the app.
+    ///
+    /// On the record rather than in `tileState` because the CANVAS has to read it: the pane's
+    /// surface, header and glass are painted there, and `tileState` is opaque to everything
+    /// but the tile. A browser pane showing a white page is the case that asked for it; a
+    /// dark pane with a white page in it looked like a hole in the canvas.
+    public var appearance: Appearance?
+
+    public enum Appearance: String, Codable, Sendable {
+        case light, dark
+    }
 
     public init(kind: Kind, title: String, subtitle: String? = nil,
                 icon: String = "apple.terminal", cwd: String? = nil,
-                command: String? = nil, tileState: Data? = nil) {
+                command: String? = nil, tileState: Data? = nil,
+                appearance: Appearance? = nil) {
         self.kind = kind
         self.title = title
         self.subtitle = subtitle
@@ -40,6 +54,7 @@ public struct PaneRecord: Codable, Equatable, Sendable {
         self.cwd = cwd
         self.command = command
         self.tileState = tileState
+        self.appearance = appearance
     }
 }
 

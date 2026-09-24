@@ -365,11 +365,38 @@ public final class PaneContainerView: NSView {
         didSet { guard theme != oldValue else { return }; applyBackdrop() }
     }
 
+    /// A look pinned to this pane alone — see `PaneRecord.appearance`. Nil follows the
+    /// window.
+    ///
+    /// Applied as the view's `NSAppearance`, which is all it takes for the header, the glass
+    /// and the tile's SwiftUI content to resolve their colours light or dark: they already
+    /// follow `effectiveAppearance`. The backdrop is the one colour that does not, because it
+    /// comes from the terminal theme, so it takes the preset matching the pinned look.
+    public var paneAppearance: PaneRecord.Appearance? {
+        didSet {
+            guard paneAppearance != oldValue else { return }
+            appearance = paneAppearance.flatMap { NSAppearance(named: $0 == .dark ? .darkAqua : .aqua) }
+            applyBackdrop()
+            refresh()
+        }
+    }
+
     /// Inside the glass, under everything: `clip` is the glass's content view, so its own
     /// background sits above the material and below the pane's content.
+    ///
+    /// A pane pinned LIGHT is solid white. The glass under every pane is tinted by the
+    /// window behind it, and in a dark window light glass is grey — a white page framed in
+    /// grey chrome, which is not what "light" was asked to mean. So a light pane paints an
+    /// opaque sheet of paper, whatever the opacity setting says. A pane pinned dark keeps
+    /// the window's own glass, which is already dark.
     private func applyBackdrop() {
-        clip.layer?.backgroundColor = NSColor(theme.background)
-            .withAlphaComponent(theme.backgroundOpacity).cgColor
+        let colour: NSColor = switch paneAppearance {
+        case .light: .white
+        case .dark: NSColor(TerminalTheme.dark.background)
+            .withAlphaComponent(theme.backgroundOpacity)
+        case nil: NSColor(theme.background).withAlphaComponent(theme.backgroundOpacity)
+        }
+        clip.layer?.backgroundColor = colour.cgColor
     }
 
     /// Every look setting a pane draws with, in one re-runnable place.
@@ -608,6 +635,7 @@ public final class PaneContainerView: NSView {
         case .git: "Git"
         case .context: "Context"
         case .chat: "Chat"
+        case .browser: "Browser"
         case .placeholder: "Pane"
         }
     }

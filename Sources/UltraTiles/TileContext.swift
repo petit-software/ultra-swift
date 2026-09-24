@@ -43,6 +43,9 @@ public struct TileContext {
     /// Its record follows, so the header, the tab, and the restored workspace all agree with
     /// what is on screen. A no-op for tiles that are not folder-scoped.
     public var setRoot: (URL) -> Void
+    /// Show a page in a browser pane: the one already open if there is one, a new one
+    /// otherwise — the rule `openInEditor` follows for files.
+    public var openInBrowser: (URL) -> Void
 
     public init(root: URL,
                 injectIntoShell: @escaping (String) -> Void = { _ in },
@@ -50,7 +53,8 @@ public struct TileContext {
                 shellPIDs: @escaping () -> Set<Int32> = { [] },
                 currentDirectory: (() -> URL)? = nil,
                 openInEditor: @escaping (EditorRequest) -> Void = { _ in },
-                setRoot: @escaping (URL) -> Void = { _ in }) {
+                setRoot: @escaping (URL) -> Void = { _ in },
+                openInBrowser: @escaping (URL) -> Void = { _ in }) {
         self.root = root
         self.projectRoot = root
         self.injectIntoShell = injectIntoShell
@@ -59,6 +63,7 @@ public struct TileContext {
         self.currentDirectory = currentDirectory ?? { root }
         self.openInEditor = openInEditor
         self.setRoot = setRoot
+        self.openInBrowser = openInBrowser
     }
 
     /// A context that does nothing, for previews and tests.

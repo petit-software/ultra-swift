@@ -326,6 +326,46 @@ APIs. Every provider is tested against a recorded transcript.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
   Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
 
+## 8. Browser
+
+One web page in a pane, for what a developer keeps beside a shell: the dev server, the docs,
+the PR. Not a browser app. There is no search, no tabs and no bookmarks, and a second page
+goes in a second pane.
+
+- The address field takes a URL or something close to one (`BrowserAddress`, pure and
+  tested). A local address gets HTTP (`localhost:3000`, `127.0.0.1`, `*.local`, the private
+  LAN ranges) because a dev server rarely speaks TLS. Anything else that looks like a host
+  gets HTTPS, and a path is a file. Text that is not an address is refused, not searched
+  for: in a terminal app it is as likely to be a path or a secret as a query.
+- The page lives in a `BrowserSession`, owned by the tile factory like an editor's tabs.
+  A rebuilt pane gets the same `WKWebView` back, scrolled where it was, instead of a reload.
+  The web view is made the first time the pane is shown, not when a workspace is restored.
+- The record keeps the URL in `command`, the page title as the pane's title and the host
+  as its subtitle, so a restored workspace reopens the page.
+- Everything goes in the shared, persistent website data store, so a dev server login
+  survives a relaunch. Right-click ▸ Inspect Element works (`isInspectable`).
+- Each pane can show its page light or dark: the moon in the footer, or Pane ▸ Browser ▸
+  Toggle Dark Page (⌃⌘L). The mode is the PANE's, not only the page's: it is saved as
+  `PaneRecord.appearance`, which the canvas reads to paint the pane's surface, header and
+  glass light or dark, so a white page does not sit in a dark pane like a hole. A light pane
+  is solid white rather than light glass, which a dark window tints grey. Any pane can
+  pin its look this way; nil, the default, follows the app. Dark sets
+  the web view's appearance dark, so a page with its own dark theme (`prefers-color-scheme`)
+  uses it. A page without one, which is most dev servers, is inverted by an injected style,
+  with its images and video inverted back. Light pins the page light, whatever the app is.
+- `target="_blank"` and `window.open` load in the same pane: a pane has no second window.
+- A failed load shows in the notice bar, with the dev-server case put in words: "Nothing is
+  answering at localhost:5173 — is the server running?" and a Retry.
+- `NSAllowsArbitraryLoadsInWebContent` is set, so plain-HTTP servers on the LAN load. No
+  entitlement is needed: WebContent runs in WebKit's own processes.
+- Commands: Pane ▸ Browser ▸ Open Location (⌘L), Reload Page (⌘R), Back (⌘[), Forward (⌘]),
+  Open in Default Browser. They act on the focused browser pane, or the first one in the
+  layout. Open Location opens a browser pane when there is none. File ▸ New Tile Pane ▸
+  Browser is ⌥⌘B. In the address field, Return loads the page and gives it the keyboard,
+  and Escape puts the address back.
+- Ports rows open a server in a browser pane, reusing the one already open (the globe
+  button), or in the default browser (Safari's compass).
+
 ## Sandboxing consequence
 
 Spawning PTYs and shelling out to `lsof`, `ps`, and `git` are all incompatible with the App

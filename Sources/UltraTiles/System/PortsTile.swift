@@ -16,7 +16,9 @@ public struct PortsTile: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.ports) { port in PortRow(port: port, model: model) }
+                        ForEach(model.ports) { port in
+                            PortRow(port: port, model: model, openInBrowser: context.openInBrowser)
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -51,6 +53,9 @@ public struct PortsTile: View {
 private struct PortRow: View {
     let port: PortsModel.Port
     let model: PortsModel
+    /// Into a browser pane beside the shell, which is where a dev server's page is wanted
+    /// most of the time. The system browser is the button beside it.
+    var openInBrowser: (URL) -> Void = { _ in }
     @State private var isHovering = false
 
     var body: some View {
@@ -90,10 +95,14 @@ private struct PortRow: View {
         .tileHoverControls(isHovering) {
             HStack(spacing: 8) {
                 if let url = port.url {
+                    Button { openInBrowser(url) } label: {
+                        Image(systemName: "globe")
+                    }
+                    .help("Open localhost:\(port.port) in a Browser pane")
                     Button { NSWorkspace.shared.open(url) } label: {
                         Image(systemName: "safari")
                     }
-                    .help("Open http://localhost:\(port.port)")
+                    .help("Open http://localhost:\(port.port) in the default browser")
                 }
                 Button {
                     NSPasteboard.general.clearContents()
