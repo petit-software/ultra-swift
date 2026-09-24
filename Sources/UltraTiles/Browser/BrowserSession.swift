@@ -127,6 +127,36 @@ public final class BrowserSession {
 
     public func focusAddress() { addressFocusRequest += 1 }
 
+    /// Open Web Inspector on the page, the same one Right-click ▸ Inspect Element opens.
+    ///
+    /// WebKit has no public call to show it — `isInspectable` only allows it — so this goes
+    /// through the web view's own `_inspector`, and does nothing if a WebKit ever drops it.
+    public func showInspector() {
+        guard let madeWebView,
+              madeWebView.responds(to: NSSelectorFromString("_inspector")),
+              let inspector = madeWebView.value(forKey: "_inspector") as? NSObject,
+              inspector.responds(to: NSSelectorFromString("show")) else { return }
+        inspector.perform(NSSelectorFromString("show"))
+    }
+
+    /// Empty the caches — and nothing else — then reload from the network.
+    ///
+    /// Caches only: cookies, local storage and IndexedDB stay, so the dev server's login
+    /// survives. The point is a stale bundle or stylesheet, not a signed-out browser. The
+    /// store is shared, so every browser pane's cache goes, which is also what Safari's
+    /// Empty Caches does.
+    public func emptyCaches() {
+        let types: Set<String> = [WKWebsiteDataTypeDiskCache, WKWebsiteDataTypeMemoryCache,
+                                  WKWebsiteDataTypeFetchCache]
+        WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: .distantPast) {
+            [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let view = self.madeWebView, view.url != nil else { return }
+                view.reloadFromOrigin()
+            }
+        }
+    }
+
     public func setDark(_ dark: Bool) {
         guard dark != isDark else { return }
         isDark = dark

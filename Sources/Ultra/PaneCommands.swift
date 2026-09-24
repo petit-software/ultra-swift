@@ -73,6 +73,20 @@ enum PaneCommands {
                    isEnabled: { ShellWorkspace.browserSession(in: $0) != nil }) {
             ShellWorkspace.browserSession(in: $0)?.toggleDark()
         },
+        // ⌥⌘I, Safari's key for Web Inspector. The page is usually why the pane is open.
+        AppCommand(id: "browser.inspect", title: "Show Web Inspector",
+                   symbol: "wrench.and.screwdriver", menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("i", [.command, .option]),
+                   isEnabled: { ShellWorkspace.browserSession(in: $0)?.existingWebView != nil }) {
+            ShellWorkspace.browserSession(in: $0)?.showInspector()
+        },
+        // No chord: Safari's ⌥⌘E is the Files pane here, and emptying caches is rare enough
+        // for the menu and the palette.
+        AppCommand(id: "browser.emptyCaches", title: "Empty Caches",
+                   symbol: "arrow.trianglehead.2.clockwise", menuPath: ["Pane", "Browser"],
+                   isEnabled: { ShellWorkspace.browserSession(in: $0) != nil }) {
+            ShellWorkspace.browserSession(in: $0)?.emptyCaches()
+        },
         AppCommand(id: "browser.openExternally", title: "Open in Default Browser",
                    symbol: "safari", menuPath: ["Pane", "Browser"],
                    isEnabled: { ShellWorkspace.browserSession(in: $0)?.requestedURL != nil }) {

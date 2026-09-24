@@ -343,7 +343,10 @@ goes in a second pane.
 - The record keeps the URL in `command`, the page title as the pane's title and the host
   as its subtitle, so a restored workspace reopens the page.
 - Everything goes in the shared, persistent website data store, so a dev server login
-  survives a relaunch. Right-click ▸ Inspect Element works (`isInspectable`).
+  survives a relaunch. Right-click ▸ Inspect Element works (`isInspectable`), and so does
+  the wrench in the footer (⌥⌘I), through WebKit's private `_inspector` since there is no
+  public call. Empty Caches (the circular arrows) removes the disk, memory and fetch caches
+  and reloads from the network. Cookies, local storage and IndexedDB stay, so logins survive.
 - Each pane can show its page light or dark: the moon in the footer, or Pane ▸ Browser ▸
   Toggle Dark Page (⌃⌘L). The mode is the PANE's, not only the page's: it is saved as
   `PaneRecord.appearance`, which the canvas reads to paint the pane's surface, header and
@@ -359,7 +362,7 @@ goes in a second pane.
 - `NSAllowsArbitraryLoadsInWebContent` is set, so plain-HTTP servers on the LAN load. No
   entitlement is needed: WebContent runs in WebKit's own processes.
 - Commands: Pane ▸ Browser ▸ Open Location (⌘L), Reload Page (⌘R), Back (⌘[), Forward (⌘]),
-  Open in Default Browser. They act on the focused browser pane, or the first one in the
+  Show Web Inspector (⌥⌘I), Empty Caches, Open in Default Browser. They act on the focused browser pane, or the first one in the
   layout. Open Location opens a browser pane when there is none. File ▸ New Tile Pane ▸
   Browser is ⌥⌘B. In the address field, Return loads the page and gives it the keyboard,
   and Escape puts the address back.

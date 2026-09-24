@@ -136,6 +136,14 @@ public struct BrowserTile: View {
                                                   : "Show Page Dark (⌃⌘L)") {
                 session.toggleDark()
             }
+            TileFooterButton(symbol: "wrench.and.screwdriver", help: "Show Web Inspector (⌥⌘I)",
+                             isEnabled: session.requestedURL != nil) {
+                session.showInspector()
+            }
+            TileFooterButton(symbol: "arrow.trianglehead.2.clockwise",
+                             help: "Empty Caches and Reload — cookies and logins stay") {
+                session.emptyCaches()
+            }
             TileFooterButton(symbol: "safari", help: "Open in Default Browser",
                              isEnabled: session.requestedURL != nil) {
                 session.openInDefaultBrowser()
