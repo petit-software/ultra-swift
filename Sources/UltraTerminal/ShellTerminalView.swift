@@ -433,11 +433,13 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         pendingDirectoryProbe = nil
         isRunning = false
         processID = nil
+        // SwiftTerm passes the raw `waitpid` status; everything past here wants the code.
+        let code = exitCode.flatMap(ShellLauncher.exitCode(fromWaitStatus:))
         // A process killed by a signal reports no code at all. Treated as a failure rather
         // than as a clean finish: an agent that was terminated did not complete its work,
         // and a green row would say it had.
-        lastExitCode = exitCode ?? -1
-        shellDelegate?.shellTerminated(self, exitCode: exitCode)
+        lastExitCode = code ?? -1
+        shellDelegate?.shellTerminated(self, exitCode: code)
     }
 
     public func dataReceived(slice: ArraySlice<UInt8>) {

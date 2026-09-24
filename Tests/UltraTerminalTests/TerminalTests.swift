@@ -87,11 +87,21 @@ struct ShellLauncherTests {
         #expect(ShellLauncher.arguments(runningAgent: "   ") == ["-l"])
     }
 
-    @Test("an agent execs, so the pane's process IS the agent")
+    @Test("an agent execs in an interactive login shell, so it gets the PATH from .zshrc")
     func agentExecs() {
-        #expect(ShellLauncher.arguments(runningAgent: "claude") == ["-l", "-c", "exec claude"])
+        #expect(ShellLauncher.arguments(runningAgent: "claude")
+                == ["-l", "-i", "-c", "exec claude"])
         #expect(ShellLauncher.arguments(runningAgent: "codex --model o3")
-                == ["-l", "-c", "exec codex --model o3"])
+                == ["-l", "-i", "-c", "exec codex --model o3"])
+    }
+
+    @Test("a raw wait status becomes the exit code, and a signal becomes nil")
+    func waitStatus() {
+        #expect(ShellLauncher.exitCode(fromWaitStatus: 0) == 0)
+        #expect(ShellLauncher.exitCode(fromWaitStatus: 32512) == 127)
+        #expect(ShellLauncher.exitCode(fromWaitStatus: 1 << 8) == 1)
+        // SIGKILL: the low seven bits hold the signal.
+        #expect(ShellLauncher.exitCode(fromWaitStatus: 9) == nil)
     }
 
     @Test("the login shell comes from the environment, with a sane fallback")

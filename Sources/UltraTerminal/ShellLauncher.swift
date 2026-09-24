@@ -17,25 +17,47 @@ public enum ShellLauncher {
 
     /// Arguments for a plain interactive shell, or for one that immediately becomes an agent.
     ///
-    /// `-l -c "exec <command>"` matters in both halves:
+    /// `-l -i -c "exec <command>"` matters in every part:
     /// - `-l` makes it a LOGIN shell, so the agent inherits the PATH and environment the
     ///   user actually has — a GUI app's environment is not the terminal's.
+    /// - `-i` makes it INTERACTIVE as well, which is what gets `.zshrc` (and `.bashrc`, and
+    ///   fish's `config.fish` interactive block) read. `-c` alone is non-interactive, and
+    ///   zsh then reads `.zprofile` but not `.zshrc` — where the Claude Code installer, and
+    ///   most people, put `~/.local/bin` on the PATH. So `claude` was found at every prompt
+    ///   and never by an agent pane: `zsh:1: command not found: claude`, exit 127. The PATH
+    ///   the agent gets is now the PATH a plain shell pane shows.
     /// - `exec` replaces the shell rather than nesting one, so the pane's process *is* the
     ///   agent: signals, exit codes, and the process table all say what the user expects.
     public static func arguments(runningAgent command: String? = nil) -> [String] {
         guard let command, !command.trimmingCharacters(in: .whitespaces).isEmpty else {
             return ["-l"]
         }
-        return ["-l", "-c", "exec \(command)"]
+        return ["-l", "-i", "-c", "exec \(command)"]
     }
 
-    /// Whether a binary is on the user's PATH. Probed through a login shell for the same
-    /// reason as above: `which` run with the GUI app's PATH gives the wrong answer.
+    /// The exit code inside a raw `waitpid` status, or nil for a process a signal killed.
+    ///
+    /// SwiftTerm hands `processTerminated` the status word as `waitpid` returned it, not the
+    /// code: exit 127 arrives as 32512 (127 << 8). Shown as-is it reads like a code nobody
+    /// has ever seen, and it hides the one fact 127 carries — command not found.
+    public static func exitCode(fromWaitStatus status: Int32) -> Int32? {
+        // WIFEXITED / WEXITSTATUS, which Swift does not import: they are C macros.
+        guard status & 0x7f == 0 else { return nil }
+        return (status >> 8) & 0xff
+    }
+
+    /// Whether a binary is on the user's PATH. Probed through the SAME kind of shell an
+    /// agent pane runs in — login and interactive — so the probe and the pane cannot
+    /// disagree about what is installed: `which` run with the GUI app's PATH gives the wrong
+    /// answer, and so did a non-interactive shell that never read `.zshrc`.
     public static func isAvailable(_ binary: String) -> Bool {
         guard !binary.isEmpty else { return false }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: loginShell())
-        process.arguments = ["-l", "-c", "command -v \(binary)"]
+        process.arguments = ["-l", "-i", "-c", "command -v \(binary)"]
+        // An interactive shell reads its terminal. With none, and stdin left attached to
+        // the app's, an rc file that prompts for anything would hang the probe for good.
+        process.standardInput = FileHandle.nullDevice
         process.standardOutput = Pipe()
         process.standardError = Pipe()
         do {
