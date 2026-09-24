@@ -7,13 +7,19 @@ import UltraTiles
 @Observable
 final class UIState {
     var isPaletteShown = false
-    /// Whether the SELECTED session's customise popover is open.
+    /// The session whose customise sheet is open, or nil.
     ///
-    /// Window state rather than row state, because the popover has two ways in — the row's
-    /// context menu and File ▸ Session ▸ Customize Session… — and a flag owned by the row
-    /// could only be reached by the first. A context menu is a *view* of the command
-    /// registry, never the only way to do something; see the `keyboard-first` skill.
-    var isCustomizingSession = false
+    /// Window state rather than row state, because the sheet has several ways in — a sidebar
+    /// row's context menu, a belt tab's, and File ▸ Session ▸ Customize Session… — and a
+    /// flag owned by one row could only be reached from that row. A context menu is a
+    /// *view* of the command registry, never the only way to do something; see the
+    /// `keyboard-first` skill.
+    ///
+    /// An ID rather than a Bool read through "the selected row". Customizing a session that
+    /// is not selected selects it too, and the selection change used to clear the Bool in
+    /// the same update that set it — the sheet never opened, only the tab changed. Naming
+    /// the session means nothing about the selection can take the sheet away from it.
+    var customizingSessionID: UUID?
     /// Whether the new-project sheet is up.
     ///
     /// Window state rather than sidebar state, for the same reason as the flag above: there
@@ -22,6 +28,10 @@ final class UIState {
     /// keyboard path, and a command reachable only from a control is the anti-pattern the
     /// `keyboard-first` skill names outright.
     var isCreatingProject = false
+    /// Whether the session tab belt is on screen in place of the sidebar. Window state
+    /// because it decides WHICH view presents the customise sheet: the sidebar's selected
+    /// row, or the belt's selected tab. Both answering the one flag would stack two sheets.
+    var showsTabBelt = false
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding

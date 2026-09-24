@@ -78,10 +78,6 @@ struct SessionSidebar: View {
         // explains itself. The editor's sidebar has two sections because it holds two kinds.
         .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
         .accessibilityLabel("Sessions")
-        // The flag is window-level but the sheet is opened from the SELECTED row, so a
-        // session switch while it is open — ⌥⌘] does this without touching the mouse — would
-        // leave the flag set and reopen the sheet on whatever row was landed on.
-        .onChange(of: sessions.selectedID) { _, _ in ui.isCustomizingSession = false }
         // Under the list, which is where every source list on this platform puts "add" —
         // Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a toolbar item, up
         // in the strip the traffic lights own and a long way from the list it adds to.
@@ -210,10 +206,6 @@ private struct SessionRow: View {
     /// wearing its icon on the frame it is drawn in rather than flashing the default first.
     /// SwiftUI keeps this per row IDENTITY, and a row's identity is its session.
     @State private var appearance: SessionAppearance
-    /// The project's agent list, seeded from `.ultra/agents.json` the same way the icon is
-    /// seeded from its store, and for the same reason: the sheet must open on what is
-    /// on disk, not on the defaults and then correct itself.
-    @State private var agents: [AgentDefinition]
 
     init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
          select: @escaping () -> Void, rename: @escaping (String) -> Void,
@@ -227,14 +219,6 @@ private struct SessionRow: View {
         self.close = close
         _appearance = State(initialValue: SessionAppearanceStore.appearance(
             forDirectory: store.workspaceDirectory))
-        _agents = State(initialValue: Self.loadAgents(forDirectory: store.workspaceDirectory))
-    }
-
-    /// The defaults for a workspace with no directory: there is no file to read, and no
-    /// file to write, which is why Customize is dimmed on such a row.
-    private static func loadAgents(forDirectory directory: String?) -> [AgentDefinition] {
-        guard let directory else { return AgentDefinition.defaults }
-        return ProjectAgents.load(in: URL(fileURLWithPath: directory, isDirectory: true))
     }
 
     private var tint: SessionTint { SessionTint(storedValue: appearance.tint) }
@@ -246,11 +230,11 @@ private struct SessionRow: View {
             ?? store.workspaceTitle
     }
 
-    /// A window-level flag, read through this row's own selection. Only the selected row
-    /// answers true, so the one flag cannot open a dozen sheets at once.
+    /// The window-level flag, answered by the row it NAMES — and only while the sidebar is
+    /// the list on screen; the belt's tab answers it otherwise.
     private var isCustomizing: Binding<Bool> {
-        Binding(get: { isSelected && ui.isCustomizingSession },
-                set: { ui.isCustomizingSession = $0 })
+        Binding(get: { !ui.showsTabBelt && ui.customizingSessionID == store.workspaceID },
+                set: { ui.customizingSessionID = $0 ? store.workspaceID : nil })
     }
 
     /// Renaming goes through the SESSION LIST, not straight onto the store: the list is what
@@ -354,10 +338,66 @@ private struct SessionRow: View {
                 Button("Close Session", action: close)
             }
         }
+        .sessionCustomizer(isPresented: isCustomizing, store: store, name: name,
+                           appearance: $appearance,
+                           defaultName: defaultName, rename: rename)
+        .accessibilityElement(children: .combine)
+        // The status is SPOKEN, not only coloured. A row whose whole meaning is a hue is a
+        // row that says nothing to a VoiceOver user and half of one to anybody who cannot
+        // separate the green from the red — which is why the badge carries a distinct glyph
+        // as well, rather than four dots in four colours.
+        .accessibilityLabel(status.badge.map { "Session, \(store.workspaceTitle), \($0.help)" }
+                            ?? "Session, \(store.workspaceTitle)")
+    }
+
+    /// Select as well as open, so the session being customised is the one on screen behind
+    /// the sheet. macOS lets you right-click a row without selecting it.
+    private func beginCustomizing() {
+        select()
+        ui.customizingSessionID = store.workspaceID
+    }
+}
+
+/// The customise sheet and everything that writes its edits through — the icon to the
+/// appearance store, the agents to `.ultra/agents.json` — shared by the sidebar row and the
+/// tab belt's tab, so the two ways into it cannot save differently.
+///
+/// The icon is the CALLER's state, bound in: each view draws the icon it carries, and has
+/// to see a change the moment the sheet makes it. The agents are the sheet's own.
+struct SessionCustomizerSheet: ViewModifier {
+    @Binding var isPresented: Bool
+    let store: LayoutStore
+    let name: Binding<String>
+    @Binding var appearance: SessionAppearance
+    let defaultName: String
+    let rename: (String) -> Void
+    /// The project's agent list, read from `.ultra/agents.json` when the sheet OPENS and
+    /// dropped when it closes. It used to be seeded in every row's `init`, which SwiftUI
+    /// runs on every redraw of the list — a file read per row per redraw, for a sheet that
+    /// is almost never open. Nil means "not loaded", which is also how the write-through
+    /// below tells a load apart from an edit.
+    @State private var agents: [AgentDefinition]?
+
+    private var agentsBinding: Binding<[AgentDefinition]> {
+        // Straight from disk for the one frame the sheet can be drawn before the load below
+        // lands, so it never opens on an empty list that then fills in.
+        Binding(get: { agents ?? Self.loadAgents(forDirectory: store.workspaceDirectory) },
+                set: { agents = $0 })
+    }
+
+    /// The defaults for a workspace with no directory: there is no file to read, and no
+    /// file to write, which is why Customize is dimmed on such a row.
+    static func loadAgents(forDirectory directory: String?) -> [AgentDefinition] {
+        guard let directory else { return AgentDefinition.defaults }
+        return ProjectAgents.load(in: URL(fileURLWithPath: directory, isDirectory: true))
+    }
+
+    func body(content: Content) -> some View {
+        content
         // A SHEET, not a popover off the row: it holds a list of agents being edited, and a
         // popover closes the moment the pointer strays. See `SessionCustomizer`.
-        .sheet(isPresented: isCustomizing) {
-            SessionCustomizer(name: name, appearance: $appearance, agents: $agents,
+        .sheet(isPresented: $isPresented) {
+            SessionCustomizer(name: name, appearance: $appearance, agents: agentsBinding,
                               defaultName: defaultName) {
                 appearance = .default
                 agents = AgentDefinition.defaults
@@ -365,8 +405,11 @@ private struct SessionRow: View {
             }
             // A sheet is its own window. Dismissing it hands key status back to this one,
             // and AppKit restores whatever first responder it had — which, since the sheet
-            // was opened from the sidebar, is the sidebar.
+            // was opened from the sidebar or the belt, is that list.
             .onDisappear { store.reclaimKeyboardFocus() }
+        }
+        .onChange(of: isPresented, initial: true) { _, shown in
+            agents = shown ? Self.loadAgents(forDirectory: store.workspaceDirectory) : nil
         }
         // One place the icon is written, whichever control changed it — the swatches, the
         // symbols and Reset all just move the binding.
@@ -377,7 +420,9 @@ private struct SessionRow: View {
         // list that matches what is already on disk — a row untouched, a Reset on a project
         // that never had a file — is not written: opening Customize must not dirty a
         // checkout. And a fresh command is the moment to re-probe what is installed.
-        .onChange(of: agents) { _, new in
+        .onChange(of: agents) { old, new in
+            // A load or an unload, not an edit.
+            guard old != nil, let new else { return }
             guard let directory = store.workspaceDirectory else { return }
             let root = URL(fileURLWithPath: directory, isDirectory: true)
             if new != ProjectAgents.load(in: root) {
@@ -391,32 +436,27 @@ private struct SessionRow: View {
         // like it had not been saved at all.
         .onChange(of: store.workspaceDirectory) { _, directory in
             appearance = SessionAppearanceStore.appearance(forDirectory: directory)
-            agents = Self.loadAgents(forDirectory: directory)
+            if agents != nil { agents = Self.loadAgents(forDirectory: directory) }
         }
-        .accessibilityElement(children: .combine)
-        // The status is SPOKEN, not only coloured. A row whose whole meaning is a hue is a
-        // row that says nothing to a VoiceOver user and half of one to anybody who cannot
-        // separate the green from the red — which is why the badge carries a distinct glyph
-        // as well, rather than four dots in four colours.
-        .accessibilityLabel(status.badge.map { "Session, \(store.workspaceTitle), \($0.help)" }
-                            ?? "Session, \(store.workspaceTitle)")
-    }
-
-    /// Select first, then open. The sheet is opened from the SELECTED row, and macOS lets
-    /// you right-click a row without selecting it — without this, customising the second row
-    /// would open a popover on the first.
-    private func beginCustomizing() {
-        select()
-        ui.isCustomizingSession = true
     }
 }
 
-/// How a session's agent status looks in the sidebar.
+extension View {
+    func sessionCustomizer(isPresented: Binding<Bool>, store: LayoutStore, name: Binding<String>,
+                           appearance: Binding<SessionAppearance>,
+                           defaultName: String, rename: @escaping (String) -> Void) -> some View {
+        modifier(SessionCustomizerSheet(isPresented: isPresented, store: store, name: name,
+                                        appearance: appearance,
+                                        defaultName: defaultName, rename: rename))
+    }
+}
+
+/// How a session's agent status looks in the sidebar and on the tab belt.
 ///
 /// The mapping lives HERE rather than on `AgentStatus` itself: the status is a fact the
 /// terminal layer derives from a tty, and a type in `UltraTerminal` that knows about SF
 /// Symbols and sidebar colours is a layer boundary that has stopped meaning anything.
-private extension AgentStatus {
+extension AgentStatus {
     struct Badge {
         let symbol: String
         let colour: Color

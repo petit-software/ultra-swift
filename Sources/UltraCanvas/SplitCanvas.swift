@@ -7,9 +7,11 @@ import UltraLayout
 /// Everything above it is SwiftUI; everything below it is AppKit owning frames.
 public struct SplitCanvas: NSViewRepresentable {
     private let store: LayoutStore
+    private let bottomInset: CGFloat
 
-    public init(store: LayoutStore) {
+    public init(store: LayoutStore, bottomInset: CGFloat = 0) {
         self.store = store
+        self.bottomInset = bottomInset
     }
 
     public func makeNSView(context: Context) -> SplitCanvasView {
@@ -23,6 +25,7 @@ public struct SplitCanvas: NSViewRepresentable {
         _ = store.metrics
         // Registers the dependency that makes a pane conversion redraw.
         _ = store.surfaceRevision
+        view.bottomInset = bottomInset
         view.sync()
         // Separate from `sync`, which re-asserts focus only as a side effect of the model
         // having changed. This is the model asking for it directly — see
@@ -38,9 +41,13 @@ public struct SplitCanvas: NSViewRepresentable {
 /// See docs/02-DESIGN-LANGUAGE.md.
 public struct CanvasSurface: View {
     private let store: LayoutStore
+    private let bottomInset: CGFloat
 
-    public init(store: LayoutStore) {
+    /// - `bottomInset`: room to leave under the panes for something the window floats over
+    ///   the canvas's bottom edge — the session tab belt. See `SplitCanvasView.bottomInset`.
+    public init(store: LayoutStore, bottomInset: CGFloat = 0) {
         self.store = store
+        self.bottomInset = bottomInset
     }
 
     public var body: some View {
@@ -54,7 +61,7 @@ public struct CanvasSurface: View {
             // alternative, and it is the one with somewhere for a PTY to get dropped:
             // every cached frame, focus target and drag in flight belongs to the old
             // tree. Identity is the blunter tool and the safer one.
-            SplitCanvas(store: store)
+            SplitCanvas(store: store, bottomInset: bottomInset)
                 .id(store.workspaceID)
         }
         // The TOP edge only. Ignoring every edge is what put the canvas underneath the

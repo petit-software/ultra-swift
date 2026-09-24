@@ -1,7 +1,6 @@
+- [x] New folder / clone repository Chose... folder should be an cion exactly as icon picker
 - [x] Todo: a draft starting with `#` makes a section (or selects an existing one); new tasks then land in it
 - [x] Todo: section headings are rows — rename, remove (tasks stay), click to target, drop a task on one
-- [ ] #asdasd
-- [ ] ## now
 - [x] Todo: the hover pill's icons are centred in it again — the row's 3pt lift moves the pill, not the glyphs inside it
 - [x] File tree: a New File button in the footer opens an editor on a new file
 - [x] File tree: hovering a file or folder floats Open, Send and Reveal over the row
@@ -39,3 +38,14 @@
 - [x] The app pins its appearance at launch, so a window with no session no longer opens light
 - [x] Customize: agent rows wear the task rows' floating pill; the picker grids sit at their own width on the leading edge
 - [x] Agents: a project starts with none; the three CLIs stay known for the running-agent badge
+
+## New shit
+- [x] When sidebar with opened project is closed display tabs at the bottom of the window as a hotixzonta tab belt under tiles withing the same space where tiles live.
+  - [x] Sessions: with the sidebar collapsed, a tab belt of the window's sessions sits under the tiles, inside the canvas's own padding
+  - [x] Sessions: the tab belt arrives half a second after the sidebar collapses; the selected tab sits in a glass capsule that slides between tabs
+  - [x] Sessions: opening the sidebar takes the belt down first and opens the sidebar half a second later
+  - [x] Sessions: right-click a belt tab for Customize, the same sheet the sidebar row opens
+  - [x] Sessions: Customize on a tab that is not selected opens the sheet instead of only selecting it
+  - [x] Canvas: the belt floats over the canvas, which leaves room through an AppKit inset — panes move once, not per animation frame
+  - [x] Canvas: bounds reach the store once they settle, which is also when every PTY gets its final size
+  - [x] Sessions: the agent list is read from disk when Customize opens, not on every row redraw

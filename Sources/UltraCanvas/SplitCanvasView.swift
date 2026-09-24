@@ -21,6 +21,17 @@ public final class SplitCanvasView: NSView {
     private var displayTree: LayoutTree { dragTree ?? store.tree }
     private(set) var currentResult = LayoutResult()
 
+    /// Room left under the panes, inside the canvas's own bounds.
+    ///
+    /// The session tab belt takes its space HERE rather than by shrinking this view's
+    /// frame from SwiftUI. A SwiftUI frame change inside an animation is applied on every
+    /// frame of it, and every one of those is a full canvas layout, a `setFrameSize` on each
+    /// terminal and a redraw of its grid — which is what made the belt stutter. A property
+    /// set here is one layout pass, however it was animated upstream.
+    var bottomInset: CGFloat = 0 {
+        didSet { if bottomInset != oldValue { needsLayout = true } }
+    }
+
     /// Watches the window's content layout rect.
     ///
     /// `layoutBounds` is derived from `contentLayoutRect`, but this view's OWN bounds span
@@ -152,6 +163,12 @@ public final class SplitCanvasView: NSView {
     /// transparent titlebar. That is where the glass reading comes from: one continuous
     /// material, with the panes floating on it.
     var layoutBounds: CGRect {
+        var result = windowLayoutBounds
+        result.size.height = max(0, result.height - bottomInset)
+        return result
+    }
+
+    private var windowLayoutBounds: CGRect {
         guard let window else { return bounds }
         // An untitled window has no `contentLayoutRect` to subtract — it reports the whole
         // frame — so the window bar's height is reserved explicitly. Without this the panes
@@ -284,7 +301,7 @@ public final class SplitCanvasView: NSView {
     public override func layout() {
         super.layout()
         let canvas = layoutBounds
-        store.canvasBounds = canvas
+        noteCanvasBounds(canvas)
         var metrics = store.metrics
         metrics.scale = window?.backingScaleFactor ?? 2
 
@@ -317,6 +334,44 @@ public final class SplitCanvasView: NSView {
         store.surfaces.setFocused(displayTree.focused)
         store.surfaces.setCanClose(displayTree.paneCount > 1)
         overlay.update(result: result)
+    }
+
+    /// The bounds the last layout used, and the pending write of them to the store.
+    private var laidOutBounds: CGRect?
+    private var settleWork: DispatchWorkItem?
+
+    /// Tell the store about new canvas bounds once they have STOPPED moving, not per frame.
+    ///
+    /// `LayoutStore.canvasBounds` is observed — the toolbar's Add Pane menu and the ⌘1…⌘9
+    /// commands read it to decide what is enabled — so writing it on every layout made an
+    /// animated resize (the sidebar collapsing, the tab belt arriving, a window being
+    /// dragged) re-run the root view and the whole menu bar once per frame, on top of the
+    /// layout itself. The first bounds go straight through: commands need real geometry
+    /// from the start.
+    ///
+    /// Settling is also when a PTY hears its final size. Mid-animation resizes are
+    /// throttled (`ResizeCoalescer`), so the last frame of one could be dropped, and only
+    /// a window live-resize used to send the authoritative size afterwards — a shell could
+    /// be left one row short after the sidebar or the belt moved.
+    private func noteCanvasBounds(_ canvas: CGRect) {
+        guard canvas != laidOutBounds else { return }
+        let isFirst = laidOutBounds == nil
+        laidOutBounds = canvas
+        settleWork?.cancel()
+        guard !isFirst else {
+            store.canvasBounds = canvas
+            return
+        }
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let bounds = self.laidOutBounds else { return }
+                self.settleWork = nil
+                if self.store.canvasBounds != bounds { self.store.canvasBounds = bounds }
+                self.store.onGeometrySettled?()
+            }
+        }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
     /// Subviews are added and removed ONLY here, and only for panes that genuinely

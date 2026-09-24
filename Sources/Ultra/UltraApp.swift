@@ -348,7 +348,7 @@ struct WorkspaceCommands: Commands {
                 // ⌃⌘ because it is the safest of the four app-command modifier sets: ⌃I
                 // alone is Tab to readline, and ⌘I is Get Info in half the apps on the
                 // machine. Nothing in the reserved terminal table uses ⌃⌘I.
-                Button("Customize Session…") { ui?.isCustomizingSession = true }
+                Button("Customize Session…") { ui?.customizingSessionID = sessions?.selectedID }
                     .keyboardShortcut("i", modifiers: [.control, .command])
                     // Dims rather than vanishing: a command that disappears is a command
                     // nobody learns. A session with no project folder has nowhere to file
@@ -540,6 +540,61 @@ struct RootView: View {
     /// `.all` because a window whose session list is collapsed on first launch is a window
     /// with a feature nobody discovers.
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// A sidebar reveal waiting for the tab belt to get out of the way. Held so a second
+    /// toggle inside the wait can call it off rather than race it.
+    @State private var pendingReveal: Task<Void, Never>?
+    /// The room the canvas leaves under its panes for the belt. Separate from
+    /// `ui.showsTabBelt` so the two can move at different moments — see `showTabBelt`.
+    @State private var beltInset: CGFloat = 0
+
+    /// The belt's height plus the padding under it — everything below the gap the canvas
+    /// already keeps under its own panes.
+    private var beltSpace: CGFloat { Token.Space.tileHeaderHeight + Appearance.windowPadding }
+
+    /// Make room, then slide the belt into it. The panes move up once, straight away, and
+    /// the belt arrives in space that is already empty — nothing is laid out twice.
+    private func showTabBelt() {
+        beltInset = beltSpace
+        withAnimation(Token.Motion.structuralRespectingPreferences) {
+            ui.showsTabBelt = true
+        }
+    }
+
+    /// The mirror image: the belt slides away first, and the panes take the room back only
+    /// once it has gone, so they never grow under a strip of glass still on its way out.
+    private func hideTabBelt() {
+        guard ui.showsTabBelt || beltInset != 0 else { return }
+        withAnimation(Token.Motion.structuralRespectingPreferences) {
+            ui.showsTabBelt = false
+        } completion: {
+            // Unless it was brought back while leaving.
+            if !ui.showsTabBelt { beltInset = 0 }
+        }
+    }
+
+    /// What the split view is bound to. Collapsing goes straight through; the belt follows
+    /// half a second later, in `.task(id: columnVisibility)`.
+    ///
+    /// OPENING is the mirror image: the belt goes first, and the sidebar follows half a
+    /// second after it. Both at once was two animations resizing the canvas together, which
+    /// is the stutter that made the belt wait in the first place.
+    private var splitVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding(get: { columnVisibility }, set: { new in
+            pendingReveal?.cancel()
+            pendingReveal = nil
+            guard new != .detailOnly, ui.showsTabBelt else {
+                columnVisibility = new
+                return
+            }
+            hideTabBelt()
+            pendingReveal = Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                withAnimation { columnVisibility = new }
+                pendingReveal = nil
+            }
+        })
+    }
 
     /// The session on screen. Nil only for the instant before the first one exists.
     private var store: LayoutStore? { sessions.selected }
@@ -563,7 +618,7 @@ struct RootView: View {
         // collapse, the traffic lights sitting over it, its material, and the toggle button
         // in the toolbar are all things macOS already does. Rebuilding them out of an
         // `HStack` and a spacer is how you end up maintaining a worse copy of AppKit.
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView(columnVisibility: splitVisibility) {
             // "Add" lives at the BOTTOM of the sidebar now, in `SessionSidebar` itself.
             // As a toolbar item it sat in the titlebar strip the traffic lights own — a
             // long way from the list it adds to, and in the row macOS reserves for what
@@ -574,12 +629,47 @@ struct RootView: View {
             // SIDEBAR; the window's own name comes from the detail column, below.
             SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
         } detail: {
-            Group {
+            // The sessions, back on screen when the sidebar is not: a belt under the tiles,
+            // inside the canvas's own padding. The canvas already leaves one padding under
+            // its last row of panes, which becomes the gap above the belt, and the belt
+            // repeats it on its own three sides so its tabs line up with the panes' edges.
+            //
+            // FLOATED over the canvas rather than stacked under it, with the canvas told to
+            // leave room through `bottomInset`. Stacked, the belt's slide-in animated the
+            // canvas's SwiftUI frame, and every frame of that was a full pane layout and a
+            // terminal redraw. The inset reaches AppKit as one value: the panes move once,
+            // and all the animation has left to do is slide a small strip of glass.
+            ZStack(alignment: .bottom) {
                 if let store {
-                    CanvasSurface(store: store)
+                    CanvasSurface(store: store, bottomInset: beltInset)
                 } else {
                     Color.clear
                 }
+                if ui.showsTabBelt {
+                    SessionTabBelt(sessions: sessions, ui: ui)
+                        .padding([.horizontal, .bottom], Appearance.windowPadding)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            // `ui.showsTabBelt` trails `columnVisibility` rather than reading it.
+            //
+            // Half a second AFTER the sidebar has gone, not with it. Arriving together, the
+            // canvas was being resized by two animations at once — the column sliding away
+            // widening it, the belt sliding in shortening it — and every pane re-laid out on
+            // both, which is the stutter. One change at a time, the collapse finishes first.
+            //
+            // Going the other way the belt has already gone — `splitVisibility` takes it
+            // down half a second before letting the sidebar open — so the reset here is a
+            // backstop. `task(id:)` cancels the pending show if the sidebar is reopened
+            // inside the wait.
+            .task(id: columnVisibility) {
+                guard columnVisibility == .detailOnly else {
+                    hideTabBelt()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+                guard !Task.isCancelled else { return }
+                showTabBelt()
             }
             // THE title, and the only one in the window: the PROJECT's name — whatever the
             // sidebar row says, which is either the name typed in Customize or the folder's
