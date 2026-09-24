@@ -759,7 +759,11 @@ struct RootView: View {
                 // happened to be focused, which is a different control wearing the same
                 // icon. What remains here acts on the canvas as a whole: adding to it, and
                 // the layout verbs behind the ellipsis.
-                ToolbarItemGroup(placement: .primaryAction) {
+                //
+                // Two items with a fixed spacer between, not one group: a group shares one
+                // glass capsule, which made each glyph narrower than the standalone
+                // sidebar and palette buttons on the left.
+                ToolbarItem(placement: .primaryAction) {
                     // Every pane kind, one click from the window itself. Buried in a menu
                     // bar submenu they may as well not exist — this is where someone looks
                     // for "another pane", and it is the only place the full list is
@@ -795,7 +799,11 @@ struct RootView: View {
                     // said "and it is a menu", which a click answers just as well.
                     .menuIndicator(.hidden)
                     .help("New pane")
+                }
 
+                ToolbarSpacer(.fixed, placement: .primaryAction)
+
+                ToolbarItem(placement: .primaryAction) {
                     // The window's own verbs, the few that are neither a pane's nor worth
                     // a button each. A VIEW of the registry: every item here is an
                     // `AppCommand`, so it is on the Pane menu and in the palette too.
