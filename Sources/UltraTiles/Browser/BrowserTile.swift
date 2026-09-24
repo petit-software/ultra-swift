@@ -166,6 +166,30 @@ public struct BrowserTile: View {
     }
 }
 
+/// The browser pane's content: the tile, hosted, with one opinion about the keyboard.
+///
+/// A focused browser pane with a page in it gives the keyboard to the PAGE, so arrows and
+/// space scroll it and ⌘L is how the address is reached. An empty pane gives it to the
+/// address field, because there is nothing else to type into. See `KeyboardTargetProviding`.
+final class BrowserHostingView: NSHostingView<BrowserTile>, KeyboardTargetProviding {
+    private let session: BrowserSession
+
+    init(tile: BrowserTile, session: BrowserSession) {
+        self.session = session
+        super.init(rootView: tile)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @available(*, unavailable)
+    required init(rootView: BrowserTile) { fatalError("use init(tile:session:)") }
+
+    var preferredKeyboardTarget: NSView? {
+        session.requestedURL == nil ? nil : session.existingWebView
+    }
+}
+
 /// The session's web view, placed in the tile.
 ///
 /// Returns the SAME `WKWebView` every time it is made, because the session owns it. A pane

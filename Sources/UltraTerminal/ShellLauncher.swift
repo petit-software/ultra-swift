@@ -58,8 +58,11 @@ public enum ShellLauncher {
         // An interactive shell reads its terminal. With none, and stdin left attached to
         // the app's, an rc file that prompts for anything would hang the probe for good.
         process.standardInput = FileHandle.nullDevice
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        // Discarded, not piped: only the exit status is read. A pipe nobody drains blocks
+        // the shell once its buffer fills, and an interactive shell runs the whole .zshrc —
+        // a banner, a `neofetch`, a noisy plugin manager — before it gets to `command -v`.
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
             process.waitUntilExit()

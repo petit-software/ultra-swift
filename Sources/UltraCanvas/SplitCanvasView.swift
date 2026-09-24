@@ -121,13 +121,8 @@ public final class SplitCanvasView: NSView {
     /// this canvas — the cases where following the model's focus takes nothing from
     /// anyone. A field editor answers for the control it is editing.
     private var keyboardIsInCanvas: Bool {
-        guard let window else { return true }
-        var responder = window.firstResponder as? NSView
-        if let editor = responder as? NSTextView, editor.isFieldEditor {
-            responder = editor.delegate as? NSView ?? responder
-        }
-        guard let responder else { return true }
-        return responder.isDescendant(of: self)
+        guard let window, let responder = window.firstResponder as? NSView else { return true }
+        return Self.responder(responder, isInside: self)
     }
 
     /// Model focus drives AppKit focus, never the other way round — two sources of truth
@@ -138,10 +133,26 @@ public final class SplitCanvasView: NSView {
     @discardableResult
     func focusFirstResponder() -> Bool {
         guard let window, window.isKeyWindow,
-              let content = store.surfaces.content(for: displayTree.focused),
-              let target = Self.keyboardTarget(in: content) else { return false }
+              let content = store.surfaces.content(for: displayTree.focused) else { return false }
+        // Already somewhere in the focused pane: that IS the pane having the keyboard. A pane
+        // with more than one place to type — a browser's address field and its page, a
+        // tile's field and its list — used to be yanked back to its first such view on every
+        // store change, which runs on a page's title arriving. Typing into a form on a page
+        // lost the caret to the address field mid-word.
+        if Self.responder(window.firstResponder, isInside: content) { return true }
+        guard let target = Self.keyboardTarget(in: content) else { return false }
         guard window.firstResponder !== target else { return true }
         return window.makeFirstResponder(target)
+    }
+
+    /// Whether a first responder is `view` or inside it. A field editor answers for the
+    /// control it is editing, which is what actually sits in the view tree.
+    static func responder(_ responder: NSResponder?, isInside view: NSView) -> Bool {
+        var candidate = responder as? NSView
+        if let editor = candidate as? NSTextView, editor.isFieldEditor {
+            candidate = editor.delegate as? NSView ?? candidate
+        }
+        return candidate?.isDescendant(of: view) ?? false
     }
 
     /// The view that should actually receive keystrokes for a pane.
@@ -151,6 +162,11 @@ public final class SplitCanvasView: NSView {
     /// Handing the container to `makeFirstResponder` silently does nothing — which is how a
     /// split can leave the caret in the pane you just split away from.
     static func keyboardTarget(in view: NSView) -> NSView? {
+        if let provider = view as? KeyboardTargetProviding,
+           let preferred = provider.preferredKeyboardTarget,
+           preferred.isDescendant(of: view) {
+            return preferred
+        }
         if view.acceptsFirstResponder { return view }
         for subview in view.subviews {
             if let found = keyboardTarget(in: subview) { return found }

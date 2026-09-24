@@ -75,6 +75,10 @@ public final class BrowserSession {
         return view
     }
 
+    /// The web view if it has been made, without making it. For asking about the page — the
+    /// canvas choosing where the keyboard goes — without starting a WebContent process.
+    public var existingWebView: WKWebView? { madeWebView }
+
     // MARK: - Verbs
 
     /// Load what was typed. False, with `error` set, when it is not an address.
@@ -90,6 +94,10 @@ public final class BrowserSession {
 
     public func open(_ url: URL) {
         error = nil
+        // The last page's title is not this page's. Kept, it stuck to the header until the
+        // new page's arrived — and stuck for good when the new page had the same title,
+        // because the title observer only reports a change.
+        title = nil
         requestedURL = url
         if let madeWebView { load(url, in: madeWebView) }
         onChange?(url, nil)

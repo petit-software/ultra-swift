@@ -167,7 +167,8 @@ public final class TileFactory {
             session.onChange = { [weak self] url, title in
                 self?.noteBrowser(paneID, url: url, title: title, root: root)
             }
-            view = NSHostingView(rootView: BrowserTile(context: paneContext, session: session))
+            view = BrowserHostingView(tile: BrowserTile(context: paneContext, session: session),
+                                      session: session)
             view.setAccessibilityLabel("Browser")
             hosts[paneID] = view
             let record = Self.browserRecord(url: session.requestedURL, title: session.title,
