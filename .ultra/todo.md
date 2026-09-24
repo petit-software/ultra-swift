@@ -49,3 +49,12 @@
   - [x] Canvas: the belt floats over the canvas, which leaves room through an AppKit inset — panes move once, not per animation frame
   - [x] Canvas: bounds reach the store once they settle, which is also when every PTY gets its final size
   - [x] Sessions: the agent list is read from disk when Customize opens, not on every row redraw
+- [ ] Browser pane: a pane that opens a URL
+  - [ ] Browser: `PaneRecord.Kind.browser`, and a pure `BrowserAddress` that turns typed text into a URL (`localhost:3000` → http, `example.com` → https, junk → nil) with tests
+  - [ ] Browser: `BrowserSession` owns the `WKWebView` and lives in `TileFactory` like a chat's store, so a page survives a pane rebuild
+  - [ ] Browser: `BrowserTile` — address field, back / forward / reload, a load progress line, errors in the notice bar, and a `#Preview` fed by `loadHTMLString`
+  - [ ] Browser: registered in `PaneKind.all` (globe), the tile factory and the pane header; the record keeps the URL in `command`, the page title as title and the host as subtitle, so a restored workspace reopens the page
+  - [ ] Browser: Pane ▸ Browser commands in the palette — Open Location (⌘L), Reload (⌘R), Back (⌘[), Forward (⌘]), Open in Default Browser; New Browser Pane is ⌥⌘B
+  - [ ] Browser: Ports rows get "Open in Browser Pane", which reuses an existing browser pane before splitting a new one
+  - [ ] Browser: `NSAllowsArbitraryLoadsInWebContent` in Info.plist so plain-http dev servers on the LAN load; check a signed build loads a page with no new entitlement
+  - [ ] Browser: docs/03-TILES.md § 8 and tests for the record round-trip and restore
