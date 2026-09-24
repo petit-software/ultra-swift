@@ -120,6 +120,25 @@ struct NewProjectSheet: View {
         }
     }
 
+    /// Where the project goes, as the appearance button's twin: the same glyph size in the
+    /// same box with no plate under it, so the two rows end in one column of icons rather
+    /// than an icon above a capsule with a word in it.
+    ///
+    /// Still a `Button` with a title, so VoiceOver and Full Keyboard Access get "Choose
+    /// Location…" even though only the folder is drawn.
+    private var chooseParentButton: some View {
+        Button(action: chooseParent) {
+            Label("Choose Location…", systemImage: "folder.fill")
+                .labelStyle(.iconOnly)
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(Token.Colour.secondaryLabel)
+                .frame(width: 24, height: 18)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("Choose the folder the project goes in")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             modeTabs
@@ -148,17 +167,16 @@ struct NewProjectSheet: View {
                 }
 
                 LabeledContent("Location") {
-                    HStack(spacing: 6) {
+                    // The path sits where the name above it does: a grouped form writes its
+                    // field's text against the trailing edge, so the path is pushed there
+                    // too, the same 8pt from its icon.
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
                         Text(abbreviated(parent))
                             .lineLimit(1)
                             .truncationMode(.head)
                             .help(parent.path)
-                        Spacer(minLength: 0)
-                        // Rounded, like every other button in the sheet — a square one here
-                        // was the only corner in the dialog that was not.
-                        Button("Choose…", action: chooseParent)
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.capsule)
+                        chooseParentButton
                     }
                 }
 
