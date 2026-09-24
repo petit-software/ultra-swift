@@ -50,7 +50,7 @@ struct SessionSidebar: View {
                            canClose: sessions.canCloseSelected,
                            select: { sessions.select(store.workspaceID) },
                            rename: { sessions.rename(store.workspaceID, to: $0) },
-                           close: { sessions.close(store.workspaceID) })
+                           close: { ui.closingSessionID = store.workspaceID })
                     .tag(store.workspaceID)
             }
             // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
@@ -307,7 +307,8 @@ private struct SessionRow: View {
             }
             // Reserved whether or not anything is in it. Without the frame the name beside
             // it would reflow every time an agent started or a pointer arrived.
-            .frame(width: 16)
+            // Height too, so the X and a badge of another height cannot move the row.
+            .frame(width: 16, height: 16)
         }
         // The WHOLE row, gaps included. Without it the hit area is the icon and the text
         // and nothing else, so the empty space between the name and the close button — most

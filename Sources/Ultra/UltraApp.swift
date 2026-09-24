@@ -376,9 +376,7 @@ struct WorkspaceCommands: Commands {
 
                 Divider()
 
-                Button("Close Session") {
-                    if let id = sessions?.selectedID { sessions?.close(id) }
-                }
+                Button("Close Session…") { ui?.closingSessionID = sessions?.selectedID }
                 .keyboardShortcut("w", modifiers: [.command, .control, .shift])
                 .disabled(!(sessions?.canCloseSelected ?? false))
             }
@@ -736,6 +734,18 @@ struct RootView: View {
                 NewProjectSheet(open: { sessions.open(directory: $0) },
                                 isPresented: $ui.isCreatingProject)
             }
+            // Here, like the sheet above, so it answers the sidebar, the belt and the File
+            // menu alike. Escape cancels. The Close button is destructive and nothing more:
+            // made the default action as well, it came out blue with red text.
+            .alert(closingSessionTitle, isPresented: isConfirmingClose) {
+                Button("Close Session", role: .destructive) {
+                    if let id = ui.closingSessionID { sessions.close(id) }
+                    ui.closingSessionID = nil
+                }
+                Button("Cancel", role: .cancel) { ui.closingSessionID = nil }
+            } message: {
+                Text("Its shells and agents stop. The project folder is not touched.")
+            }
             // In the real toolbar rather than drawn into the titlebar ourselves: on macOS 26
             // a toolbar item gets the standard Liquid Glass treatment automatically, which
             // is the same glass Finder's toolbar buttons wear. Nothing to style by hand.
@@ -824,6 +834,21 @@ struct RootView: View {
 }
 
 extension RootView {
+    /// Whether the close question is up. Setting it false — Escape, or either button —
+    /// forgets the session it was about.
+    private var isConfirmingClose: Binding<Bool> {
+        Binding(get: { ui.closingSessionID != nil },
+                set: { if !$0 { ui.closingSessionID = nil } })
+    }
+
+    /// Names the session, so the question is never about "this" when the pointer has
+    /// already moved on to another row.
+    private var closingSessionTitle: String {
+        let title = sessions.sessions.first { $0.workspaceID == ui.closingSessionID }?
+            .workspaceTitle
+        return title.map { "Close “\($0)”?" } ?? "Close this session?"
+    }
+
     /// The command palette and the scrim under it.
     ///
     /// Two transitions: the scrim fades, the palette SCALES — from 96% up to full, with a

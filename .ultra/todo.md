@@ -63,3 +63,7 @@
   - [x] Browser: each pane shows its page light or dark (footer moon, ⌃⌘L); dark uses the page's own dark theme or inverts one that has none; saved with the pane
   - [x] Canvas: a pane can pin its own appearance (`PaneRecord.appearance`); a browser pane's surface, header and glass follow its page's mode
   - [x] Canvas: a store change no longer pulls the keyboard out of a pane that already has it (a page's form lost the caret to the address field); a focused browser pane gives the keyboard to its page
+  - [x] Browser: Show Web Inspector (⌥⌘I) and Empty Caches (caches only, logins stay) — Pane ▸ Browser, the palette, and footer buttons
+- [x] Tab belt: tabs 6pt taller, sized to their names, the X takes the session icon's place on hover, no agent status on tabs
+- [x] Tab belt: drag a tab along the belt to reorder sessions — an in-window drag (no pasteboard), an empty pill where it will land, Escape or a release off the belt puts it back, the belt scrolls at its ends, the order is saved once on release
+- [x] Sessions: closing one asks first — sidebar, tab belt, context menus and File ▸ Session ▸ Close Session…; the tab and row icon slots are a fixed 16×16 so the X never moves them

@@ -32,6 +32,13 @@ final class UIState {
     /// because it decides WHICH view presents the customise sheet: the sidebar's selected
     /// row, or the belt's selected tab. Both answering the one flag would stack two sheets.
     var showsTabBelt = false
+    /// The session waiting on "Close this session?", or nil.
+    ///
+    /// Every way to close one — the X on a sidebar row or a belt tab, their context menus,
+    /// File ▸ Session ▸ Close Session — asks through this, so there is one question with
+    /// one wording, presented by the window whichever list is on screen. Closing stops the
+    /// session's shells and agents, which no undo brings back.
+    var closingSessionID: UUID?
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding
