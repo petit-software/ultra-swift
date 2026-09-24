@@ -49,6 +49,7 @@
   - [x] Canvas: the belt floats over the canvas, which leaves room through an AppKit inset — panes move once, not per animation frame
   - [x] Canvas: bounds reach the store once they settle, which is also when every PTY gets its final size
   - [x] Sessions: the agent list is read from disk when Customize opens, not on every row redraw
+  - [x] Sessions: belt tabs are semibold in both states, so a tab keeps its width when selected and the belt no longer slides on a switch
 - [x] Agents: agent panes run in an interactive login shell, so `claude` on a PATH set in `.zshrc` is found; exit codes show as 127, not 32512
 - [ ] Browser pane: a pane that opens a URL
   - [x] Browser: `PaneRecord.Kind.browser`, and a pure `BrowserAddress` that turns typed text into a URL (`localhost:3000` → http, `example.com` → https, junk → nil) with tests
@@ -61,3 +62,4 @@
   - [x] Browser: docs/03-TILES.md § 8 and tests for the record round-trip and restore
   - [x] Browser: each pane shows its page light or dark (footer moon, ⌃⌘L); dark uses the page's own dark theme or inverts one that has none; saved with the pane
   - [x] Canvas: a pane can pin its own appearance (`PaneRecord.appearance`); a browser pane's surface, header and glass follow its page's mode
+  - [x] Canvas: a store change no longer pulls the keyboard out of a pane that already has it (a page's form lost the caret to the address field); a focused browser pane gives the keyboard to its page

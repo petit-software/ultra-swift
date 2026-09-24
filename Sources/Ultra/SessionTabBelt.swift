@@ -125,9 +125,12 @@ private struct SessionTab: View {
                 .foregroundStyle(SessionTint(storedValue: appearance.tint).color)
                 .frame(width: 16)
 
+            // Semibold in BOTH states. Selection is carried by the glass capsule and the label
+            // colour; a weight change as well made the selected tab wider than it was a
+            // moment ago, and every tab after it slid along the belt on each switch.
             Text(store.workspaceTitle)
                 .font(Token.Type_.body)
-                .fontWeight(isSelected ? .semibold : .regular)
+                .fontWeight(.semibold)
                 .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .lineLimit(1)
 
