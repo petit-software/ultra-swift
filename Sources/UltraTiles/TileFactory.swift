@@ -3,6 +3,7 @@ import SwiftUI
 import UltraChat
 import UltraCore
 import UltraLayout
+import UltraSimulator
 
 /// Builds every pane that is NOT a shell.
 ///
@@ -76,6 +77,20 @@ public final class TileFactory {
     private var pendingBrowse: URL?
     public func stage(browse url: URL?) { pendingBrowse = url }
 
+    /// Each simulator pane's device and screen, held here for the same reason: the
+    /// connection to the device's framebuffer must outlive the view showing it.
+    private var simulators: [PaneID: SimulatorSession] = [:]
+
+    /// This pane's simulator, or nil for a pane that is not one.
+    public func simulatorSession(for paneID: PaneID) -> SimulatorSession? { simulators[paneID] }
+
+    /// Which panes are simulators, so the app can find one to put a device on.
+    public func simulatorPanes() -> Set<PaneID> { Set(simulators.keys) }
+
+    /// The device the next simulator pane should open on, by UDID. Consumed once.
+    private var pendingSimulator: String?
+    public func stage(simulator udid: String?) { pendingSimulator = udid }
+
     /// Which panes are editors, so the app can find one to send a file to.
     public func editorPanes() -> Set<PaneID> { Set(sessions.keys) }
 
@@ -86,7 +101,7 @@ public final class TileFactory {
     public var onRecordChange: ((PaneID, PaneRecord) -> Void)?
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser]
+    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser, .simulator]
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? records[paneID]?.kind
@@ -175,6 +190,26 @@ public final class TileFactory {
                                             isDark: session.isDark, root: root)
             records[paneID] = record
             return (view, record)
+        case .simulator:
+            // A staged device wins; a restored pane reopens the device it was on.
+            let session = simulators[paneID] ?? SimulatorSession(
+                udid: pendingSimulator ?? records[paneID]?.command)
+            pendingSimulator = nil
+            simulators[paneID] = session
+            // Screenshots go beside the project's todo and chats, and their path is typed
+            // at the shell's prompt, which is how the agent gets to see them.
+            session.screenshotFolder = context.projectRoot.appendingPathComponent(".ultra", isDirectory: true)
+            session.sendToShell = context.injectIntoShell
+            session.onChange = { [weak self] device in
+                self?.noteSimulator(paneID, device: device, root: root)
+            }
+            view = SimulatorHostingView(tile: SimulatorTile(context: paneContext, session: session),
+                                        session: session)
+            view.setAccessibilityLabel("Simulator")
+            hosts[paneID] = view
+            let record = Self.simulatorRecord(device: session.device, root: root)
+            records[paneID] = record
+            return (view, record)
         default:
             return nil
         }
@@ -190,6 +225,27 @@ public final class TileFactory {
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
         browsers.removeValue(forKey: paneID)?.close()
+        simulators.removeValue(forKey: paneID)?.close()
+    }
+
+    /// Keep a simulator pane's header on its device, and its record on the device's UDID,
+    /// so a restored workspace reopens on the same one.
+    private func noteSimulator(_ paneID: PaneID, device: SimulatorDevice?, root: URL) {
+        let record = Self.simulatorRecord(device: device, root: root)
+        guard records[paneID] != record else { return }
+        records[paneID] = record
+        onRecordChange?(paneID, record)
+    }
+
+    /// `command` carries the device's UDID, the way it carries a browser's URL. The title
+    /// is the device's name, falling back to "Simulator"; the subtitle is its runtime.
+    public static func simulatorRecord(device: SimulatorDevice?, root: URL) -> PaneRecord {
+        PaneRecord(kind: .simulator,
+                   title: device?.name ?? "Simulator",
+                   subtitle: device.map(\.runtimeName).flatMap { $0.isEmpty ? nil : $0 },
+                   icon: device?.isTablet == true ? "ipad" : icon(for: .simulator),
+                   cwd: root.path,
+                   command: device?.udid)
     }
 
     /// Keep a browser pane's header on the page's title and host, and its record on the
@@ -295,6 +351,7 @@ public final class TileFactory {
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
         browsers.removeValue(forKey: paneID)?.close()
+        simulators.removeValue(forKey: paneID)?.close()
     }
 
     public static func record(for kind: PaneRecord.Kind,
@@ -321,6 +378,7 @@ public final class TileFactory {
         case .context: "Context"
         case .chat: "Chat"
         case .browser: "Browser"
+        case .simulator: "Simulator"
         default: abbreviate(root.path)
         }
     }
@@ -348,6 +406,7 @@ public final class TileFactory {
         case .context: "paperclip"
         case .chat: "text.bubble"
         case .browser: "globe"
+        case .simulator: "iphone"
         case .agent: "sparkles"
         case .shell, .placeholder: "apple.terminal"
         }

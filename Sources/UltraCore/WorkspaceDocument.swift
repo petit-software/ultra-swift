@@ -14,7 +14,7 @@ import UltraLayout
 public struct PaneRecord: Codable, Equatable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case shell, agent, fileTree, editor, todo, ports, resources, git, context, chat, browser,
-             placeholder
+             simulator, placeholder
     }
 
     /// Both kinds the shell factory owns.

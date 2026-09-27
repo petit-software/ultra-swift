@@ -160,7 +160,8 @@ $ printf '{"verb":"open","path":"Sources/Main.swift","line":42}\n' | nc -U "$ULT
 {"ok":true}
 ```
 
-- **Verbs are a closed set** — `open` and `reveal` today. No `eval`, no "run this command":
+- **Verbs are a closed set** — `open`, `reveal`, `browse` (a web page in a Browser pane,
+  `http` and `https` only) and `simulator` (§ 9). No `eval`, no "run this command":
   the agent already has a shell, and a verb list that grows without review is an injection
   surface rather than a feature.
 - **A socket, not escape sequences.** An escape sequence lives in scrollback and replays
@@ -366,8 +367,60 @@ goes in a second pane.
   layout. Open Location opens a browser pane when there is none. File ▸ New Tile Pane ▸
   Browser is ⌥⌘B. In the address field, Return loads the page and gives it the keyboard,
   and Escape puts the address back.
+- The agent's `browse` verb — `{"verb":"browse","url":"localhost:3000"}` on the control
+  socket — shows a page the same way, through the address field's own rules, so the dev
+  server an agent just started lands beside it without a click. `file:` and custom schemes
+  are refused: a process that cannot see the screen does not get to open them.
 - Ports rows open a server in a browser pane, reusing the one already open (the globe
   button), or in the default browser (Safari's compass).
+
+## 9. Simulator
+
+An Apple simulator in a pane, live: the screen, the pointer as a finger, the keyboard as
+the device's keyboard. For the app the agent just built — one device per pane, and a second
+device is a second pane. Not the Simulator app, which Xcode 27 no longer ships anyway.
+
+- **Two paths to the device, on purpose.** Listing, booting, shutting down, appearance,
+  URLs and the fallback screenshot go through `xcrun simctl` (`SimulatorControl`), which is
+  Apple's supported surface. The screen and touches go through Xcode's private CoreSimulator
+  and SimulatorKit (`SimulatorFrameworks`), because nothing else can do them: `simctl` has no
+  touch verb, and there is no window to mirror.
+- **The private path is loaded, never linked.** Both frameworks are `dlopen`ed by path, every
+  class is looked up by name and every selector checked with `responds(to:)`. They are
+  Apple-signed, which the hardened runtime's library validation permits, so no entitlement is
+  added. A machine without Xcode, or an Xcode that moves a class, gets a pane that still boots,
+  lists and screenshots and says why it is not live. Xcode's own Previews and Meta's idb drive
+  devices through the same classes.
+- **The screen is the device's framebuffer.** The device's `SimDisplayIOSurfaceRenderable`
+  port hands over the `IOSurface` its compositor renders into; `SimulatorDisplayView` sets it
+  as a layer's contents and re-sets it on every damage callback. No copy, no permission
+  prompt, and it works for a device booted with no window at all. Rotation is a layer
+  transform on the port's `displayAngle`.
+- **Touches are Indigo messages** built by SimulatorKit's exported C functions and sent
+  through `SimDeviceLegacyHIDClient`. The one place the wire format is known is the
+  single-touch envelope (`SimulatorInput.touchMessage`), copied from idb because SimulatorKit
+  only builds multi-touch messages. A click is a finger: down, dragged, up, as ratios of the
+  screen. Keys go by hardware-independent keycode. Home and Lock are hardware buttons.
+- **`SimulatorSession`** is owned by the tile factory like a browser's page: the device, its
+  state, the display connection and the touch client survive a pane rebuild. It polls the
+  device list every two seconds while the pane is showing (`TilePolling`), and connects to
+  the screen when its device is booted.
+- The record keeps the device's UDID in `command`, its name as the pane's title and its
+  runtime as the subtitle, so a restored workspace reopens on the same device — and says so
+  when that device has since been deleted.
+- **Screenshot** writes a PNG to the project's `.ultra/screenshots/` and types its path at
+  the shell's prompt: what is on screen, in front of the agent, in one press.
+- Commands: Pane ▸ Simulator ▸ Home (⇧⌘H), Lock, Boot Device, Shut Down Device, Take
+  Screenshot, Toggle Dark Appearance. The footer adds Open URL on Device…. File ▸ New Tile
+  Pane ▸ Simulator is ⌥⌘P. A focused pane on a live device gives the keyboard to the screen.
+- **The agent's verb.** `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}`
+  on the control socket shows that device — the pane already on it, else the focused
+  simulator pane, else a new one — boots it if it is shut down, and launches the app once it
+  is up. The device is a name or a UDID; a name prefers a booted device. The agent installs
+  with `simctl` in its own shell; the verb only puts the device on screen.
+- **Live tests.** `ULTRA_SIM_LIVE=1 swift test --filter SimulatorLiveTests` runs the
+  private-API bridge against whatever device is booted: framebuffer, damage callbacks, a tap
+  that opens an app, Home. Off by default, since it touches a real device.
 
 ## Sandboxing consequence
 

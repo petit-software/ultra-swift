@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "UltraTerminal", targets: ["UltraTerminal"]),
         .library(name: "UltraCanvas", targets: ["UltraCanvas"]),
         .library(name: "UltraChat", targets: ["UltraChat"]),
+        .library(name: "UltraSimulator", targets: ["UltraSimulator"]),
         .executable(name: "Ultra", targets: ["Ultra"]),
     ],
     dependencies: [
@@ -37,12 +38,18 @@ let package = Package(
         // and the conversations on disk. Foundation only — no UI, nothing of ours — so
         // every provider is tested against a recorded transcript rather than a network.
         .target(name: "UltraChat"),
+        // Apple's simulators: the device list and verbs through `simctl`, and the live screen
+        // and touches through Xcode's CoreSimulator and SimulatorKit, loaded at runtime. The
+        // one private-API surface in the app, kept in its own target so its blast radius is
+        // one pane — see docs/03-TILES.md § 9. AppKit and IOSurface only; nothing of ours.
+        .target(name: "UltraSimulator"),
         // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
         // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
-        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat"]),
+        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat", "UltraSimulator"]),
         .executableTarget(name: "Ultra",
                           dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal",
                                          "UltraTiles", "UltraLayout", "UltraDesign", "UltraChat",
+                                         "UltraSimulator",
                                          .product(name: "Sparkle", package: "Sparkle")]),
         .testTarget(name: "UltraLayoutTests", dependencies: ["UltraLayout"]),
         .testTarget(name: "UltraDesignTests", dependencies: ["UltraDesign"]),
@@ -51,5 +58,6 @@ let package = Package(
         .testTarget(name: "UltraTerminalTests", dependencies: ["UltraTerminal", "UltraLayout", "UltraDesign"]),
         .testTarget(name: "UltraTilesTests", dependencies: ["UltraTiles", "UltraCore"]),
         .testTarget(name: "UltraChatTests", dependencies: ["UltraChat"]),
+        .testTarget(name: "UltraSimulatorTests", dependencies: ["UltraSimulator"]),
     ]
 )

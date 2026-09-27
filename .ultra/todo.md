@@ -1,3 +1,4 @@
+- [x] Add suport for agent to open a simulator inside the pane.
 - [x] New folder / clone repository Chose... folder should be an cion exactly as icon picker
 - [x] Todo: a draft starting with `#` makes a section (or selects an existing one); new tasks then land in it
 - [x] Todo: section headings are rows — rename, remove (tasks stay), click to target, drop a task on one
@@ -58,7 +59,7 @@
   - [x] Browser: registered in `PaneKind.all` (globe), the tile factory and the pane header; the record keeps the URL in `command`, the page title as title and the host as subtitle, so a restored workspace reopens the page
   - [x] Browser: Pane ▸ Browser commands in the palette — Open Location (⌘L), Reload (⌘R), Back (⌘[), Forward (⌘]), Open in Default Browser; New Browser Pane is ⌥⌘B
   - [x] Browser: Ports rows get "Open in Browser Pane", which reuses an existing browser pane before splitting a new one
-  - [ ] Browser: `NSAllowsArbitraryLoadsInWebContent` in Info.plist so plain-http dev servers on the LAN load; check a signed build loads a page with no new entitlement
+  - [x] Browser: `NSAllowsArbitraryLoadsInWebContent` in Info.plist so plain-http dev servers on the LAN load; check a signed build loads a page with no new entitlement
   - [x] Browser: docs/03-TILES.md § 8 and tests for the record round-trip and restore
   - [x] Browser: each pane shows its page light or dark (footer moon, ⌃⌘L); dark uses the page's own dark theme or inverts one that has none; saved with the pane
   - [x] Canvas: a pane can pin its own appearance (`PaneRecord.appearance`); a browser pane's surface, header and glass follow its page's mode
@@ -67,3 +68,18 @@
 - [x] Tab belt: tabs 6pt taller, sized to their names, the X takes the session icon's place on hover, no agent status on tabs
 - [x] Tab belt: drag a tab along the belt to reorder sessions — an in-window drag (no pasteboard), an empty pill where it will land, Escape or a release off the belt puts it back, the belt scrolls at its ends, the order is saved once on release
 - [x] Sessions: closing one asks first — sidebar, tab belt, context menus and File ▸ Session ▸ Close Session…; the tab and row icon slots are a fixed 16×16 so the X never moves them
+
+## Simulator previews in Pane
+- [x] Simulator: `PaneRecord.Kind.simulator`; the record keeps the device UDID in `command`, the device name as title and the runtime as subtitle, so a restored workspace reopens the same device
+- [x] Simulator: `SimulatorDevices` — a pure parser of `xcrun simctl list devices --json` into devices grouped by runtime, booted first, with a fixture and tests
+- [x] Simulator: `SimulatorSession` owned by `TileFactory` like a browser's page — the device, its state, the current frame and the last error survive a pane rebuild
+- [x] Simulator: `UltraSimulator` target — CoreSimulator and SimulatorKit loaded with `dlopen` and driven through the ObjC runtime behind a `SimulatorBackend` protocol; `SimServiceContext` → default device set → `SimDevice`; every selector checked with `responds(to:)`, and a failed load degrades to a `simctl io screenshot` poll instead of crashing
+- [x] Simulator: display — the device's `SimDisplayIOSurfaceRenderable` port gives `framebufferSurface` (an IOSurface) plus damage, surface-change and rotation callbacks; a `SimulatorDisplayView` sets it as its layer's contents (zero copy) and redraws on damage
+- [x] Simulator: touch and keys — `SimDeviceLegacyHIDClient(initWithDevice:)` and `sendWithMessage:`, messages built by SimulatorKit's exported `IndigoHIDMessageForMouseNSEvent`, `IndigoHIDMessageForKeyboardNSEvent` and `IndigoHIDMessageForButton` (home, lock, volume); pane points mapped to device pixels through the display's size and rotation
+- [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls
+- [x] Simulator: `SimulatorTile` — device picker on top, the live display aspect-fit as the content layer, errors in the notice bar (no Xcode, device shut down, framework failed to load), footer buttons: Boot / Shut Down, Home, Rotate, Screenshot to Context (via the `SimScreenCaptureService` port), Light / Dark, Open URL
+- [x] Simulator: registered in `PaneKind.all` (iphone), the tile factory and the pane header; New Simulator Pane is ⌥⌘P; Pane ▸ Simulator commands in the palette
+- [x] Simulator: the agent channel gets a `simulator` verb — device name or UDID, optional app bundle id — that boots the device if needed and shows it in the pane already on it, else the focused simulator pane, else a new one; `path` becomes optional on `AgentRequest`; refused for a device that does not exist
+- [x] Agents: a `browse` verb on the control socket shows a web page in a Browser pane, `http` and `https` only; the AGENTS.md section lists every verb one per line
+- [x] Simulator: the AGENTS.md section tells the agent about `ULTRA_AGENT_SOCK` and the `open`, `reveal` and `simulator` verbs — today it does not mention the socket at all
+- [x] Simulator: docs/03-TILES.md § 9, tests for the parser, the record round-trip and the verb; the framebuffer and HID probes become an integration test that runs when a device is booted; check a Developer ID build with the hardened runtime loads both frameworks (ad-hoc runtime signing already does)

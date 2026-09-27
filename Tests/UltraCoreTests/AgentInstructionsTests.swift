@@ -35,6 +35,11 @@ struct AgentInstructionsTests {
         #expect(text.contains("`docs/TODO.md`"))
         #expect(text.contains("`.ultra/context.json`"))
         #expect(text.contains("`.ultra/chats/`"))
+        // The agent is told about the socket and every verb, or it will never use them.
+        #expect(text.contains("ULTRA_AGENT_SOCK"))
+        for verb in ["open", "reveal", "browse", "simulator"] {
+            #expect(text.contains("\"verb\":\"\(verb)\""), "the section shows \(verb)")
+        }
     }
 
     /// An agent reads this on every prompt. Length is a cost, and one that creeps.

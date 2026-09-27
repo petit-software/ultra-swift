@@ -2,6 +2,7 @@ import SwiftUI
 import UltraCanvas
 import UltraCore
 import UltraLayout
+import UltraSimulator
 import UltraTiles
 
 /// Every pane verb, declared once.
@@ -13,7 +14,7 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + chat + editor + browser + paneKinds + folders
+                                 + layouts + chat + editor + browser + simulator + paneKinds + folders
 
     /// The two verbs a chat pane has that a keystroke should reach: another thread, and
     /// stop. Both act on the focused pane and dim when it is not a chat.
@@ -91,6 +92,52 @@ enum PaneCommands {
                    symbol: "safari", menuPath: ["Pane", "Browser"],
                    isEnabled: { ShellWorkspace.browserSession(in: $0)?.requestedURL != nil }) {
             ShellWorkspace.browserSession(in: $0)?.openInDefaultBrowser()
+        },
+    ]
+
+    /// A simulator pane's verbs. They act on the simulator pane a device would open in —
+    /// the focused one, else the first — and dim when there is none.
+    ///
+    /// ⇧⌘H is Home, the key the Simulator app has always used. The rest have no chord: a
+    /// pane's worth of device buttons is found in the palette, not memorised.
+    static let simulator: [AppCommand] = [
+        AppCommand(id: "simulator.home", title: "Home", symbol: "house",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("h", [.command, .shift]),
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canPress ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.pressHome()
+        },
+        AppCommand(id: "simulator.lock", title: "Lock", symbol: "lock",
+                   menuPath: ["Pane", "Simulator"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canPress ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.pressLock()
+        },
+        AppCommand(id: "simulator.boot", title: "Boot Device", symbol: "power",
+                   menuPath: ["Pane", "Simulator"],
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.device != nil && !session.isBooted && !session.isBusy
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.boot()
+        },
+        AppCommand(id: "simulator.shutdown", title: "Shut Down Device", symbol: "power.circle",
+                   menuPath: ["Pane", "Simulator"],
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.isBooted && !session.isBusy
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.shutdown()
+        },
+        AppCommand(id: "simulator.screenshot", title: "Take Screenshot", symbol: "camera",
+                   menuPath: ["Pane", "Simulator"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.isBooted ?? false }) { store in
+            guard let session = ShellWorkspace.simulatorSession(in: store) else { return }
+            Task { await session.takeScreenshot() }
+        },
+        AppCommand(id: "simulator.appearance", title: "Toggle Dark Appearance", symbol: "moon",
+                   menuPath: ["Pane", "Simulator"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.isBooted ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.toggleAppearance()
         },
     ]
 
@@ -340,6 +387,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Browser") {
                 ForEach(PaneCommands.browser) { item($0) }
+            }
+            Menu("Simulator") {
+                ForEach(PaneCommands.simulator) { item($0) }
             }
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }

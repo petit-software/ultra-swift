@@ -4,6 +4,7 @@ import UltraCanvas
 import UltraCore
 import UltraDesign
 import UltraLayout
+import UltraSimulator
 import UltraTerminal
 import UltraTiles
 
@@ -273,6 +274,24 @@ enum ShellWorkspace {
             return store.tree.paneIDs.first { browsers.contains($0) }
         }
 
+        /// The simulator pane a device should show in: the focused pane when it is one,
+        /// otherwise the pane already on that device, otherwise the first simulator pane.
+        /// Nil when there is none, which is the caller's cue to make one.
+        @MainActor static func simulatorTarget(in workspaceID: UUID, device udid: String? = nil) -> PaneID? {
+            guard let store = stores[workspaceID], let tiles = tiles[workspaceID] else {
+                return nil
+            }
+            let simulators = tiles.simulatorPanes()
+            let focused = store.tree.focused
+            if simulators.contains(focused) { return focused }
+            if let udid, let onDevice = store.tree.paneIDs.first(where: {
+                simulators.contains($0) && tiles.simulatorSession(for: $0)?.udid == udid
+            }) {
+                return onDevice
+            }
+            return store.tree.paneIDs.first { simulators.contains($0) }
+        }
+
         /// Where a new tile should point: the working directory of the shell a tile would
         /// type into. Pane records carry the LIVE cwd — a shell reports its directory as it
         /// changes — so this follows `cd`.
@@ -441,6 +460,38 @@ enum ShellWorkspace {
         openTile(.browser, in: store)
     }
 
+    /// The device a Simulator command should act on: the simulator pane a device would
+    /// open in. Nil when there is none, and the menu items say so by dimming.
+    static func simulatorSession(in store: LayoutStore) -> SimulatorSession? {
+        guard let target = Registry.simulatorTarget(in: store.workspaceID) else { return nil }
+        return Registry.tiles[store.workspaceID]?.simulatorSession(for: target)
+    }
+
+    /// Show a device in a simulator pane: the one already on it, else the one already
+    /// open, else a new one — the browser's rule, for the browser's reason.
+    static func showSimulator(_ device: SimulatorDevice, launching app: String? = nil,
+                              in store: LayoutStore) {
+        if let target = Registry.simulatorTarget(in: store.workspaceID, device: device.udid),
+           let session = Registry.tiles[store.workspaceID]?.simulatorSession(for: target) {
+            session.show(device, launching: app)
+            store.focus(target)
+            return
+        }
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        Registry.tiles[store.workspaceID]?.stage(simulator: device.udid)
+        stageTile(.simulator, for: store)
+        if !store.split(edge: edge) {
+            stageTile(nil, for: store)
+            Registry.tiles[store.workspaceID]?.stage(simulator: nil)
+            return
+        }
+        // Built now, so the agent's app launches on a pane that exists.
+        _ = store.surfaces.surfaceRecord(for: store.tree.focused)
+        if let session = Registry.tiles[store.workspaceID]?.simulatorSession(for: store.tree.focused) {
+            session.show(device, launching: app)
+        }
+    }
+
     /// The chat the focused pane holds, or nil when the focused pane is not a chat.
     ///
     /// Only the FOCUSED pane. An editor command reaches for the editor last worked in
@@ -482,9 +533,32 @@ enum ShellWorkspace {
         }
         switch resolved.verb {
         case .open:
-            openEditor(on: resolved.url, in: store)
+            guard let url = resolved.url else { return .failure("open needs a path") }
+            openEditor(on: url, in: store)
         case .reveal:
-            NSWorkspace.shared.activateFileViewerSelecting([resolved.url])
+            guard let url = resolved.url else { return .failure("reveal needs a path") }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        case .simulator:
+            guard let query = resolved.device else { return .failure("simulator needs a device") }
+            guard SimulatorControl.hasXcode else { return .failure("Xcode is not installed") }
+            // The list is fetched here, synchronously, because the reply has to say whether
+            // the device exists. A second at most, on the socket's own thread.
+            let listing = SimulatorControl.runSync("/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], timeout: 15)
+            guard listing.status == 0,
+                  let devices = try? SimulatorDeviceList.parse(Data(listing.output.utf8)) else {
+                return .failure("could not list simulators: \(listing.error)")
+            }
+            guard let device = SimulatorDeviceList.find(query, in: devices) else {
+                return .failure("no simulator named \(query)")
+            }
+            showSimulator(device, launching: resolved.app, in: store)
+        case .browse:
+            guard let address = resolved.address else { return .failure("browse needs a url") }
+            guard let url = BrowserAddress.url(from: address),
+                  let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+                return .failure("\(address) is not a web address")
+            }
+            showInBrowser(url, in: store)
         }
         return .success
     }
@@ -638,6 +712,7 @@ struct PaneKind: Identifiable, Sendable {
         PaneKind(kind: .context, title: "Context", symbol: "paperclip"),
         PaneKind(kind: .chat, title: "Chat", symbol: "text.bubble"),
         PaneKind(kind: .browser, title: "Browser", symbol: "globe"),
+        PaneKind(kind: .simulator, title: "Simulator", symbol: "iphone"),
     ]
 
     /// Handed to the canvas so a pane's own icon can offer the list.

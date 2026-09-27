@@ -939,6 +939,8 @@ private struct TileShortcut: ViewModifier {
         case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
         case .chat: content.keyboardShortcut("c", modifiers: [.command, .option])
         case .browser: content.keyboardShortcut("b", modifiers: [.command, .option])
+        // P for phone. ⌥⌘S is the sidebar.
+        case .simulator: content.keyboardShortcut("p", modifiers: [.command, .option])
         default: content
         }
     }

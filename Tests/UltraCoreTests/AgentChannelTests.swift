@@ -16,6 +16,54 @@ struct AgentProtocolTests {
         return root
     }
 
+    @Test("a simulator request names a device and optionally an app")
+    func simulatorRequest() throws {
+        let request = try AgentRequest.decode(line: #"{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}"#)
+        #expect(request.verb == .simulator)
+        #expect(request.path == nil)
+        let resolved = try request.resolve(in: URL(fileURLWithPath: "/nonexistent"))
+        #expect(resolved.device == "iPhone 17")
+        #expect(resolved.app == "com.example.App")
+        #expect(resolved.url == nil)
+    }
+
+    @Test("a simulator request without a device, or with an app that is not a bundle id, is refused")
+    func simulatorRefusals() throws {
+        let root = URL(fileURLWithPath: "/")
+        #expect(throws: AgentRequestError.malformed("simulator needs a device name or UDID")) {
+            try AgentRequest(verb: .simulator).resolve(in: root)
+        }
+        #expect(throws: AgentRequestError.malformed("app must be a bundle identifier")) {
+            try AgentRequest(verb: .simulator, device: "iPhone 17", app: "rm -rf").resolve(in: root)
+        }
+        // An empty app is no app.
+        #expect(try AgentRequest(verb: .simulator, device: "X", app: "  ").resolve(in: root).app == nil)
+    }
+
+    @Test("a browse request carries the address as typed, and only for the web")
+    func browseRequest() throws {
+        let root = URL(fileURLWithPath: "/")
+        let request = try AgentRequest.decode(line: #"{"verb":"browse","url":"localhost:3000/login"}"#)
+        #expect(try request.resolve(in: root).address == "localhost:3000/login")
+        #expect(try AgentRequest(verb: .browse, url: " https://swift.org ").resolve(in: root).address == "https://swift.org")
+        #expect(throws: AgentRequestError.malformed("browse needs a url")) {
+            try AgentRequest(verb: .browse).resolve(in: root)
+        }
+        #expect(throws: AgentRequestError.malformed("browse opens http and https pages only")) {
+            try AgentRequest(verb: .browse, url: "file:///etc/passwd").resolve(in: root)
+        }
+        #expect(throws: AgentRequestError.malformed("browse opens http and https pages only")) {
+            try AgentRequest(verb: .browse, url: "javascript://x").resolve(in: root)
+        }
+    }
+
+    @Test("open without a path is malformed, not a crash")
+    func openNeedsPath() {
+        #expect(throws: AgentRequestError.malformed("empty path")) {
+            try AgentRequest(verb: .open).resolve(in: URL(fileURLWithPath: "/"))
+        }
+    }
+
     @Test("a well-formed line decodes")
     func decoding() throws {
         let request = try AgentRequest.decode(line: #"{"verb":"open","path":"a.swift","line":12}"#)
@@ -25,11 +73,20 @@ struct AgentProtocolTests {
     }
 
     @Test("garbage is refused, not guessed at", arguments: [
-        "", "   ", "not json", "{}", #"{"verb":"eval","path":"x"}"#,
-        #"{"verb":"open"}"#, "[1,2,3]",
+        "", "   ", "not json", "{}", #"{"verb":"eval","path":"x"}"#, "[1,2,3]",
     ])
     func malformedInput(line: String) {
         #expect(throws: (any Error).self) { try AgentRequest.decode(line: line) }
+    }
+
+    /// `path` is optional on the wire since the simulator verb has none, so a bare `open`
+    /// decodes — and is refused one step later, when it is resolved.
+    @Test("open without a path decodes but does not resolve")
+    func openWithoutPath() throws {
+        let request = try AgentRequest.decode(line: #"{"verb":"open"}"#)
+        #expect(throws: AgentRequestError.malformed("empty path")) {
+            try request.resolve(in: URL(fileURLWithPath: "/"))
+        }
     }
 
     @Test("a relative path inside the workspace resolves")
@@ -37,7 +94,7 @@ struct AgentProtocolTests {
         let root = try makeWorkspace()
         defer { try? FileManager.default.removeItem(at: root) }
         let resolved = try AgentRequest(verb: .open, path: "Sources/Main.swift").resolve(in: root)
-        #expect(resolved.url.lastPathComponent == "Main.swift")
+        #expect(resolved.url?.lastPathComponent == "Main.swift")
     }
 
     /// The whole point of the trust model: an escape is REFUSED, not quietly rewritten into
@@ -92,7 +149,7 @@ struct AgentProtocolTests {
 
     @Test("the verb list is closed")
     func verbsAreClosed() {
-        #expect(Set(AgentVerb.allCases.map(\.rawValue)) == ["open", "reveal"],
+        #expect(Set(AgentVerb.allCases.map(\.rawValue)) == ["open", "reveal", "simulator", "browse"],
                 "adding a verb is a deliberate act, not a side effect")
     }
 }
