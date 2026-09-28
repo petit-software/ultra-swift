@@ -39,9 +39,9 @@ public final class SimulatorInput {
 
     private typealias MessageForMouseNSEvent = @convention(c) (
         UnsafeMutablePointer<CGPoint>?, UnsafeMutablePointer<CGPoint>?, UInt32, UInt, CGSize, UInt32
-    ) -> UnsafeMutableRawPointer
-    private typealias MessageForButton = @convention(c) (Int32, Int32, Int32) -> UnsafeMutableRawPointer
-    private typealias MessageForKeyboard = @convention(c) (UInt32, Int32) -> UnsafeMutableRawPointer
+    ) -> UnsafeMutableRawPointer?
+    private typealias MessageForButton = @convention(c) (Int32, Int32, Int32) -> UnsafeMutableRawPointer?
+    private typealias MessageForKeyboard = @convention(c) (UInt32, Int32) -> UnsafeMutableRawPointer?
 
     private let client: AnyObject
     private let mouse: MessageForMouseNSEvent
@@ -93,18 +93,21 @@ public final class SimulatorInput {
     /// A finger at `ratio`, where (0, 0) is the top-left of the screen and (1, 1) the
     /// bottom-right, whatever the device's size or scale.
     public func touch(_ phase: Phase, at ratio: CGPoint) {
-        send(touchMessage(phase: phase, ratio: ratio))
+        guard let message = touchMessage(phase: phase, ratio: ratio) else { return }
+        send(message)
     }
 
     public func press(_ hardware: Button) {
-        send(buttonMessage(hardware, op: Self.opDown))
-        send(buttonMessage(hardware, op: Self.opUp))
+        guard let down = buttonMessage(hardware, op: Self.opDown) else { return }
+        send(down)
+        guard let up = buttonMessage(hardware, op: Self.opUp) else { return }
+        send(up)
     }
 
     /// A key, by the hardware-independent code in `<HIToolbox/Events.h>` — the one
     /// `NSEvent.keyCode` carries.
     public func key(_ keyCode: UInt16, down: Bool) {
-        let message = keyboard(UInt32(keyCode), down ? Self.opDown : Self.opUp)
+        guard let message = keyboard(UInt32(keyCode), down ? Self.opDown : Self.opUp) else { return }
         send(Message(bytes: message, count: malloc_size(message)))
     }
 
@@ -115,8 +118,8 @@ public final class SimulatorInput {
         var count: Int
     }
 
-    private func buttonMessage(_ hardware: Button, op: Int32) -> Message {
-        let message = button(hardware.source, op, Self.hardwareTarget)
+    private func buttonMessage(_ hardware: Button, op: Int32) -> Message? {
+        guard let message = button(hardware.source, op, Self.hardwareTarget) else { return nil }
         return Message(bytes: message, count: malloc_size(message))
     }
 
@@ -129,23 +132,27 @@ public final class SimulatorInput {
     /// does (`SimulatorIndigoHID.touchMessage`). Offsets are those of the packed structs in
     /// idb's `Indigo.h`: the payload at 0x20, the digitizer contact at 0x30 and 0x70 long,
     /// and a second copy of the payload at 0xB0 marked as the repeated contact.
-    private func touchMessage(phase: Phase, ratio: CGPoint) -> Message {
+    ///
+    /// Nil when the builder declines, which it does for any event but a mouse down or up —
+    /// hence a finger that moves is sent as another DOWN at the new point, the way idb
+    /// swipes. Writing into what it returned without looking was a crash on every drag.
+    private func touchMessage(phase: Phase, ratio: CGPoint) -> Message? {
         var point = ratio
         let eventType: UInt = switch phase {
-        case .down: UInt(NSEvent.EventType.leftMouseDown.rawValue)
-        case .moved: UInt(NSEvent.EventType.leftMouseDragged.rawValue)
+        case .down, .moved: UInt(NSEvent.EventType.leftMouseDown.rawValue)
         case .up: UInt(NSEvent.EventType.leftMouseUp.rawValue)
         }
         // A unit size makes the builder's own normalisation the identity: the point is
         // already a ratio.
-        let source = mouse(&point, nil, Self.digitizerTarget, eventType, CGSize(width: 1, height: 1), 0)
+        guard let source = mouse(&point, nil, Self.digitizerTarget, eventType, CGSize(width: 1, height: 1), 0),
+              malloc_size(source) >= 0x30 + 0x70 else { return nil }
         defer { free(source) }
         source.storeBytes(of: Double(ratio.x), toByteOffset: 0x3c, as: Double.self)
         source.storeBytes(of: Double(ratio.y), toByteOffset: 0x44, as: Double.self)
 
         let payloadSize = 0x90, touchSize = 0x70, headerSize = 0x20
         let count = headerSize + payloadSize * 2
-        guard let message = calloc(1, count) else { fatalError("calloc of \(count) bytes failed") }
+        guard let message = calloc(1, count) else { return nil }
         message.storeBytes(of: UInt32(payloadSize), toByteOffset: 0x18, as: UInt32.self)
         message.storeBytes(of: UInt8(2), toByteOffset: 0x1c, as: UInt8.self)          // single touch
         message.storeBytes(of: UInt32(0xB), toByteOffset: 0x20, as: UInt32.self)       // digitizer event

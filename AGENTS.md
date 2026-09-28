@@ -27,6 +27,17 @@ project files you can read and edit directly.
 - Start dev servers in the foreground of this shell rather than daemonising them,
   so they show up in the Ports pane with this pane as their owner.
 
+### Asking the app
+- `$ULTRA_AGENT_SOCK` is a socket: write one line of JSON, read one line back —
+  `printf '%s\n' '{"verb":"open","path":"README.md"}' | nc -U "$ULTRA_AGENT_SOCK"`.
+- `{"verb":"open","path":"src/a.swift","line":12}` opens a file in an Editor pane.
+- `{"verb":"reveal","path":"docs"}` shows a path in Finder.
+- `{"verb":"browse","url":"localhost:3000"}` shows a page in a Browser pane —
+  the dev server you just started, or the docs you are following.
+- `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}` shows that
+  simulator in a Simulator pane, booting it if needed, and launches the app. Build
+  and install with `xcrun simctl` first; the pane only shows the device.
+
 ### Committed and local
 - `.ultra/todo.md` is committed: it is the project's plan.
 - `.ultra/context.json` and `.ultra/chats/` are ignored: bookmarks are per machine

@@ -94,6 +94,41 @@ struct TodoDocumentTests {
         #expect(document.text == sample)
     }
 
+    @Test("clearing completed removes every ticked task line and nothing else")
+    func clearCompleted() {
+        let text = """
+        # Plan
+
+        - [x] shipped
+        - [ ] open
+          - [x] done subtask
+          - [ ] open subtask
+        - [X] also shipped, capital X
+        prose stays
+
+        ## Later
+        - [ ] later
+        """
+        var document = TodoDocument(text: text)
+        #expect(document.completedCount == 3)
+        #expect(document.removeCompleted() == 3)
+        #expect(document.text == """
+        # Plan
+
+        - [ ] open
+          - [ ] open subtask
+        prose stays
+
+        ## Later
+        - [ ] later
+        """)
+        #expect(document.completedCount == 0)
+        // Nothing to clear changes nothing.
+        let before = document.text
+        #expect(document.removeCompleted() == 0)
+        #expect(document.text == before)
+    }
+
     @Test("prose, front matter and code fences are never treated as tasks")
     func doesNotTouchProse() {
         let document = TodoDocument(text: sample)

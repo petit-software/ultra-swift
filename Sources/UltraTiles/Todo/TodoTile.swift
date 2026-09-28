@@ -23,9 +23,11 @@ public struct TodoTile: View {
     @State private var targetSection: String?
     private let context: TileContext
 
-    public init(context: TileContext) {
+    /// The store is the FACTORY's, like an editor's tabs, so a menu command can reach the
+    /// list a pane is showing. A preview passes none and gets one on its root.
+    public init(context: TileContext, store: TodoStore? = nil) {
         self.context = context
-        _store = State(initialValue: TodoStore(root: context.root))
+        _store = State(initialValue: store ?? TodoStore(root: context.root))
     }
 
     public var body: some View {
@@ -158,12 +160,27 @@ public struct TodoTile: View {
         .animation(Token.Motion.chromeFade, value: draftFocused)
     }
 
+    /// The store menu leads; Clear sits beside it. Clear is also Pane ▸ Todo ▸ Clear
+    /// Completed Tasks, so it is not pointer-only.
     private var footer: some View {
         TileFooter(summary: TileFactory.abbreviate(store.url.path), truncation: .head) {
             TileStoreMenu(path: store.url.path,
                           help: "Where this list is stored",
                           choose: chooseLocation,
                           reset: { store.resetLocation() })
+            TileFooterButton(symbol: "clear.fill",
+                             help: clearHelp,
+                             isEnabled: store.document.completedCount > 0) {
+                store.removeCompleted()
+            }
+        }
+    }
+
+    private var clearHelp: String {
+        switch store.document.completedCount {
+        case 0: "Clear Completed Tasks — none are done"
+        case 1: "Clear the completed task"
+        case let count: "Clear \(count) completed tasks"
         }
     }
 

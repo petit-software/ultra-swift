@@ -72,3 +72,77 @@ struct SimulatorDisplayViewTests {
         #expect(!view.acceptsFirstResponder)
     }
 }
+
+/// The enclosure: where Xcode's nine-part frame and its buttons land round a screen.
+@Suite("Device chrome geometry")
+@MainActor
+struct DeviceChromeTests {
+
+    private let sizing = DeviceChrome.Insets(top: 18, left: 18, bottom: 18, right: 18)
+
+    @Test("the body is the screen outset by the frame's sizing")
+    func body() {
+        let layout = DeviceChrome.geometry(screen: CGSize(width: 402, height: 874), sizing: sizing, buttons: [])
+        #expect(layout.size == CGSize(width: 438, height: 910))
+        #expect(layout.body == CGRect(x: 0, y: 0, width: 438, height: 910))
+        #expect(layout.screen == CGRect(x: 18, y: 18, width: 402, height: 874))
+    }
+
+    @Test("side buttons stand proud of the body, and the whole moves to make room")
+    func buttons() {
+        // iPhone 17's: a volume key on the left and the power key on the right, 8pt out.
+        let volume = DeviceChrome.ButtonPlacement(size: CGSize(width: 16, height: 64), anchor: .left,
+                                                  trailing: false, offset: CGPoint(x: 8, y: 221))
+        let power = DeviceChrome.ButtonPlacement(size: CGSize(width: 16, height: 101), anchor: .right,
+                                                 trailing: false, offset: CGPoint(x: -8, y: 262))
+        let layout = DeviceChrome.geometry(screen: CGSize(width: 402, height: 874), sizing: sizing,
+                                           buttons: [volume, power])
+        #expect(layout.size == CGSize(width: 438 + 16, height: 910))
+        #expect(layout.body.minX == 8)
+        #expect(layout.buttons[0] == CGRect(x: 0, y: 221, width: 16, height: 64))
+        #expect(layout.buttons[1] == CGRect(x: 8 + 438 - 8, y: 262, width: 16, height: 101))
+        #expect(layout.screen.minX == CGFloat(8 + 18))
+    }
+
+    @Test("a top button aligned trailing counts from the right")
+    func topTrailing() {
+        let power = DeviceChrome.ButtonPlacement(size: CGSize(width: 60, height: 16), anchor: .top,
+                                                 trailing: true, offset: CGPoint(x: -74, y: 8))
+        let layout = DeviceChrome.geometry(screen: CGSize(width: 100, height: 200), sizing: sizing, buttons: [power])
+        #expect(layout.body.minY == 8)
+        #expect(layout.buttons[0].maxX == layout.body.maxX - 74)
+        #expect(layout.buttons[0].minY == 0)
+    }
+
+    @Test("with an enclosure, touches land only on the screen inside it")
+    func touchesInEnclosure() throws {
+        let view = SimulatorDisplayView(frame: NSRect(x: 0, y: 0, width: 600, height: 800))
+        view.pixelSize = CGSize(width: 1206, height: 2622)
+        let layout = DeviceChrome.geometry(screen: CGSize(width: 402, height: 874), sizing: sizing, buttons: [])
+        let image = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+                                           space: CGColorSpaceCreateDeviceRGB(),
+                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        view.chrome = DeviceChrome(image: image, size: layout.size, screen: layout.screen, screenMask: nil)
+        view.layoutSubtreeIfNeeded()
+        let device = view.fitted
+        let screen = view.screenRect
+        #expect(device.contains(screen) && screen.width < device.width)
+        // The bezel is not the screen.
+        #expect(view.ratio(for: CGPoint(x: device.minX + 2, y: device.midY)) == nil)
+        let centre = try #require(view.ratio(for: CGPoint(x: screen.midX, y: screen.midY)))
+        #expect(abs(centre.x - 0.5) < 0.01 && abs(centre.y - 0.5) < 0.01)
+        let topLeft = try #require(view.ratio(for: CGPoint(x: screen.minX + 0.5, y: screen.maxY - 0.5)))
+        #expect(topLeft.x < 0.01 && topLeft.y < 0.01)
+    }
+
+    @Test("Xcode's iPhone 17 enclosure loads, when Xcode is here")
+    func loadsFromXcode() throws {
+        let profile = "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17.simdevicetype"
+        guard FileManager.default.fileExists(atPath: profile) else { return }
+        let chrome = try #require(DeviceChrome.load(deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17"))
+        #expect(abs(chrome.screen.width - 402) < 0.5)
+        #expect(abs(chrome.screen.height - 874) < 0.5)
+        #expect(chrome.size.width > chrome.screen.width)
+        #expect(chrome.screenMask != nil)
+    }
+}

@@ -121,6 +121,8 @@ public final class SimulatorSession {
                 if fresh != current {
                     device = fresh
                     onChange?(fresh)
+                    // A restored pane learns its device type here, and so its enclosure.
+                    if fresh.deviceType != current.deviceType { applyContents() }
                 }
             } else if let current = device, current.state == .unknown, !list.isEmpty {
                 // A restored device that no longer exists: say so rather than sit on a name.
@@ -203,17 +205,25 @@ public final class SimulatorSession {
             view.pixelSize = display.pixelSize
             view.angle = display.angle
             view.input = input
+            view.chrome = chrome
         } else if let still {
             view.contents = still
             view.pixelSize = CGSize(width: still.width, height: still.height)
             view.angle = 0
             view.input = nil
+            view.chrome = chrome
         } else {
             view.contents = nil
             view.pixelSize = .zero
             view.input = nil
+            view.chrome = nil
         }
         view.frameDidChange()
+    }
+
+    /// The device's enclosure, from Xcode's own artwork for its type.
+    private var chrome: DeviceChrome? {
+        device.flatMap { DeviceChrome.load(deviceType: $0.deviceType) }
     }
 
     /// A screenshot through `simctl`, for a pane that cannot be live.

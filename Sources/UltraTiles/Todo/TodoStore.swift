@@ -131,6 +131,11 @@ public final class TodoStore {
     public func toggle(_ id: Int) { edit { $0.toggle(id) } }
     public func setText(_ text: String, for id: Int) { edit { $0.setText(text, for: id) } }
     public func removeItem(_ id: Int) { edit { $0.removeItem(id) } }
+    /// Every ticked task, gone. Nothing to remove is a no-op that does not touch the file.
+    public func removeCompleted() {
+        guard document.completedCount > 0 else { return }
+        edit { $0.removeCompleted() }
+    }
     public func move(_ id: Int, before target: Int) { edit { $0.move(id, before: target) } }
 
     public func addItem(_ text: String, to section: String? = nil) {

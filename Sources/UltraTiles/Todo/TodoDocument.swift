@@ -371,6 +371,24 @@ public struct TodoDocument: Equatable, Sendable {
         lines.remove(at: id)
     }
 
+    /// Every task line that is ticked, in one edit. Returns how many went.
+    ///
+    /// Only TASK lines, and only done ones: an undone subtask under a done parent stays,
+    /// indent and all, because it is still work — and its indentation is the file's own
+    /// business, the same as when a task is moved. Prose, headings and blank lines are not
+    /// looked at, so a list with its history cleared reads exactly as it did minus the ticks.
+    @discardableResult
+    public mutating func removeCompleted() -> Int {
+        let before = lines.count
+        lines.removeAll { Self.parseTask($0.content)?.done == true }
+        return before - lines.count
+    }
+
+    /// How many tasks are ticked, for the control that clears them.
+    public var completedCount: Int {
+        lines.reduce(0) { $0 + (Self.parseTask($1.content)?.done == true ? 1 : 0) }
+    }
+
     /// Move a task so it sits immediately before `target` — another task's line, or
     /// `lines.count` to put it at the end.
     ///

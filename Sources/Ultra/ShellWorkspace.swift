@@ -460,6 +460,16 @@ enum ShellWorkspace {
         openTile(.browser, in: store)
     }
 
+    /// The list a Todo command should act on: the focused todo pane, else the first one.
+    /// Nil when there is none, and the menu items say so by dimming.
+    static func todoStore(in store: LayoutStore) -> TodoStore? {
+        guard let tiles = Registry.tiles[store.workspaceID] else { return nil }
+        let todos = tiles.todoPanes()
+        let focused = store.tree.focused
+        if todos.contains(focused) { return tiles.todoStore(for: focused) }
+        return store.tree.paneIDs.first { todos.contains($0) }.flatMap { tiles.todoStore(for: $0) }
+    }
+
     /// The device a Simulator command should act on: the simulator pane a device would
     /// open in. Nil when there is none, and the menu items say so by dimming.
     static func simulatorSession(in store: LayoutStore) -> SimulatorSession? {

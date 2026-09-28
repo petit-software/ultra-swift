@@ -241,7 +241,8 @@ extension SimulatorSession {
         let session = SimulatorSession()
         let device = SimulatorDevice(udid: "PREVIEW", name: "iPhone 17",
                                      runtime: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
-                                     state: booted ? .booted : .shutdown)
+                                     state: booted ? .booted : .shutdown,
+                                     deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17")
         session.adoptForPreview(devices: [device,
                                           SimulatorDevice(udid: "PREVIEW-2", name: "iPad mini (A17 Pro)",
                                                           runtime: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",

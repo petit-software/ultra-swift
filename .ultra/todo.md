@@ -1,4 +1,5 @@
 - [x] Add suport for agent to open a simulator inside the pane.
+- [x] Todo: a Clear button in the footer (clear.fill) removes every completed task, with Pane ▸ Todo ▸ Clear Completed Tasks in the menu and the palette
 - [x] New folder / clone repository Chose... folder should be an cion exactly as icon picker
 - [x] Todo: a draft starting with `#` makes a section (or selects an existing one); new tasks then land in it
 - [x] Todo: section headings are rows — rename, remove (tasks stay), click to target, drop a task on one

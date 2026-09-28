@@ -189,6 +189,10 @@ the agent running in the next pane over.
   to survive atomic-replace saves). Reload on change. If the file changed on disk while a local
   edit was in flight (mtime + content hash mismatch), keep both: write the local version and
   surface a non-blocking "reloaded from disk — your edit is in the undo stack" notice.
+- **Clear Completed Tasks** — the `clear.fill` button in the footer, and Pane ▸ Todo in the
+  menu and the palette — removes every ticked task line in one edit and nothing else: an
+  undone subtask under a done parent stays, prose and headings are not looked at. Dimmed when
+  nothing is done. No chord, because it removes lines.
 - **Actions**: toggle, add, remove (a **minus** — one line out of a markdown file, not a
   deletion), reorder by drag, indent/outdent, edit in place, and **Send to shell** — injects the
   task text into the focused shell without submitting.

@@ -14,7 +14,7 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + chat + editor + browser + simulator + paneKinds + folders
+                                 + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
 
     /// The two verbs a chat pane has that a keystroke should reach: another thread, and
     /// stop. Both act on the focused pane and dim when it is not a chat.
@@ -92,6 +92,16 @@ enum PaneCommands {
                    symbol: "safari", menuPath: ["Pane", "Browser"],
                    isEnabled: { ShellWorkspace.browserSession(in: $0)?.requestedURL != nil }) {
             ShellWorkspace.browserSession(in: $0)?.openInDefaultBrowser()
+        },
+    ]
+
+    /// The todo list's one verb that takes the whole list at once. Palette and menu, no
+    /// chord: it removes lines, and a chord that removes lines is a chord that gets hit.
+    static let todo: [AppCommand] = [
+        AppCommand(id: "todo.clearCompleted", title: "Clear Completed Tasks", symbol: "clear.fill",
+                   menuPath: ["Pane", "Todo"],
+                   isEnabled: { (ShellWorkspace.todoStore(in: $0)?.document.completedCount ?? 0) > 0 }) {
+            ShellWorkspace.todoStore(in: $0)?.removeCompleted()
         },
     ]
 
@@ -390,6 +400,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Simulator") {
                 ForEach(PaneCommands.simulator) { item($0) }
+            }
+            Menu("Todo") {
+                ForEach(PaneCommands.todo) { item($0) }
             }
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }

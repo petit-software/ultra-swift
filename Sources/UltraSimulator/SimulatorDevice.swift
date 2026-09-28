@@ -21,15 +21,20 @@ public struct SimulatorDevice: Identifiable, Hashable, Sendable {
     public var runtime: String
     public var state: State
     public var isAvailable: Bool
+    /// The device type, `com.apple.CoreSimulator.SimDeviceType.iPhone-17`: what the
+    /// hardware looks like, and so which enclosure to draw. Empty when not known.
+    public var deviceType: String
 
     public var id: String { udid }
 
-    public init(udid: String, name: String, runtime: String, state: State, isAvailable: Bool = true) {
+    public init(udid: String, name: String, runtime: String, state: State, isAvailable: Bool = true,
+                deviceType: String = "") {
         self.udid = udid
         self.name = name
         self.runtime = runtime
         self.state = state
         self.isAvailable = isAvailable
+        self.deviceType = deviceType
     }
 
     /// "iOS 27.0" from `com.apple.CoreSimulator.SimRuntime.iOS-27-0`: the runtime as a
@@ -65,7 +70,8 @@ public enum SimulatorDeviceList {
                 devices.append(SimulatorDevice(
                     udid: entry.udid, name: entry.name, runtime: runtime,
                     state: SimulatorDevice.State(rawValue: entry.state) ?? .unknown,
-                    isAvailable: entry.isAvailable ?? true))
+                    isAvailable: entry.isAvailable ?? true,
+                    deviceType: entry.deviceTypeIdentifier ?? ""))
             }
         }
         return sorted(devices)
@@ -115,5 +121,6 @@ public enum SimulatorDeviceList {
         var name: String
         var state: String
         var isAvailable: Bool?
+        var deviceTypeIdentifier: String?
     }
 }

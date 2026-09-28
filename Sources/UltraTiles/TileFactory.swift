@@ -63,6 +63,17 @@ public final class TileFactory {
     /// This pane's chat, or nil for a pane that is not one.
     public func chatStore(for paneID: PaneID) -> ChatStore? { chats[paneID] }
 
+    /// Each todo pane's list. Held here so a menu command — Clear Completed Tasks — can
+    /// reach the list the pane is showing rather than open a second store on the same file
+    /// and race the pane's own watcher.
+    private var todos: [PaneID: TodoStore] = [:]
+
+    /// This pane's list, or nil for a pane that is not a todo.
+    public func todoStore(for paneID: PaneID) -> TodoStore? { todos[paneID] }
+
+    /// Which panes are todo lists, so the app can find one for a command.
+    public func todoPanes() -> Set<PaneID> { Set(todos.keys) }
+
     /// Each browser pane's page, held here for the same reason: a pane rebuilt for any
     /// reason must not reload what it was showing.
     private var browsers: [PaneID: BrowserSession] = [:]
@@ -145,7 +156,9 @@ public final class TileFactory {
                 return (view, record)
             }
         case .todo:
-            view = NSHostingView(rootView: TodoTile(context: paneContext))
+            let store = todos[paneID] ?? TodoStore(root: root)
+            todos[paneID] = store
+            view = NSHostingView(rootView: TodoTile(context: paneContext, store: store))
         case .ports:
             view = NSHostingView(rootView: PortsTile(context: paneContext))
         case .resources:
@@ -226,6 +239,7 @@ public final class TileFactory {
         chats.removeValue(forKey: paneID)?.stop()
         browsers.removeValue(forKey: paneID)?.close()
         simulators.removeValue(forKey: paneID)?.close()
+        todos.removeValue(forKey: paneID)
     }
 
     /// Keep a simulator pane's header on its device, and its record on the device's UDID,
@@ -352,6 +366,7 @@ public final class TileFactory {
         chats.removeValue(forKey: paneID)?.stop()
         browsers.removeValue(forKey: paneID)?.close()
         simulators.removeValue(forKey: paneID)?.close()
+        todos.removeValue(forKey: paneID)
     }
 
     public static func record(for kind: PaneRecord.Kind,
