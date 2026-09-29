@@ -28,8 +28,68 @@ public final class SplitCanvasView: NSView {
     /// frame of it, and every one of those is a full canvas layout, a `setFrameSize` on each
     /// terminal and a redraw of its grid — which is what made the belt stutter. A property
     /// set here is one layout pass, however it was animated upstream.
+    ///
+    /// The panes still MOVE smoothly: a change of inset is played out over the belt's own
+    /// slide by a display link inside this view (`presentedInset`), a real layout on each
+    /// frame — the same path a divider drag takes, with the same coalesced PTY resizes.
+    /// Headers stay where headers go because every frame is laid out properly, rather than
+    /// having layers interpolated between two layouts, which slid them about inside panes
+    /// changing height.
     var bottomInset: CGFloat = 0 {
-        didSet { if bottomInset != oldValue { needsLayout = true } }
+        didSet {
+            guard bottomInset != oldValue else { return }
+            animateInset(to: bottomInset)
+        }
+    }
+
+    /// The inset the panes are laid out with right now: `bottomInset`, or on its way there.
+    private var presentedInset: CGFloat = 0
+
+    private struct InsetTween {
+        var from: CGFloat
+        var to: CGFloat
+        var start: CFTimeInterval
+    }
+    private var insetTween: InsetTween?
+    private var insetLink: CADisplayLink?
+
+    /// How long the panes take to make room for the tab belt, or to take it back: the
+    /// belt's own slide, so the two arrive together.
+    static let insetDuration: TimeInterval = Token.Motion.beltDuration
+
+    private func animateInset(to target: CGFloat) {
+        guard window != nil, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            stopInsetTween()
+            presentedInset = target
+            needsLayout = true
+            return
+        }
+        insetTween = InsetTween(from: presentedInset, to: target, start: CACurrentMediaTime())
+        if insetLink == nil {
+            let link = displayLink(target: self, selector: #selector(stepInset(_:)))
+            link.add(to: .main, forMode: .common)
+            insetLink = link
+        }
+    }
+
+    @objc private func stepInset(_ link: CADisplayLink) {
+        guard let tween = insetTween else { stopInsetTween(); return }
+        let t = min(1, (CACurrentMediaTime() - tween.start) / Self.insetDuration)
+        presentedInset = tween.from + (tween.to - tween.from) * Self.easeInOut(t)
+        needsLayout = true
+        if t >= 1 { stopInsetTween() }
+    }
+
+    private func stopInsetTween() {
+        insetLink?.invalidate()
+        insetLink = nil
+        insetTween = nil
+    }
+
+    /// The belt's curve (`Token.Motion.belt`, ease-in-out), so the panes and the strip of
+    /// glass sliding under them keep pace the whole way.
+    static func easeInOut(_ t: CGFloat) -> CGFloat {
+        t < 0.5 ? 2 * t * t : 1 - pow(-2 * t + 2, 2) / 2
     }
 
     /// Watches the window's content layout rect.
@@ -180,7 +240,7 @@ public final class SplitCanvasView: NSView {
     /// material, with the panes floating on it.
     var layoutBounds: CGRect {
         var result = windowLayoutBounds
-        result.size.height = max(0, result.height - bottomInset)
+        result.size.height = max(0, result.height - presentedInset)
         return result
     }
 

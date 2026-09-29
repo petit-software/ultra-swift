@@ -56,7 +56,15 @@ public final class SimulatorSession {
     @ObservationIgnored private var poll: Task<Void, Never>?
     @ObservationIgnored private var pendingApp: String?
 
-    public init(udid: String? = nil) {
+    /// How large the device is drawn, as a multiple of the size that fits the pane. 1 fits.
+    /// Saved with the pane, so a restored workspace shows the device the same size.
+    public private(set) var zoom: CGFloat = 1
+
+    /// The zoom changed: the pane's saved record follows.
+    @ObservationIgnored public var onZoomChange: ((CGFloat) -> Void)?
+
+    public init(udid: String? = nil, zoom: CGFloat = 1) {
+        self.zoom = SimulatorDisplayView.clampZoom(zoom)
         if let udid {
             // A restored pane knows its device before the list is in: a placeholder with
             // the id, replaced by the real entry on the first refresh.
@@ -76,6 +84,9 @@ public final class SimulatorSession {
     public var displayView: SimulatorDisplayView {
         if let madeView { return madeView }
         let view = SimulatorDisplayView(frame: .zero)
+        view.zoom = zoom
+        // A pinch on the screen: kept here, so the menu, the footer and the record follow.
+        view.onZoom = { [weak self] in self?.setZoom($0) }
         madeView = view
         applyContents()
         return view
@@ -144,7 +155,12 @@ public final class SimulatorSession {
             applyContents()
             return
         }
-        if connectedUDID == device.udid, display != nil { return }
+        if connectedUDID == device.udid, let display {
+            // Connected, but not showing the live screen — the device had no framebuffer
+            // yet when it connected, say. Look again rather than wait on a callback.
+            if madeView?.contents == nil || madeView?.input == nil { display.refresh() }
+            return
+        }
         disconnect()
         connectedUDID = device.udid
         let frameworks = SimulatorFrameworks.shared
@@ -156,6 +172,9 @@ public final class SimulatorSession {
                     found.onFrame = { [weak self] in self?.frameArrived() }
                     found.start()
                     isLive = true
+                    // The screen is live from here: a screenshot taken while it was not is
+                    // stale, and must not be shown in its place while the first frame comes.
+                    still = nil
                     liveError = nil
                     do {
                         input = try SimulatorInput(device: handle)
@@ -192,7 +211,14 @@ public final class SimulatorSession {
 
     private func frameArrived() {
         madeView?.frameDidChange()
-        if let display, madeView?.angle != display.angle || madeView?.pixelSize != display.pixelSize {
+        guard let display, let view = madeView else { return }
+        // Re-point the view whenever it is not showing the live surface — not only when the
+        // size or the angle moved. A device just booted connects before it has a
+        // framebuffer, so the pane first shows the screenshot of its boot screen, with
+        // input off; that screenshot is exactly the framebuffer's size, and a size check
+        // alone left the pane on it for good: frozen, and deaf to every click.
+        let surface = display.maskedSurface ?? display.surface
+        if view.contents !== surface || view.angle != display.angle || view.pixelSize != display.pixelSize {
             applyContents()
         }
     }
@@ -206,24 +232,38 @@ public final class SimulatorSession {
             view.angle = display.angle
             view.input = input
             view.chrome = chrome
+            view.cornerMask = cornerMask
         } else if let still {
             view.contents = still
             view.pixelSize = CGSize(width: still.width, height: still.height)
             view.angle = 0
             view.input = nil
             view.chrome = chrome
+            view.cornerMask = cornerMask
         } else {
             view.contents = nil
             view.pixelSize = .zero
             view.input = nil
             view.chrome = nil
+            view.cornerMask = nil
         }
         view.frameDidChange()
     }
 
+    /// Whether the device's enclosure is drawn round its screen. Off while the enclosure
+    /// renders wrongly: the pane shows the bare screen, clipped to the device's own rounded
+    /// corners (`cornerMask`). `DeviceChrome` and its tests stay, ready to turn back on.
+    static let showsEnclosure = false
+
+    /// The device's screen corners, from the same Xcode artwork: every device its own radius.
+    private var cornerMask: CGImage? {
+        device.flatMap { DeviceChrome.cornerMask(deviceType: $0.deviceType) }
+    }
+
     /// The device's enclosure, from Xcode's own artwork for its type.
     private var chrome: DeviceChrome? {
-        device.flatMap { DeviceChrome.load(deviceType: $0.deviceType) }
+        guard Self.showsEnclosure else { return nil }
+        return device.flatMap { DeviceChrome.load(deviceType: $0.deviceType) }
     }
 
     /// A screenshot through `simctl`, for a pane that cannot be live.
@@ -250,14 +290,21 @@ public final class SimulatorSession {
     }
 
     /// The agent's verb: this device, booted if it is not, with an app launched once it is.
-    public func show(_ chosen: SimulatorDevice, launching app: String?) {
+    ///
+    /// Returns why the app did not launch when the device was already up — the agent is
+    /// waiting on the reply and can act on "not installed". A device that has to boot
+    /// first launches the app when it is up, and a failure then lands in the notice bar.
+    @discardableResult
+    public func show(_ chosen: SimulatorDevice, launching app: String?) async -> String? {
         choose(chosen)
-        pendingApp = app
-        if chosen.state.isBooted {
-            if let app { pendingApp = nil; Task { await launch(app) } }
-        } else {
+        guard chosen.state.isBooted else {
+            pendingApp = app
             boot()
+            return nil
         }
+        pendingApp = nil
+        guard let app else { return nil }
+        return await launch(app)
     }
 
     public func boot() {
@@ -295,9 +342,17 @@ public final class SimulatorSession {
     public func pressLock() { input?.press(.lock) }
     public var canPress: Bool { input != nil }
 
-    public func launch(_ app: String) async {
-        guard let device else { return }
-        do { try await SimulatorControl.launch(app, on: device.udid) } catch { self.error = "\(error)" }
+    /// Launch an app by bundle id. Returns, and shows, why not.
+    @discardableResult
+    public func launch(_ app: String) async -> String? {
+        guard let device else { return "no device" }
+        do {
+            try await SimulatorControl.launch(app, on: device.udid)
+            return nil
+        } catch {
+            self.error = "\(error)"
+            return "\(error)"
+        }
     }
 
     public func open(_ url: URL) {
@@ -336,20 +391,46 @@ public final class SimulatorSession {
         let stamp = Self.stamp.string(from: Date())
         let name = device.name.replacingOccurrences(of: "[^A-Za-z0-9]+", with: "-", options: .regularExpression)
         let file = folder.appendingPathComponent("\(name)-\(stamp).png")
-        if let image = display?.snapshot() {
-            guard let destination = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil) else {
-                error = "Could not write the screenshot"; return nil
+        // `simctl` first: read on the CPU straight after a change, the live framebuffer now
+        // and then still holds the screen before it, and a screenshot of what WAS on screen
+        // is worse than one that takes half a second. The framebuffer is the fallback.
+        do {
+            try await SimulatorControl.screenshot(device.udid, to: file)
+        } catch {
+            guard let image = display?.snapshot(),
+                  let destination = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil) else {
+                self.error = "\(error)"; return nil
             }
             CGImageDestinationAddImage(destination, image, nil)
-            guard CGImageDestinationFinalize(destination) else { error = "Could not write the screenshot"; return nil }
-        } else {
-            do { try await SimulatorControl.screenshot(device.udid, to: file) } catch { self.error = "\(error)"; return nil }
+            guard CGImageDestinationFinalize(destination) else { self.error = "Could not write the screenshot"; return nil }
         }
         sendToShell?(file.path)
         return file
     }
 
     public func focusScreen() { focusRequest += 1 }
+
+    // MARK: - Zoom
+
+    public var canZoomIn: Bool { zoom < SimulatorDisplayView.zoomRange.upperBound - 0.001 }
+    public var canZoomOut: Bool { zoom > SimulatorDisplayView.zoomRange.lowerBound + 0.001 }
+    public var isFitted: Bool { abs(zoom - 1) < 0.001 }
+
+    public func zoomIn() { setZoom(SimulatorDisplayView.zoomStep(from: zoom, in: true)) }
+    public func zoomOut() { setZoom(SimulatorDisplayView.zoomStep(from: zoom, in: false)) }
+    public func zoomToFit() { setZoom(1) }
+
+    /// The zoom as the footer says it: "Fit", or a percentage of the fitted size.
+    public var zoomLabel: String { isFitted ? "Fit" : "\(Int((zoom * 100).rounded()))%" }
+
+    private func setZoom(_ value: CGFloat) {
+        // Two places, so a pinch does not write the record at every intermediate step.
+        let next = (SimulatorDisplayView.clampZoom(value) * 100).rounded() / 100
+        guard next != zoom else { return }
+        zoom = next
+        madeView?.zoom = next
+        onZoomChange?(next)
+    }
 
     /// A preview's fixture: devices and a still, with no Xcode asked and no poll started.
     func adoptForPreview(devices: [SimulatorDevice], device: SimulatorDevice?, still: CGImage?) {

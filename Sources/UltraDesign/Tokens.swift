@@ -217,6 +217,16 @@ public enum Token {
             NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : structural
         }
 
+        /// The session tab belt sliding in or out, and the panes making room for it. One
+        /// duration for both — the canvas animates its panes in Core Animation, the belt in
+        /// SwiftUI — so they move as one piece. Ease-in-out on both sides, since a spring in
+        /// one and a curve in the other drift apart mid-way.
+        public static let beltDuration: TimeInterval = 0.28
+        public static let belt = Animation.easeInOut(duration: beltDuration)
+        public static var beltRespectingPreferences: Animation? {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : belt
+        }
+
         /// Chrome answering the pointer: an indicator fading in as the pointer enters a pane.
         ///
         /// Shorter than `structural`, and no spring, because nothing has MOVED — something

@@ -139,8 +139,7 @@ public struct SimulatorTile: View {
     /// Power leads, then the device's buttons, then what to do with the screen. Each is
     /// also on Pane ▸ Simulator, so none is pointer-only.
     private var footer: some View {
-        TileFooter(summary: session.isLive ? "live" : (session.isBooted ? "screenshot" : ""),
-                   summaryHelp: session.liveError) {
+        TileFooter(summary: footerSummary, summaryHelp: session.liveError) {
             if session.isBooted {
                 TileFooterButton(symbol: "power", help: "Shut Down",
                                  isEnabled: !session.isBusy) { session.shutdown() }
@@ -161,7 +160,21 @@ public struct SimulatorTile: View {
                              isEnabled: session.isBooted) { session.toggleAppearance() }
             TileFooterButton(symbol: "link", help: "Open URL on Device…",
                              isEnabled: session.isBooted) { askForURL() }
+            TileFooterButton(symbol: "minus.magnifyingglass", help: "Zoom Out on Device (⌃⌘-)",
+                             isEnabled: session.device != nil && session.canZoomOut) { session.zoomOut() }
+            TileFooterButton(symbol: "arrow.down.right.and.arrow.up.left", help: "Fit Device to Pane (⌃⌘0)",
+                             isEnabled: session.device != nil && !session.isFitted) { session.zoomToFit() }
+            TileFooterButton(symbol: "plus.magnifyingglass", help: "Zoom In on Device (⌃⌘=)",
+                             isEnabled: session.device != nil && session.canZoomIn) { session.zoomIn() }
         }
+    }
+
+    /// What the screen is — live, or a screenshot — and, once zoomed, how large: "live · 150%".
+    /// Scrolling pans a device larger than the pane; a pinch zooms.
+    private var footerSummary: String {
+        let source = session.isLive ? "live" : (session.isBooted ? "screenshot" : "")
+        guard session.device != nil, !session.isFitted else { return source }
+        return source.isEmpty ? session.zoomLabel : "\(source) · \(session.zoomLabel)"
     }
 
     private func askForURL() {
@@ -225,6 +238,12 @@ final class SimulatorHostingView: NSHostingView<SimulatorTile>, KeyboardTargetPr
 #Preview("Simulator — live fixture", traits: .fixedLayout(width: 420, height: 760)) {
     let session = SimulatorSession.preview(booted: true)
     SimulatorTile(context: .inert(), session: session)
+}
+
+#Preview("Simulator — zoomed in", traits: .fixedLayout(width: 420, height: 760)) {
+    let session = SimulatorSession.preview(booted: true)
+    session.zoomIn(); session.zoomIn()
+    return SimulatorTile(context: .inert(), session: session)
 }
 
 #Preview("Simulator — shut down", traits: .fixedLayout(width: 420, height: 500)) {

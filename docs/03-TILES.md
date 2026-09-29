@@ -396,15 +396,52 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   lists and screenshots and says why it is not live. Xcode's own Previews and Meta's idb drive
   devices through the same classes.
 - **The screen is the device's framebuffer.** The device's `SimDisplayIOSurfaceRenderable`
-  port hands over the `IOSurface` its compositor renders into; `SimulatorDisplayView` sets it
+  port for its BUILT-IN screen — an iPad also has a TV-out one, so the port is picked by its
+  `screenType`, not by its place in the list — hands over the `IOSurface` its compositor
+  renders into; `SimulatorDisplayView` sets it
   as a layer's contents and re-sets it on every damage callback. No copy, no permission
   prompt, and it works for a device booted with no window at all. Rotation is a layer
   transform on the port's `displayAngle`.
-- **Touches are Indigo messages** built by SimulatorKit's exported C functions and sent
-  through `SimDeviceLegacyHIDClient`. The one place the wire format is known is the
-  single-touch envelope (`SimulatorInput.touchMessage`), copied from idb because SimulatorKit
-  only builds multi-touch messages. A click is a finger: down, dragged, up, as ratios of the
-  screen. Keys go by hardware-independent keycode. Home and Lock are hardware buttons.
+- **Touches, keys and buttons are Indigo messages** built by SimulatorKit's exported C
+  functions and sent through `SimDeviceLegacyHIDClient`. A click is a finger: down, dragged,
+  up, as ratios of the screen. Keys go through `IndigoHIDMessageForKeyboardNSEvent`, which
+  maps the Mac key code with Simulator's own table; modifiers arrive as `flagsChanged` and go
+  by HID usage; auto-repeats are left to the device, and whatever is held is lifted when the
+  screen loses the keyboard. Home and Lock are hardware buttons, held for 100ms.
+- **Two generations of the wire format, told apart at run time.** Xcode 27's SimulatorKit
+  grew the payload from 0x90 to 0xA0 bytes, builds the whole single-touch message itself
+  (with a real "moved" phase, throttled to one per 16ms), and takes EVERY message on the
+  screen's HID service, 0x32 — buttons included, where idb sends 0x33, and keys, whose
+  builder still writes 0x64. The guest drops anything else without an error: a click, Home
+  and typing all did nothing until this was found. Older SimulatorKit emits a multi-touch
+  message that is re-enveloped the way idb does. `SimulatorInput` reads which it is talking
+  to off the header of what the builder returns — never from an Xcode version number.
+- **Gestures from the bottom edge.** iOS reads a swipe up as Home, the app switcher or unlock
+  only when the touch says it began at the bottom edge — SimulatorKit's `IndigoHIDEdge`,
+  which the touch builder turns into digitizer flags. A drag that starts within 12pt of the
+  screen's bottom as the person sees it, or on the band just below it, carries that edge
+  for its whole length (`SimulatorInput.Edge`). Swipes from the top and the left need no
+  flag: the system and UIKit read them from the position, whatever the edge says.
+- **What the device drops.** The first message a process sends is ignored, so a new
+  connection sends one that changes nothing (the right Option key let go) before any
+  touch, then lets go of Home and Lock — every device chosen, booted or reconnected starts
+  with no button held by whoever used it last. There is no Siri button: idb's Siri source
+  sent to an Xcode 27 device brings its home screen down until SpringBoard restarts. A hardware button held down swallows every later press, touch and key, so a
+  press builds its lift first and always sends it — `pressAndRelease` for a caller about
+  to exit, `releaseAll` when a pane lets go mid-press.
+- **Corners.** Each device type names a framebuffer mask in its profile — the PDF Simulator
+  clips the screen with — and the pane clips the live screen to it, every device its own
+  radius (`DeviceChrome.cornerMask`). The drawn enclosure is off for now
+  (`SimulatorSession.showsEnclosure`); the corners do not depend on it.
+- **Zoom.** The device is drawn at a multiple of the size that fits the pane — 25% to 400%,
+  Fit being 100% — through Pane ▸ Simulator ▸ Zoom In on Device (⌃⌘=), Zoom Out on Device
+  (⌃⌘-) and Fit Device to Pane (⌃⌘0), the same three in the footer, or a pinch. ⌃⌘ because
+  ⌘= is Equalize Panes and ⌘0–9 pick panes. A device larger than the pane is panned with
+  two fingers, only as far as its edges; touches follow the zoom. The footer shows the
+  level once it is not Fit, and the zoom is saved in the pane's `tileState`
+  (`SimulatorPaneState`), so a restored workspace shows the device the same size.
+- Scrolling with a trackpad is not passed on: SimulatorKit itself routes the scroll wheel
+  only to a watch's Digital Crown. On iOS a list scrolls by dragging, as in Simulator.
 - **`SimulatorSession`** is owned by the tile factory like a browser's page: the device, its
   state, the display connection and the touch client survive a pane rebuild. It polls the
   device list every two seconds while the pane is showing (`TilePolling`), and connects to
@@ -420,11 +457,28 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
 - **The agent's verb.** `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}`
   on the control socket shows that device — the pane already on it, else the focused
   simulator pane, else a new one — boots it if it is shut down, and launches the app once it
-  is up. The device is a name or a UDID; a name prefers a booted device. The agent installs
-  with `simctl` in its own shell; the verb only puts the device on screen.
+  is up. The device is a name or a UDID; a name prefers a booted device, and a device whose
+  runtime is gone is refused by name. The agent installs with `simctl` in its own shell; the
+  verb only puts the device on screen. The reply says what happened: an unknown device, no
+  room for a pane, or — on a device that was already up — the launch's own error, such as an
+  app that is not installed. A device that has to boot first launches the app when it is up,
+  and a failure then is the pane's notice bar's to show.
+- **A device booting in the pane.** It connects as soon as `simctl` says Booted, which can
+  be before the device has a framebuffer: the pane then shows a screenshot of the boot
+  screen, input off, until the first surface arrives. The view is re-pointed whenever it is
+  not showing the live surface — not only when the picture's size changes, since the
+  screenshot is exactly the framebuffer's size — the screenshot is dropped once the screen
+  is live, and each poll re-reads the surfaces of a pane still not showing them.
+- **The socket never holds the window.** The channel's handler runs as a main-actor task and
+  awaits: listing devices is a subprocess, and a cold CoreSimulator can take seconds. The
+  serving queue waits for the reply (up to a minute); the main thread keeps drawing.
 - **Live tests.** `ULTRA_SIM_LIVE=1 swift test --filter SimulatorLiveTests` runs the
-  private-API bridge against whatever device is booted: framebuffer, damage callbacks, a tap
-  that opens an app, Home. Off by default, since it touches a real device.
+  private-API bridge against whatever device is booted (`ULTRA_SIM_UDID` picks one), on
+  Settings and the home screen, checking what `simctl io screenshot` shows afterwards: the
+  built-in screen is the one shown, Home leaves an app, a swipe up from the bottom edge does
+  too, a tap selects a row, a drag opens Spotlight and typing searches Settings. Off by
+  default, since it touches a real device. A new Xcode that changes the wire format fails
+  here first.
 
 ## Sandboxing consequence
 

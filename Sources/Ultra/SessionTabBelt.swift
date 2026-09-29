@@ -21,6 +21,9 @@ struct SessionTabBelt: View {
     @Bindable var sessions: SessionList
     /// For the customise flag, which File ▸ Session ▸ Customize Session… sets as well.
     @Bindable var ui: UIState
+    /// The folder picker, which lives in the app's command layer — the sidebar's Open asks
+    /// for it the same way.
+    let openFolder: () -> Void
     /// What the selected tab's glass is matched through, so selecting another tab MOVES the
     /// capsule to it — one piece of glass sliding along the belt — instead of one fading
     /// out while another fades in.
@@ -51,10 +54,30 @@ struct SessionTabBelt: View {
     private static let autoscrollEdge: CGFloat = 28
     /// How far above or below the belt a release still counts as a drop.
     private static let releaseMargin: CGFloat = 24
-    private static let height = Token.Space.tileHeaderHeight + 6
+    /// The belt's height: a pane header plus 10pt, for tabs that tall. The window reserves
+    /// room under the panes from THIS, so the two cannot disagree.
+    static let height = Token.Space.tileHeaderHeight + 10
     private static let viewport = "session-belt"
 
     var body: some View {
+        // The tabs, then — at the trailing end, outside the scrolling — the sidebar bar's two
+        // controls, so a collapsed sidebar does not take New and Open away with it.
+        HStack(spacing: 0) {
+            tabs
+            HStack(spacing: 0) {
+                NewProjectButton(ui: ui)
+                OpenProjectButton(sessions: sessions, openFolder: openFolder)
+            }
+            .padding(.trailing, Self.inset)
+        }
+        // A pane header plus 10pt, for tabs 10pt taller than a header's controls.
+        .frame(height: Self.height)
+        .onDisappear { endEscapeMonitor() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sessions")
+    }
+
+    private var tabs: some View {
         // Scrolls rather than squeezes. A dozen sessions in a narrow window is the case a
         // sidebar was chosen for; here the tabs keep their names and the belt slides.
         ScrollViewReader { proxy in
@@ -94,11 +117,6 @@ struct SessionTabBelt: View {
                 }
             }
         }
-        // 6pt taller than a pane header, for tabs 6pt taller than they were.
-        .frame(height: Self.height)
-        .onDisappear { endEscapeMonitor() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Sessions")
     }
 
     private func tab(_ store: LayoutStore, at index: Int) -> some View {
@@ -421,10 +439,11 @@ private struct SessionTab: View {
                 .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .lineLimit(1)
         }
-        // As wide as its name: no minimum, so a short name makes a short tab. 6pt taller
-        // than before (5 → 8 each side).
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        // As wide as its name: no minimum, so a short name makes a short tab. 10 a side
+        // (it was 5, then 8): tabs a size up from a pane header's controls, so a session is
+        // an easy thing to hit.
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 }
 
@@ -448,11 +467,11 @@ private struct SelectedGlass: ViewModifier {
     }
 }
 
-#Preview("Session tab belt", traits: .fixedLayout(width: 700, height: 60)) {
+#Preview("Session tab belt", traits: .fixedLayout(width: 700, height: 70)) {
     SessionTabBelt(sessions: SessionList(storage: WorkspaceStorage(),
                                          adopting: [.placeholders(.threeAcross),
                                                     .placeholders(.grid2x2),
                                                     .placeholders(.single)]),
-                   ui: UIState())
+                   ui: UIState(), openFolder: {})
         .padding(8)
 }

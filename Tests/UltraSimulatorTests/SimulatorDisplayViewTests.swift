@@ -64,6 +64,74 @@ struct SimulatorDisplayViewTests {
         #expect(corner.y < 0.01 || corner.y > 0.99)
     }
 
+    @Test("a touch starting at the bottom of the screen, or just below it, is a swipe from the edge")
+    func bottomEdge() {
+        let view = makeView(width: 600, height: 800)
+        let screen = view.screenRect
+        // AppKit's y runs up: the screen's bottom is its minY.
+        #expect(view.startEdge(for: CGPoint(x: screen.midX, y: screen.minY + 4)) == .bottom)
+        #expect(view.startEdge(for: CGPoint(x: screen.midX, y: screen.minY - 4)) == .bottom)
+        #expect(view.startEdge(for: CGPoint(x: screen.midX, y: screen.midY)) == .none)
+        #expect(view.startEdge(for: CGPoint(x: screen.midX, y: screen.maxY - 4)) == .none)
+        #expect(view.startEdge(for: CGPoint(x: screen.minX - 10, y: screen.minY + 4)) == .none)
+    }
+
+    @Test("a landscape device's swipe edge is the bottom of the pane, where its home indicator shows")
+    func bottomEdgeLandscape() {
+        let view = makeView(width: 800, height: 600, angle: 90)
+        let screen = view.screenRect
+        #expect(view.startEdge(for: CGPoint(x: screen.midX, y: screen.minY + 4)) == .bottom)
+        #expect(view.startEdge(for: CGPoint(x: screen.minX + 4, y: screen.midY)) == .none)
+    }
+
+    @Test("zoom scales the fitted device about the pane's middle, and touches follow it")
+    func zoomScales() throws {
+        let view = makeView(width: 600, height: 800)
+        let fit = view.fitted
+        view.zoom = 2
+        view.layoutSubtreeIfNeeded()
+        let zoomed = view.fitted
+        #expect(abs(zoomed.width - fit.width * 2) < 0.01 && abs(zoomed.height - fit.height * 2) < 0.01)
+        #expect(abs(zoomed.midX - 300) < 0.01 && abs(zoomed.midY - 400) < 0.01)
+        let centre = try #require(view.ratio(for: CGPoint(x: 300, y: 400)))
+        #expect(abs(centre.x - 0.5) < 0.01 && abs(centre.y - 0.5) < 0.01)
+        view.zoom = 0.5
+        #expect(abs(view.fitted.height - fit.height / 2) < 0.01)
+    }
+
+    @Test("zoom is held inside its range, and steps land on the stops")
+    func zoomRange() {
+        let view = makeView(width: 600, height: 800)
+        view.zoom = 10
+        #expect(view.zoom == SimulatorDisplayView.zoomRange.upperBound)
+        view.zoom = 0.01
+        #expect(view.zoom == SimulatorDisplayView.zoomRange.lowerBound)
+        #expect(SimulatorDisplayView.zoomStep(from: 1, in: true) == 1.25)
+        #expect(SimulatorDisplayView.zoomStep(from: 1, in: false) == 0.75)
+        #expect(SimulatorDisplayView.zoomStep(from: 1.1, in: true) == 1.25)
+        #expect(SimulatorDisplayView.zoomStep(from: 1.1, in: false) == 1)
+        #expect(SimulatorDisplayView.zoomStep(from: 4, in: true) == 4)
+        #expect(SimulatorDisplayView.zoomStep(from: 0.25, in: false) == 0.25)
+    }
+
+    @Test("scrolling pans a device larger than the pane, only as far as its edges")
+    func panning() throws {
+        let view = makeView(width: 600, height: 800)
+        view.zoom = 3
+        view.layoutSubtreeIfNeeded()
+        let before = view.fitted
+        // A long scroll: the device's edge stops at the pane's, and never leaves a gap.
+        for _ in 0..<50 {
+            let event = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2,
+                                             wheel1: 40, wheel2: 40, wheel3: 0))
+            view.scrollWheel(with: try #require(NSEvent(cgEvent: event)))
+        }
+        let after = view.fitted
+        #expect(after != before)
+        #expect(after.minX <= 0.01 && after.maxX >= 599.99)
+        #expect(after.minY <= 0.01 && after.maxY >= 799.99)
+    }
+
     @Test("no framebuffer means no screen and no touches")
     func empty() {
         let view = SimulatorDisplayView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
@@ -133,6 +201,15 @@ struct DeviceChromeTests {
         #expect(abs(centre.x - 0.5) < 0.01 && abs(centre.y - 0.5) < 0.01)
         let topLeft = try #require(view.ratio(for: CGPoint(x: screen.minX + 0.5, y: screen.maxY - 0.5)))
         #expect(topLeft.x < 0.01 && topLeft.y < 0.01)
+    }
+
+    @Test("a device's own screen corners load without its enclosure, at the screen's aspect")
+    func cornerMask() throws {
+        let profile = "/Library/Developer/CoreSimulator/Profiles/DeviceTypes/iPhone 17.simdevicetype"
+        guard FileManager.default.fileExists(atPath: profile) else { return }
+        let mask = try #require(DeviceChrome.cornerMask(deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17"))
+        #expect(abs(Double(mask.width) / Double(mask.height) - 1206.0 / 2622.0) < 0.01)
+        #expect(DeviceChrome.cornerMask(deviceType: "com.example.no-such-device") == nil)
     }
 
     @Test("Xcode's iPhone 17 enclosure loads, when Xcode is here")

@@ -545,28 +545,37 @@ struct RootView: View {
     /// `ui.showsTabBelt` so the two can move at different moments — see `showTabBelt`.
     @State private var beltInset: CGFloat = 0
 
-    /// The belt's height plus the padding under it — everything below the gap the canvas
-    /// already keeps under its own panes.
-    private var beltSpace: CGFloat { Token.Space.tileHeaderHeight + Appearance.windowPadding }
+    /// The belt's own height, the padding under it, and the gap above it, less the padding
+    /// the canvas already keeps under its own panes — which is part of that gap. From the
+    /// belt's height, not a header's: the two were 6pt apart, and the belt sat in the gap
+    /// meant to part it from the panes.
+    private var beltSpace: CGFloat {
+        SessionTabBelt.height + Appearance.windowPadding + (Self.beltGap - Appearance.windowPadding)
+    }
 
-    /// Make room, then slide the belt into it. The panes move up once, straight away, and
-    /// the belt arrives in space that is already empty — nothing is laid out twice.
+    /// The whole gap between the last row of panes and the belt. 7pt: half the 14 it was
+    /// (the canvas's 8pt padding and 6pt more), close enough to read as one strip with
+    /// the panes, and still apart from them.
+    private static let beltGap: CGFloat = 7
+
+    /// Make room and slide the belt in, together. The panes are laid out once, at their
+    /// final size, and Core Animation carries them up over the belt's slide
+    /// (`SplitCanvasView.bottomInset`), so the whole canvas moves as one with the belt
+    /// rather than jumping ahead of it.
     private func showTabBelt() {
         beltInset = beltSpace
-        withAnimation(Token.Motion.structuralRespectingPreferences) {
+        withAnimation(Token.Motion.beltRespectingPreferences) {
             ui.showsTabBelt = true
         }
     }
 
-    /// The mirror image: the belt slides away first, and the panes take the room back only
-    /// once it has gone, so they never grow under a strip of glass still on its way out.
+    /// The mirror image, also together: the panes grow back down as the belt slides out
+    /// under them.
     private func hideTabBelt() {
         guard ui.showsTabBelt || beltInset != 0 else { return }
-        withAnimation(Token.Motion.structuralRespectingPreferences) {
+        beltInset = 0
+        withAnimation(Token.Motion.beltRespectingPreferences) {
             ui.showsTabBelt = false
-        } completion: {
-            // Unless it was brought back while leaving.
-            if !ui.showsTabBelt { beltInset = 0 }
         }
     }
 
@@ -644,7 +653,7 @@ struct RootView: View {
                     Color.clear
                 }
                 if ui.showsTabBelt {
-                    SessionTabBelt(sessions: sessions, ui: ui)
+                    SessionTabBelt(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
                         .padding([.horizontal, .bottom], Appearance.windowPadding)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -689,6 +698,19 @@ struct RootView: View {
             // own name in its own window is the thing being removed here, and a name that
             // appears for one frame and is replaced is worse than a slot that fills in.
             .navigationTitle(store?.workspaceTitle ?? "")
+            // The name is still the window's — the Window menu and Mission Control read it
+            // — but it is not DRAWN in the toolbar's leading slot any more. It is drawn in
+            // the middle of the window header instead (`WindowHeaderTitle`, below).
+            .toolbar(removing: .title)
+        }
+        // The project's name, centred in the window header over the whole window — the
+        // sidebar included — the way a classic Mac title sits. Drawn by the window's own
+        // content under the transparent titlebar rather than as a toolbar item: a
+        // `.principal` item is laid out against the titlebar's leading width, which animates
+        // as the sidebar opens, and the name flickered. This does not move with the sidebar.
+        .overlay(alignment: .top) {
+            WindowHeaderTitle(title: store?.workspaceTitle ?? "")
+                .ignoresSafeArea()
         }
         // The window's material, at WINDOW scope — behind the sidebar and the canvas alike.
         //
@@ -759,6 +781,20 @@ struct RootView: View {
                     }
                     .help("Command Palette (⌘K)")
                 }
+
+                // An empty centre, standing where the system title used to. The title item
+                // is what split the toolbar into a leading and a trailing group; with it
+                // removed (the name is drawn in the middle of the header by
+                // `WindowHeaderTitle`), everything packed up against the palette button.
+                // A centred item puts the split back. Nothing in it, so nothing to lay out
+                // against a titlebar still animating as the sidebar opens.
+                ToolbarItem(placement: .principal) {
+                    Color.clear.frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
+                }
+                // No glass: an item gets a capsule of its own, and round an empty item that
+                // capsule is a stray sliver just off the name.
+                .sharedBackgroundVisibility(.hidden)
 
                 // Everything else sits hard right; the flexible spacer is what pushes it
                 // there.
@@ -946,3 +982,31 @@ private struct TileShortcut: ViewModifier {
     }
 }
 
+
+/// The window's name, centred in its header.
+///
+/// Not hit-testable: the header is where the window is dragged from, and the name must not
+/// get in the way of that — nor of a toolbar button, should a narrow window bring one under
+/// it. As tall as the unified titlebar, so the name sits on the toolbar buttons' centre line.
+struct WindowHeaderTitle: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Token.Colour.label)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            // Room either side for the leading and trailing toolbar items in a narrow window.
+            .padding(.horizontal, 180)
+            .frame(maxWidth: .infinity)
+            .frame(height: Token.Space.titleBarHeight)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)   // the window's own title already names it
+    }
+}
+
+#Preview("Window header title", traits: .fixedLayout(width: 900, height: 52)) {
+    WindowHeaderTitle(title: "ultra-swift")
+        .background(Token.Colour.tileBackground)
+}

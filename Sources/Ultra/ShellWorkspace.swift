@@ -163,11 +163,9 @@ enum ShellWorkspace {
         // project, and every path an agent names is resolved against this root.
         let channel = AgentChannel(socketURL: .init(fileURLWithPath: AgentChannel
             .defaultSocketURL(for: workspaceID).path)) { request in
-            // The socket serves off its own queue; anything that touches panes has to be on
-            // the main actor, and the agent is told what happened either way.
-            MainActor.assumeIsolated {
-                perform(request, in: root, workspace: workspaceID)
-            }
+            // On the main actor, since it touches panes, and free to await: listing the
+            // simulators is a subprocess that must not hold the window still.
+            await perform(request, in: root, workspace: workspaceID)
         }
         if channel.start() {
             factory.agentSocketPath = channel.socketURL.path
@@ -274,21 +272,25 @@ enum ShellWorkspace {
             return store.tree.paneIDs.first { browsers.contains($0) }
         }
 
-        /// The simulator pane a device should show in: the focused pane when it is one,
-        /// otherwise the pane already on that device, otherwise the first simulator pane.
-        /// Nil when there is none, which is the caller's cue to make one.
+        /// The simulator pane a device should show in: the pane already on that device,
+        /// otherwise the focused pane when it is a simulator, otherwise the first simulator
+        /// pane. Nil when there is none, which is the caller's cue to make one.
+        ///
+        /// The device's own pane comes FIRST: with an iPhone and an iPad side by side, an
+        /// agent asking for the iPad must not turn whichever pane has focus into a second iPad.
         @MainActor static func simulatorTarget(in workspaceID: UUID, device udid: String? = nil) -> PaneID? {
             guard let store = stores[workspaceID], let tiles = tiles[workspaceID] else {
                 return nil
             }
             let simulators = tiles.simulatorPanes()
-            let focused = store.tree.focused
-            if simulators.contains(focused) { return focused }
             if let udid, let onDevice = store.tree.paneIDs.first(where: {
-                simulators.contains($0) && tiles.simulatorSession(for: $0)?.udid == udid
+                simulators.contains($0)
+                    && tiles.simulatorSession(for: $0)?.udid?.caseInsensitiveCompare(udid) == .orderedSame
             }) {
                 return onDevice
             }
+            let focused = store.tree.focused
+            if simulators.contains(focused) { return focused }
             return store.tree.paneIDs.first { simulators.contains($0) }
         }
 
@@ -479,27 +481,32 @@ enum ShellWorkspace {
 
     /// Show a device in a simulator pane: the one already on it, else the one already
     /// open, else a new one — the browser's rule, for the browser's reason.
+    ///
+    /// Returns why not, in words for the agent: no room for a pane, or an app that would
+    /// not launch on a device that was already up. A device that has to boot first boots in
+    /// the pane and launches the app when it is up; a failure then is the pane's to show.
+    @discardableResult
     static func showSimulator(_ device: SimulatorDevice, launching app: String? = nil,
-                              in store: LayoutStore) {
+                              in store: LayoutStore) async -> String? {
         if let target = Registry.simulatorTarget(in: store.workspaceID, device: device.udid),
            let session = Registry.tiles[store.workspaceID]?.simulatorSession(for: target) {
-            session.show(device, launching: app)
             store.focus(target)
-            return
+            return await session.show(device, launching: app)
         }
-        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return "no room for another pane" }
         Registry.tiles[store.workspaceID]?.stage(simulator: device.udid)
         stageTile(.simulator, for: store)
         if !store.split(edge: edge) {
             stageTile(nil, for: store)
             Registry.tiles[store.workspaceID]?.stage(simulator: nil)
-            return
+            return "no room for another pane"
         }
         // Built now, so the agent's app launches on a pane that exists.
         _ = store.surfaces.surfaceRecord(for: store.tree.focused)
-        if let session = Registry.tiles[store.workspaceID]?.simulatorSession(for: store.tree.focused) {
-            session.show(device, launching: app)
+        guard let session = Registry.tiles[store.workspaceID]?.simulatorSession(for: store.tree.focused) else {
+            return "the simulator pane did not open"
         }
+        return await session.show(device, launching: app)
     }
 
     /// The chat the focused pane holds, or nil when the focused pane is not a chat.
@@ -527,7 +534,7 @@ enum ShellWorkspace {
     /// Carry out one agent request, or say why not.
     @MainActor
     static func perform(_ request: AgentRequest, in root: URL,
-                        workspace workspaceID: UUID) -> AgentResponse {
+                        workspace workspaceID: UUID) async -> AgentResponse {
         let resolved: ResolvedAgentRequest
         do {
             resolved = try request.resolve(in: root)
@@ -551,17 +558,25 @@ enum ShellWorkspace {
         case .simulator:
             guard let query = resolved.device else { return .failure("simulator needs a device") }
             guard SimulatorControl.hasXcode else { return .failure("Xcode is not installed") }
-            // The list is fetched here, synchronously, because the reply has to say whether
-            // the device exists. A second at most, on the socket's own thread.
-            let listing = SimulatorControl.runSync("/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], timeout: 15)
-            guard listing.status == 0,
-                  let devices = try? SimulatorDeviceList.parse(Data(listing.output.utf8)) else {
-                return .failure("could not list simulators: \(listing.error)")
+            // The list is fetched before replying, because the reply has to say whether the
+            // device exists. Awaited, so a cold CoreSimulator does not freeze the window.
+            let devices: [SimulatorDevice]
+            do {
+                devices = try await SimulatorControl.listDevices()
+            } catch {
+                return .failure("could not list simulators: \(error)")
             }
             guard let device = SimulatorDeviceList.find(query, in: devices) else {
                 return .failure("no simulator named \(query)")
             }
-            showSimulator(device, launching: resolved.app, in: store)
+            guard device.isAvailable else {
+                return .failure("\(device.name) (\(device.runtimeName)) is unavailable — its runtime is not installed")
+            }
+            // The window may have closed while the list was coming.
+            guard let store = Registry.stores[workspaceID] else { return .failure("no window open") }
+            if let problem = await showSimulator(device, launching: resolved.app, in: store) {
+                return .failure(problem)
+            }
         case .browse:
             guard let address = resolved.address else { return .failure("browse needs a url") }
             guard let url = BrowserAddress.url(from: address),

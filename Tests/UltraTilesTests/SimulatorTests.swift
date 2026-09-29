@@ -52,6 +52,38 @@ struct SimulatorRecordTests {
         #expect(factory.simulatorSession(for: paneID) == nil)
     }
 
+    @Test("a zoomed pane saves its zoom and comes back at it; a fitted one saves nothing")
+    @MainActor
+    func zoomRoundTrip() {
+        #expect(TileFactory.simulatorRecord(device: phone, root: root).tileState == nil)
+        let paneID = PaneID()
+        let saved = TileFactory.simulatorRecord(device: phone, zoom: 1.5, root: root)
+        #expect(SimulatorPaneState.decode(saved.tileState).zoom == 1.5)
+        let factory = TileFactory(context: .inert(root: root), restoring: [paneID: saved])
+        _ = factory.makeContent(for: paneID)
+        #expect(factory.simulatorSession(for: paneID)?.zoom == 1.5)
+        factory.release(paneID)
+    }
+
+    @Test("zoom steps up and down through the stops, stops at the ends, and says Fit at 1")
+    @MainActor
+    func zoomSteps() {
+        let session = SimulatorSession()
+        #expect(session.isFitted && session.zoomLabel == "Fit")
+        session.zoomIn()
+        #expect(session.zoom == 1.25 && session.zoomLabel == "125%")
+        session.zoomOut(); session.zoomOut()
+        #expect(session.zoom == 0.75)
+        for _ in 0..<20 { session.zoomOut() }
+        #expect(session.zoom == 0.25 && !session.canZoomOut)
+        for _ in 0..<20 { session.zoomIn() }
+        #expect(session.zoom == 4 && !session.canZoomIn)
+        session.zoomToFit()
+        #expect(session.isFitted)
+        // A saved value out of range is brought back into it.
+        #expect(SimulatorSession(zoom: 40).zoom == 4)
+    }
+
     @Test("a staged device wins over the restored one, and is consumed")
     @MainActor
     func staging() {

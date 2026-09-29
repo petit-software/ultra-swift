@@ -108,8 +108,9 @@ enum PaneCommands {
     /// A simulator pane's verbs. They act on the simulator pane a device would open in —
     /// the focused one, else the first — and dim when there is none.
     ///
-    /// ⇧⌘H is Home, the key the Simulator app has always used. The rest have no chord: a
-    /// pane's worth of device buttons is found in the palette, not memorised.
+    /// ⇧⌘H is Home, the key the Simulator app has always used, and ⌃⌘=, ⌃⌘- and ⌃⌘0 zoom.
+    /// The rest have no chord: a pane's worth of device buttons is found in the palette,
+    /// not memorised.
     static let simulator: [AppCommand] = [
         AppCommand(id: "simulator.home", title: "Home", symbol: "house",
                    menuPath: ["Pane", "Simulator"],
@@ -148,6 +149,35 @@ enum PaneCommands {
                    menuPath: ["Pane", "Simulator"],
                    isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.isBooted ?? false }) {
             ShellWorkspace.simulatorSession(in: $0)?.toggleAppearance()
+        },
+        // ⌃⌘ rather than ⌘: ⌘= is Equalize Panes, and ⌘0–9 pick panes. ⌃⌘ is the safest
+        // range beside a terminal, and a device being looked at closely is worth a chord.
+        AppCommand(id: "simulator.zoomIn", title: "Zoom In on Device", symbol: "plus.magnifyingglass",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("=", [.command, .control]),
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.device != nil && session.canZoomIn
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.zoomIn()
+        },
+        AppCommand(id: "simulator.zoomOut", title: "Zoom Out on Device", symbol: "minus.magnifyingglass",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("-", [.command, .control]),
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.device != nil && session.canZoomOut
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.zoomOut()
+        },
+        AppCommand(id: "simulator.zoomToFit", title: "Fit Device to Pane",
+                   symbol: "arrow.down.right.and.arrow.up.left", menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("0", [.command, .control]),
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.device != nil && !session.isFitted
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.zoomToFit()
         },
     ]
 

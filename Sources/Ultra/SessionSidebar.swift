@@ -108,44 +108,9 @@ private struct SessionSidebarBar: View {
         // which. Pushed apart, each is the only thing at its end of the bar: new on the
         // leading edge where a source list puts "add", open on the trailing edge.
         HStack(spacing: 0) {
-            // NEW. A plain button, not a menu: the choice between an empty folder and a
-            // clone belongs in the sheet, where both are visible at once and the fields
-            // under them explain what each one needs. A menu here would have made it a
-            // decision taken before seeing either.
-            Button { ui.isCreatingProject = true } label: {
-                barLabel("plus.capsule.fill")
-            }
-            .buttonStyle(.plain)
-            .help("New project — an empty folder or a clone (⇧⌘N)")
-            .accessibilityLabel("New project")
-
+            NewProjectButton(ui: ui)
             Spacer(minLength: 0)
-
-            // OPEN. Clicking opens a folder; holding drops the recents. The plain menu made
-            // the common case — "a project I have not opened before" — two clicks and a
-            // read.
-            Menu {
-                ForEach(RecentProjects.list, id: \.self) { path in
-                    Button(ShellPaneFactory.abbreviate(path)) { sessions.open(directory: path) }
-                }
-                if !RecentProjects.list.isEmpty { Divider() }
-                Button("Open Folder…") { openFolder() }
-            } label: {
-                barLabel("folder.fill")
-            } primaryAction: {
-                openFolder()
-                // Whether or not a folder was chosen: the button took first responder the
-                // moment it was pressed, and a cancelled panel leaves it there.
-                sessions.selected?.reclaimKeyboardFocus()
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            // Belt and braces with the `foregroundStyle` in `barLabel`: the tint is what a
-            // menu style reaches for first when it draws a label.
-            .tint(Token.Colour.secondaryLabel)
-            .help("Open an existing project in this window (⌘T)")
-            .accessibilityLabel("Open project")
+            OpenProjectButton(sessions: sessions, openFolder: openFolder)
         }
         .padding(.horizontal, 6)
         // The same height as a tile's footer and a pane's header, so every horizontal strip
@@ -159,17 +124,73 @@ private struct SessionSidebarBar: View {
         // needed because the fill ended abruptly. A ramp has no edge to justify.
         .background { EdgeBlur(edge: .bottom) }
     }
+}
 
-    /// The label is the whole hit target, padded rather than framed, so the press area
-    /// matches what a bottom-bar button looks like instead of being a 12pt glyph you have to
-    /// aim at. Shared by both controls so the two cannot end up different sizes.
-    ///
-    /// The size and the box come from `ChromeIconLabel` — the control a pane header and a
-    /// tile footer wear — rather than from numbers of their own. They WERE their own numbers
-    /// (14pt in a 26×22 box) and the sidebar's bar came out a size smaller than every other
-    /// strip in the window, which is the one thing a bar at the foot of a column must not
-    /// be: the icons across the bottom of the window are all the same control.
-    private func barLabel(_ symbol: String) -> some View {
+/// The two ways a project gets into this window, as the controls the sidebar's bar and the
+/// session tab belt both carry: `+` for a project that does not exist yet, the folder for
+/// one that does. One definition, so the two places cannot drift apart.
+///
+/// NEW is a plain button, not a menu: the choice between an empty folder and a clone
+/// belongs in the sheet, where both are visible at once and the fields under them explain
+/// what each one needs.
+struct NewProjectButton: View {
+    @Bindable var ui: UIState
+
+    var body: some View {
+        Button { ui.isCreatingProject = true } label: {
+            ProjectBarLabel(symbol: "plus.capsule.fill")
+        }
+        .buttonStyle(.plain)
+        .help("New project — an empty folder or a clone (⇧⌘N)")
+        .accessibilityLabel("New project")
+    }
+}
+
+/// OPEN. Clicking opens a folder; holding drops the recents. The plain menu made the common
+/// case — "a project I have not opened before" — two clicks and a read.
+struct OpenProjectButton: View {
+    @Bindable var sessions: SessionList
+    let openFolder: () -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(RecentProjects.list, id: \.self) { path in
+                Button(ShellPaneFactory.abbreviate(path)) { sessions.open(directory: path) }
+            }
+            if !RecentProjects.list.isEmpty { Divider() }
+            Button("Open Folder…") { openFolder() }
+        } label: {
+            ProjectBarLabel(symbol: "folder.fill")
+        } primaryAction: {
+            openFolder()
+            // Whether or not a folder was chosen: the button took first responder the
+            // moment it was pressed, and a cancelled panel leaves it there.
+            sessions.selected?.reclaimKeyboardFocus()
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        // Belt and braces with the `foregroundStyle` in the label: the tint is what a menu
+        // style reaches for first when it draws a label.
+        .tint(Token.Colour.secondaryLabel)
+        .help("Open an existing project in this window (⌘T)")
+        .accessibilityLabel("Open project")
+    }
+}
+
+/// The label is the whole hit target, padded rather than framed, so the press area matches
+/// what a bottom-bar button looks like instead of being a 12pt glyph you have to aim at.
+/// Shared by both controls so the two cannot end up different sizes.
+///
+/// The size and the box come from `ChromeIconLabel` — the control a pane header and a tile
+/// footer wear — rather than from numbers of their own. They WERE their own numbers (14pt in
+/// a 26×22 box) and the sidebar's bar came out a size smaller than every other strip in the
+/// window, which is the one thing a bar at the foot of a column must not be: the icons
+/// across the bottom of the window are all the same control.
+struct ProjectBarLabel: View {
+    let symbol: String
+
+    var body: some View {
         Image(systemName: symbol)
             // Bold rather than semibold — the one thing here that is NOT the header's. These
             // sit on a blurred ramp with rows fading underneath them, which eats a weight:
@@ -178,8 +199,7 @@ private struct SessionSidebarBar: View {
             // Stated, not inherited. One of these is a `Button` and the other is a `Menu`,
             // and a borderless menu draws its label in the CONTROL tint while a plain button
             // takes the foreground it is given — so the pair rendered in two different
-            // colours despite sharing this label. The same token every other chrome icon
-            // rests in (`ChromeIconLabel`), so the bar matches the pane headers above it.
+            // colours despite sharing this label.
             .foregroundStyle(Token.Colour.secondaryLabel)
             .frame(width: ChromeIconLabel.width, height: ChromeIconLabel.height)
             .contentShape(.rect)

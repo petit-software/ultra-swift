@@ -215,6 +215,26 @@ struct AgentChannelTests {
         #expect(onMain.value == true)
     }
 
+    /// The simulator verb lists devices with a subprocess before it can reply. It used to do
+    /// that inside `DispatchQueue.main.sync`, so the window froze for as long as a cold
+    /// CoreSimulator took. An async handler suspends instead: here another main-actor task
+    /// runs while the handler is waiting, which a blocked main thread could not allow.
+    @Test("an async handler awaits without holding the main thread")
+    func asyncHandlerYieldsMain() async throws {
+        let ranMeanwhile = Flag()
+        let channel = AgentChannel(socketURL: AgentChannel.defaultSocketURL(for: UUID()),
+                                   asyncHandler: { _ in
+            Task { @MainActor in ranMeanwhile.set(true) }
+            try? await Task.sleep(for: .milliseconds(200))
+            return ranMeanwhile.value == true ? .success : .failure("main was held")
+        })
+        #expect(channel.start())
+        defer { channel.stop() }
+
+        let reply = try await send(#"{"verb":"reveal","path":"anything"}"#, to: channel.socketURL)
+        #expect(reply.contains("\"ok\":true"), "\(reply)")
+    }
+
     @Test("the socket is private to this user")
     func permissions() throws {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())

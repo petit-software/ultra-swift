@@ -154,22 +154,15 @@ public struct WindowChrome: NSViewRepresentable {
         if NSApp.appearance?.name != appearance?.name { NSApp.appearance = appearance }
         window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
-        // VISIBLE, and it is the project's name.
+        // HIDDEN: the project's name is drawn in the middle of the header by the window's
+        // content (`WindowHeaderTitle`), and SwiftUI's `.toolbar(removing: .title)` keeps
+        // its own title item out of the toolbar. The window still HAS the title — set just
+        // below — for the Window menu and Mission Control.
         //
-        // It was hidden, on the reasoning that the toolbar's centre already carried a title
-        // and this would be a second one. Both halves of that went wrong. The centre item was
-        // removed as a duplicate, which left the window with no name in it at all — and
-        // hiding this was never even stable, because SwiftUI sets the title visible again
-        // whenever it applies a `navigationTitle`, so the name appeared the first time the
-        // sidebar selection changed and stayed. One writer, one visible answer.
-        //
-        // AppKit's own title rather than a view of ours in the titlebar: there is no title
-        // toolbar item in this window (verified by listing `window.toolbar?.items` — the
-        // toolbar holds the sidebar toggle, the separator and this app's two buttons), so
-        // this text IS the title in the standard slot, laid out by AppKit beside the toggle.
-        // A `.principal` item was tried and flickered, being laid out against a titlebar
-        // whose leading width is still animating as the sidebar opens.
-        window.titleVisibility = .visible
+        // Hiding it used to be unstable, because SwiftUI set the title visible again whenever
+        // it applied a `navigationTitle`. With the title removed from the toolbar SwiftUI no
+        // longer puts it back, and this and that say the same thing.
+        window.titleVisibility = .hidden
         // Also what the Window menu and Mission Control call this window.
         window.title = title
         // The toolbar itself comes from SwiftUI's `.toolbar` — it owns the items, so making

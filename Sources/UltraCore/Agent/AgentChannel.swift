@@ -12,12 +12,20 @@ import Foundation
 public final class AgentChannel: @unchecked Sendable {
 
     public typealias Handler = @Sendable (AgentRequest) -> AgentResponse
+    /// A handler that may wait — for a subprocess, a device — without holding the main
+    /// thread while it does. It runs on the main actor and suspends instead of blocking.
+    public typealias AsyncHandler = @Sendable @MainActor (AgentRequest) async -> AgentResponse
 
     public private(set) var socketURL: URL
     private var listener: Int32 = -1
     private var source: DispatchSourceRead?
     private let queue = DispatchQueue(label: "com.ultra.agent-channel")
-    private let handler: Handler
+    private let handler: AsyncHandler
+
+    /// How long the serving queue waits for a handler before telling the agent it timed out.
+    /// Requests are served one at a time, so a handler that never returned would silence
+    /// the channel for good.
+    static let handlerTimeout: DispatchTimeInterval = .seconds(60)
 
     /// Where a workspace's socket goes.
     ///
@@ -40,9 +48,16 @@ public final class AgentChannel: @unchecked Sendable {
     ///   reach the main actor, and `MainActor.assumeIsolated` from the serving queue TRAPS.
     ///   One well-formed request crashed the app. A contract that every caller must remember
     ///   in order not to crash is a defect in the contract, so the hop lives here.
-    public init(socketURL: URL, handler: @escaping Handler) {
+    public convenience init(socketURL: URL, handler: @escaping Handler) {
+        self.init(socketURL: socketURL, asyncHandler: { request in handler(request) })
+    }
+
+    /// - Parameter asyncHandler: called on the main actor for every well-formed request,
+    ///   and free to `await`: the main thread keeps drawing while it does, and the reply
+    ///   goes out when it returns.
+    public init(socketURL: URL, asyncHandler: @escaping AsyncHandler) {
         self.socketURL = socketURL
-        self.handler = handler
+        self.handler = asyncHandler
     }
 
     deinit { stop() }
@@ -121,11 +136,21 @@ public final class AgentChannel: @unchecked Sendable {
         }
         do {
             let request = try AgentRequest.decode(line: line)
-            // Synchronous: the reply has to say what actually happened, and this queue has
-            // nothing else to do meanwhile. Safe from deadlock because `acceptOne` only ever
-            // runs on the serving queue, never on main.
-            let response = DispatchQueue.main.sync { handler(request) }
-            respond(response, to: client)
+            // The serving queue waits: the reply has to say what actually happened, and this
+            // queue has nothing else to do meanwhile. The MAIN thread does not wait — the
+            // handler runs as a main-actor task and suspends on anything slow. Safe from
+            // deadlock because `acceptOne` only ever runs on the serving queue, never on main.
+            let reply = HandlerReply()
+            let done = DispatchSemaphore(value: 0)
+            Task { @MainActor [handler] in
+                reply.set(await handler(request))
+                done.signal()
+            }
+            if done.wait(timeout: .now() + Self.handlerTimeout) == .timedOut {
+                respond(.failure("timed out"), to: client)
+            } else {
+                respond(reply.value ?? .failure("no reply"), to: client)
+            }
         } catch let error as AgentRequestError {
             respond(.failure(error.message), to: client)
         } catch {
@@ -138,4 +163,14 @@ public final class AgentChannel: @unchecked Sendable {
         data.append(UInt8(ascii: "\n"))
         _ = data.withUnsafeBytes { write(client, $0.baseAddress, data.count) }
     }
+}
+
+/// The handler's answer, written on the main actor and read on the serving queue after the
+/// semaphore — or, after a timeout, possibly never read. The lock is for that second case.
+private final class HandlerReply: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: AgentResponse?
+
+    var value: AgentResponse? { lock.withLock { stored } }
+    func set(_ response: AgentResponse) { lock.withLock { stored = response } }
 }

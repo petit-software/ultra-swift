@@ -102,6 +102,42 @@ public struct DeviceChrome {
     }
 
     private static let chromeRoot = URL(fileURLWithPath: "/Library/Developer/DeviceKit/Chrome")
+    private static let framebufferMaskRoot = URL(fileURLWithPath: "/Library/Developer/DeviceKit/FramebufferMasks")
+
+    private static var maskCache: [String: CGImage?] = [:]
+
+    /// The screen's own shape for a device type — its rounded corners, and nothing else —
+    /// as alpha at the screen's aspect, or nil when Xcode has none for it.
+    ///
+    /// Apart from the enclosure on purpose: the screen of every device has its own radius,
+    /// and a pane that shows the bare screen still wants it. The same PDF the enclosure's
+    /// mask is drawn from, the one Simulator itself clips the framebuffer with.
+    public static func cornerMask(deviceType: String) -> CGImage? {
+        guard !deviceType.isEmpty else { return nil }
+        if let cached = maskCache[deviceType] { return cached }
+        let made = makeCornerMask(deviceType: deviceType)
+        maskCache[deviceType] = made
+        return made
+    }
+
+    private static func makeCornerMask(deviceType: String) -> CGImage? {
+        guard let bundle = bundle(for: deviceType) else { return nil }
+        let resources = bundle.appendingPathComponent("Contents/Resources")
+        guard let profile = NSDictionary(contentsOf: resources.appendingPathComponent("profile.plist")),
+              let name = profile["framebufferMask"] as? String else { return nil }
+        let candidates = [resources.appendingPathComponent("\(name).pdf"),
+                          framebufferMaskRoot.appendingPathComponent("\(name).pdf")]
+        guard let mask = candidates.lazy.compactMap({ NSImage(contentsOf: $0) }).first,
+              mask.size.width > 0, mask.size.height > 0 else { return nil }
+        return maskImage(mask)
+    }
+
+    /// A mask PDF drawn small enough to be cheap and large enough that a corner is smooth.
+    private static func maskImage(_ mask: NSImage) -> CGImage? {
+        draw(size: mask.size, scale: min(2, 1200 / max(mask.size.width, mask.size.height))) { rect in
+            mask.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+        }
+    }
 
     /// Where device types live: the shared profiles, and inside Xcode for older ones.
     private static var deviceTypeRoots: [URL] {
