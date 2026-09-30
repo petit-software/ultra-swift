@@ -20,10 +20,11 @@ struct DiffView: View {
             Divider().opacity(0.4)
             content
         }
-        // Keyed on the side so switching it reloads, and `loadIfNeeded` covers the rest:
-        // a diff returned to after staging is marked stale and refetched, while one merely
-        // redrawn is not.
-        .task(id: session.side) { await session.loadIfNeeded() }
+        // Keyed on the session's own count of going stale, so everything that makes what
+        // is on screen out of date reloads it: a switch of side, and a return to a diff
+        // after staging. One merely redrawn is not refetched. It was keyed on the side,
+        // which a diff clicked AGAIN — while it was showing — does not change.
+        .task(id: session.staleCount) { await session.loadIfNeeded() }
     }
 
     private var header: some View {

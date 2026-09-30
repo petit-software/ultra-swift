@@ -50,6 +50,8 @@ struct SessionTabBelt: View {
 
     private static let spacing: CGFloat = 2
     private static let inset: CGFloat = 4
+    /// Between New and Open, and between the pair and the last tab.
+    private static let controlSpacing: CGFloat = 10
     /// How close to the belt's end the pointer has to be to scroll it.
     private static let autoscrollEdge: CGFloat = 28
     /// How far above or below the belt a release still counts as a drop.
@@ -64,10 +66,14 @@ struct SessionTabBelt: View {
         // controls, so a collapsed sidebar does not take New and Open away with it.
         HStack(spacing: 0) {
             tabs
-            HStack(spacing: 0) {
-                NewProjectButton(ui: ui)
-                OpenProjectButton(sessions: sessions, openFolder: openFolder)
+            // A size up from the sidebar's pair and held apart, as the tabs beside them
+            // are: side by side at a header's size they were one small target with two
+            // pictures on it.
+            HStack(spacing: Self.controlSpacing) {
+                NewProjectButton(ui: ui, size: .belt)
+                OpenProjectButton(sessions: sessions, size: .belt, openFolder: openFolder)
             }
+            .padding(.leading, Self.controlSpacing)
             .padding(.trailing, Self.inset)
         }
         // A pane header plus 10pt, for tabs 10pt taller than a header's controls.

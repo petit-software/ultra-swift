@@ -55,7 +55,12 @@ public struct EditorTile: View {
                     // a NEW file as its view is made, and a view handed on from the tab
                     // before it would never be made.
                     .id(session.id)
-            case .diff(let diff): DiffView(session: diff)
+            case .diff(let diff):
+                DiffView(session: diff)
+                    // Keyed for a different reason: a diff is fetched by the view showing
+                    // it, as that view appears. One view handed from diff to diff appeared
+                    // once, so every diff after the first sat on "Loading…".
+                    .id(session.id)
             }
         } else {
             // Only the line. New and Open are in the footer, which is there in every state

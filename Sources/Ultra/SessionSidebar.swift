@@ -135,10 +135,11 @@ private struct SessionSidebarBar: View {
 /// what each one needs.
 struct NewProjectButton: View {
     @Bindable var ui: UIState
+    var size: ProjectControlSize = .bar
 
     var body: some View {
         Button { ui.isCreatingProject = true } label: {
-            ProjectBarLabel(symbol: "plus.capsule.fill")
+            ProjectBarLabel(symbol: "plus.capsule.fill", size: size)
         }
         .buttonStyle(.plain)
         .help("New project — an empty folder or a clone (⇧⌘N)")
@@ -150,6 +151,7 @@ struct NewProjectButton: View {
 /// case — "a project I have not opened before" — two clicks and a read.
 struct OpenProjectButton: View {
     @Bindable var sessions: SessionList
+    var size: ProjectControlSize = .bar
     let openFolder: () -> Void
 
     var body: some View {
@@ -160,14 +162,19 @@ struct OpenProjectButton: View {
             if !RecentProjects.list.isEmpty { Divider() }
             Button("Open Folder…") { openFolder() }
         } label: {
-            ProjectBarLabel(symbol: "folder.fill")
+            ProjectBarLabel(symbol: "folder.fill", size: size)
         } primaryAction: {
             openFolder()
             // Whether or not a folder was chosen: the button took first responder the
             // moment it was pressed, and a cancelled panel leaves it there.
             sessions.selected?.reclaimKeyboardFocus()
         }
-        .menuStyle(.borderlessButton)
+        // A button menu in the plain button style, so the label is drawn as it is written.
+        // `.borderlessButton` hands it to an AppKit control that draws the glyph at the
+        // system's size in a box of its own — whatever font and frame the label asks for —
+        // which left the folder a size under the `+` beside it, and deaf to `size`.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         // Belt and braces with the `foregroundStyle` in the label: the tint is what a menu
@@ -187,22 +194,59 @@ struct OpenProjectButton: View {
 /// a 26×22 box) and the sidebar's bar came out a size smaller than every other strip in the
 /// window, which is the one thing a bar at the foot of a column must not be: the icons
 /// across the bottom of the window are all the same control.
+///
+/// That is the sidebar's bar. The session tab belt asks for `.belt` — see
+/// `ProjectControlSize`.
 struct ProjectBarLabel: View {
     let symbol: String
+    var size: ProjectControlSize = .bar
 
     var body: some View {
         Image(systemName: symbol)
             // Bold rather than semibold — the one thing here that is NOT the header's. These
             // sit on a blurred ramp with rows fading underneath them, which eats a weight:
             // semibold read as thin here in a way it does not on a pane's solid surface.
-            .font(.system(size: ChromeIconLabel.size, weight: .bold))
+            .font(.system(size: size.glyph, weight: .bold))
             // Stated, not inherited. One of these is a `Button` and the other is a `Menu`,
             // and a borderless menu draws its label in the CONTROL tint while a plain button
             // takes the foreground it is given — so the pair rendered in two different
             // colours despite sharing this label.
             .foregroundStyle(Token.Colour.secondaryLabel)
-            .frame(width: ChromeIconLabel.width, height: ChromeIconLabel.height)
+            .frame(width: size.width, height: size.height)
             .contentShape(.rect)
+    }
+}
+
+/// How large the two project controls are drawn, which depends on the strip they are in.
+@MainActor
+enum ProjectControlSize {
+    /// The sidebar's bar: a pane header's control, for the reason on `ProjectBarLabel`.
+    case bar
+    /// The session tab belt. Its tabs are a size up from a pane header's controls, and a
+    /// header-sized pair at the end of them read as an afterthought — two small glyphs,
+    /// touching, beside a row of things each twice their height.
+    case belt
+
+    var glyph: CGFloat {
+        switch self {
+        case .bar: ChromeIconLabel.size
+        case .belt: 19
+        }
+    }
+
+    var width: CGFloat {
+        switch self {
+        case .bar: ChromeIconLabel.width
+        case .belt: 34
+        }
+    }
+
+    /// The belt's is a tab's height, so the pair sits on the tabs' line.
+    var height: CGFloat {
+        switch self {
+        case .bar: ChromeIconLabel.height
+        case .belt: 36
+        }
     }
 }
 

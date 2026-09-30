@@ -1,6 +1,8 @@
 
 ## New shit
 - [ ] Browser pane: a pane that opens a URL
+- [x] Tab belt: bigger add and open icons with more gap between them
+- [x] Editor: a diff opened over another diff (`.ultra/todo.md` from Git) stays on Loading…
 
 ## Simulator previews in Pane
 - [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls

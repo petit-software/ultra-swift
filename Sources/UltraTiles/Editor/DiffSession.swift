@@ -12,7 +12,7 @@ import Foundation
 public final class DiffSession {
     public let request: DiffRequest
     public var side: DiffSide {
-        didSet { guard side != oldValue else { return }; isStale = true }
+        didSet { guard side != oldValue else { return }; markStale() }
     }
 
     public private(set) var diff: FileDiff?
@@ -20,6 +20,10 @@ public final class DiffSession {
     /// Set when what is on screen is known to be behind — a side change, or a return to a
     /// to it after staging. The view reloads on it rather than on every redraw.
     public private(set) var isStale = true
+    /// Counts each time the diff goes stale, and is what the view's load is keyed on. The
+    /// flag alone cannot be: it drops again the moment a load begins, and a task keyed on
+    /// it would be cancelled by its own first line.
+    public private(set) var staleCount = 0
 
     private let model: GitModel
 
@@ -36,7 +40,12 @@ public final class DiffSession {
     ///
     /// Deliberately not a reload: the file's content stays visible while the new one is
     /// fetched, so coming back to a diff does not flash an empty pane every time.
-    public func invalidate() { isStale = true }
+    public func invalidate() { markStale() }
+
+    private func markStale() {
+        isStale = true
+        staleCount += 1
+    }
 
     /// Test seam: stand in for a load that has happened, so a test can prove that coming
     /// back to a diff marks it stale again without running git.
@@ -45,8 +54,14 @@ public final class DiffSession {
     public func loadIfNeeded() async {
         guard isStale, !isLoading else { return }
         isLoading = true
-        isStale = false
-        diff = await model.diff(for: request.change, side: side)
-        isLoading = false
+        defer { isLoading = false }
+        // Round again if it went stale while git was running — the side was switched, or
+        // the row was clicked again. The call that arrives for that finds this one still
+        // loading and leaves, so this is the only one that can fetch what it asked for.
+        while isStale {
+            isStale = false
+            let loaded = await model.diff(for: request.change, side: side)
+            if !isStale { diff = loaded }
+        }
     }
 }
