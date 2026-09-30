@@ -33,6 +33,10 @@ public struct PaneContent {
 public final class PaneSurfaceStore {
     private var containers: [PaneID: PaneContainerView] = [:]
     private(set) public var records: [PaneID: PaneRecord] = [:]
+    /// Panes whose `make` is on the stack right now. A tile that persists the layout while
+    /// it is being built asks this store for its own record before it has one, and
+    /// answering by building it again is a recursion with no floor.
+    private var building: Set<PaneID> = []
     private let make: (PaneID) -> PaneContent
     /// Set by `LayoutStore` once it exists, so header controls drive the same commands the
     /// menu does rather than a parallel code path.
@@ -56,6 +60,8 @@ public final class PaneSurfaceStore {
     /// The tile for a pane, building it on first request and never again.
     public func surface(for paneID: PaneID) -> PaneContainerView {
         if let existing = containers[paneID] { return existing }
+        building.insert(paneID)
+        defer { building.remove(paneID) }
         let content = make(paneID)
         records[paneID] = content.record
         let container = PaneContainerView(paneID: paneID, descriptor: content.descriptor,
@@ -84,6 +90,10 @@ public final class PaneSurfaceStore {
     /// the tree before any pane has a surface, and the document must still be complete.
     public func surfaceRecord(for paneID: PaneID) -> PaneRecord {
         if let record = records[paneID] { return record }
+        // Asked from inside this pane's own build: a stand-in, not a second build. The
+        // persist that asked is debounced, and the one that follows the build has the
+        // real record.
+        if building.contains(paneID) { return PaneRecord(kind: .placeholder, title: "Pane") }
         _ = surface(for: paneID)
         return records[paneID] ?? PaneRecord(kind: .placeholder, title: "Pane")
     }

@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import UltraTiles
 
-/// The editor's sidebar holds everything open, so clicking four changed files fills one
+/// The editor's tab strip holds everything open, so clicking four changed files fills one
 /// pane instead of splitting four. These cover the rules that make that read as one editor
 /// rather than a pile of documents.
 @Suite("Editor sessions")

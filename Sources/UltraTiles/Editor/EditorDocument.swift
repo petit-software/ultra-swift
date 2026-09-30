@@ -38,7 +38,7 @@ public final class EditorDocument {
     private var watchers = WatchBox()
 
     /// What this is called until it has a file. Numbered by `EditorSessions`, so two new
-    /// files in one sidebar can be told apart.
+    /// files in one pane can be told apart.
     private let untitledName: String
 
     public init() { untitledName = "Untitled" }

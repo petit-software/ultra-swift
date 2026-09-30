@@ -135,9 +135,12 @@ public final class TileFactory {
             // The sessions outlive the view: a pane rebuilt for any reason keeps what is open.
             let open = sessions[paneID] ?? EditorSessions()
             sessions[paneID] = open
-            open.onSelectionChange = { [weak self] path in
-                self?.noteEditorSelection(paneID, path: path, root: root)
-            }
+            // Deaf while the pane is being built. The record this returns already says what
+            // is selected, and announcing it now would persist the layout from INSIDE the
+            // surface store's build of this very pane — which materialises the pane again,
+            // opens the staged request again, and for a new file (never reused) recurses
+            // until the stack runs out.
+            open.onSelectionChange = nil
             // A staged request wins; a restored pane reopens whatever it had.
             if let pendingRequest {
                 open.open(pendingRequest)
@@ -146,6 +149,9 @@ public final class TileFactory {
                 open.open(.file(file))
             }
             pendingRequest = nil
+            open.onSelectionChange = { [weak self] path in
+                self?.noteEditorSelection(paneID, path: path, root: root)
+            }
             view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
             // A new file has no path to record: nothing of it exists to reopen.
             if let path = open.selected?.path, !path.isEmpty {

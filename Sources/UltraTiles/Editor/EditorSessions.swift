@@ -71,8 +71,8 @@ public final class EditorSession: Identifiable {
         }
     }
 
-    /// The sidebar's label. The last component only — a source list has no room for paths,
-    /// and the full one is in the editor's own footer.
+    /// The tab's label. The last component only — a tab has no room for paths, and the
+    /// full one is in the editor's own footer.
     public var title: String {
         if case .file(let document) = content { return document.displayName }
         return (path as NSString).lastPathComponent
@@ -225,18 +225,10 @@ public final class EditorSessions {
     /// Whether anything open here has unsaved edits — asked before a pane is closed.
     public var hasUnsavedChanges: Bool { sessions.contains { $0.isDirty } }
 
-    /// Split for the sidebar's two sections. Editing a file and reading a diff are different
-    /// kinds of work, and a flat list mixes them into one pile to be searched by icon.
+    /// The two kinds of work an editor holds: editing a file and reading a diff. The tab
+    /// strip shows both in one row, told apart by icon; these are for whoever needs one kind.
     public var files: [EditorSession] { sessions.filter { !$0.isDiff } }
     public var diffs: [EditorSession] { sessions.filter(\.isDiff) }
-
-    /// Whether the sidebar is showing.
-    ///
-    /// Lives on the model rather than in the view so a menu command can reach it — a control
-    /// that only exists as a button in a footer has no keyboard route, which this app treats
-    /// as a bug rather than a gap. The view still overrides it in a pane too narrow to hold
-    /// two columns.
-    public var isSidebarVisible = true
 }
 
 private extension EditorRequest {

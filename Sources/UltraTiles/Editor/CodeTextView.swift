@@ -2,7 +2,8 @@ import AppKit
 import SwiftUI
 import UltraDesign
 
-/// A plain-text editing surface with line numbers.
+/// A text editing surface with line numbers and, for a file in a language it knows, the
+/// generic colouring of `CodeHighlighter`.
 ///
 /// `NSTextView` rather than SwiftUI's `TextEditor`, for two reasons that matter for code:
 /// `TextEditor` cannot carry a line-number ruler, and it inherits the system's smart
@@ -11,6 +12,8 @@ import UltraDesign
 struct CodeTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable: Bool = true
+    /// What the text is written in, or nil for plain text. See `CodeLanguage.detect`.
+    var language: CodeLanguage? = nil
     /// Asked once, as the view is made: whether it should take the keyboard when it lands
     /// in a window. A question rather than a flag so the answer can be "yes, this once" —
     /// see `EditorDocument.claimInitialFocus`.
@@ -56,6 +59,11 @@ struct CodeTextView: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [.width]
         textView.textContainer?.widthTracksTextView = true
+        // Colouring is applied to the storage as it changes, not to the string as it is
+        // set: the text view's own edits — typing, paste, undo — never come through
+        // `updateNSView`, and they have to be coloured too.
+        textView.textStorage?.delegate = context.coordinator
+        context.coordinator.language = language
 
         scroll.documentView = textView
 
@@ -87,13 +95,20 @@ struct CodeTextView: NSViewRepresentable {
                                               length: 0))
             context.coordinator.ruler?.needsDisplay = true
         }
+        // A new file that has just been saved as `notes.py` turns from plain text into
+        // Python without its view being remade.
+        if context.coordinator.language != language {
+            context.coordinator.language = language
+            if let storage = textView.textStorage { context.coordinator.highlight(storage) }
+        }
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextStorageDelegate {
         private let parent: CodeTextView
         weak var textView: NSTextView?
         weak var ruler: LineNumberRuler?
+        var language: CodeLanguage?
         /// This view's own history. Without one, a text view registers into the WINDOW's
         /// undo manager, which every text field in every tile shares — so ⌘Z in a file
         /// could take back a rename typed into the todo list an hour ago. `UndoRouting`
@@ -110,6 +125,44 @@ struct CodeTextView: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             parent.text = textView.string
             ruler?.needsDisplay = true
+        }
+
+        /// Characters changed — by a keystroke, a paste, an undo or a reload — so the
+        /// colours are stale. Attribute-only edits are ignored, because this method makes
+        /// them and would otherwise be answering itself.
+        func textStorage(_ storage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions,
+                         range editedRange: NSRange, changeInLength delta: Int) {
+            guard editedMask.contains(.editedCharacters), language != nil else { return }
+            highlight(storage)
+        }
+
+        /// Colour the whole text. Whole rather than the edited paragraph, because a block
+        /// comment or a multi-line string opened three screens up changes what the line
+        /// under the caret means, and finding where to restart from costs as much as the
+        /// scan. The scan is one linear pass over code units, which is fast enough for
+        /// any file a person edits by hand; past a megabyte it is left plain.
+        func highlight(_ storage: NSTextStorage) {
+            let full = NSRange(location: 0, length: storage.length)
+            guard full.length > 0 else { return }
+            storage.addAttribute(.foregroundColor, value: NSColor(Token.Colour.label), range: full)
+            guard let language, full.length <= 1_000_000 else { return }
+            for token in CodeHighlighter.tokens(in: storage.string, language: language) {
+                storage.addAttribute(.foregroundColor, value: Self.colour(for: token.kind),
+                                     range: token.range)
+            }
+        }
+
+        /// System colours, every one dynamic, so the same file reads in light and dark
+        /// appearance and under Increase Contrast without a palette of our own to keep.
+        static func colour(for kind: CodeTokenKind) -> NSColor {
+            switch kind {
+            case .keyword: .systemPurple
+            case .string: .systemRed
+            case .comment: .secondaryLabelColor
+            case .number: .systemBlue
+            case .type: .systemTeal
+            case .attribute: .systemOrange
+            }
         }
     }
 }

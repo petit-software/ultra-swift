@@ -457,9 +457,9 @@ struct PaneMenuCommands: Commands {
     /// unless it is the last one" is how a keystroke someone relies on starts doing something
     /// else.
     ///
-    /// The sidebar toggle is here rather than only in the footer for the reason the
-    /// `keyboard-first` skill gives: a control reachable only by pointer is an action this
-    /// app does not actually have.
+    /// Next and Previous are the keyboard route along the tab strip, for the reason the
+    /// `keyboard-first` skill gives: a tab reachable only by pointer is an action this app
+    /// does not actually have.
     @ViewBuilder private var editorItems: some View {
         let sessions = store.flatMap(ShellWorkspace.editorSessions(in:))
         Button("Next") { sessions?.selectNext() }
@@ -468,10 +468,6 @@ struct PaneMenuCommands: Commands {
         Button("Previous") { sessions?.selectPrevious() }
             .keyboardShortcut("[", modifiers: [.command, .shift])
             .disabled((sessions?.sessions.count ?? 0) < 2)
-        Divider()
-        Button("Toggle Sidebar") { sessions?.isSidebarVisible.toggle() }
-            .keyboardShortcut("s", modifiers: [.command, .option])
-            .disabled(sessions?.isEmpty ?? true)
         Divider()
         Button("Close") { sessions?.closeSelected() }
             .keyboardShortcut("w", modifiers: [.command, .control])

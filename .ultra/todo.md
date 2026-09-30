@@ -1,6 +1,9 @@
 
 ## New shit
 - [ ] Browser pane: a pane that opens a URL
+- [x] File tree: New File crashed the app (persist re-entered the pane being built)
+- [x] Editor: open files as tabs along the top, not a sidebar
+- [x] Editor: generic code colouring, language detected from the file name or shebang
 - [x] Tab belt: bigger add and open icons with more gap between them
 - [x] Editor: a diff opened over another diff (`.ultra/todo.md` from Git) stays on Loading…
 

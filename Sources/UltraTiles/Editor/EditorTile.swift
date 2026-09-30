@@ -4,14 +4,11 @@ import UltraDesign
 
 /// A minimal text editor in a pane, holding as many files and diffs as you throw at it.
 ///
-/// The sidebar is what makes Git and the file tree usable from here: clicking four changed
+/// The tab strip is what makes Git and the file tree usable from here: clicking four changed
 /// files fills ONE pane rather than splitting four off a canvas with room for none of them.
 /// See `EditorSessions`, which owns what is open.
 public struct EditorTile: View {
     @State private var sessions: EditorSessions
-    /// Dragged by the divider. View state rather than a preference: it is the shape of THIS
-    /// pane, and two editor panes of different widths want different answers.
-    @State private var sidebarWidth: CGFloat = 180
     private let context: TileContext
 
     public init(context: TileContext, sessions: EditorSessions) {
@@ -20,29 +17,16 @@ public struct EditorTile: View {
     }
 
     public var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                if showsSidebar(in: geometry.size.width) {
-                    EditorSidebar(sessions: sessions)
-                        .frame(width: sidebarWidth)
-                    SidebarDivider(width: $sidebarWidth, available: geometry.size.width)
-                }
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            // Absent rather than empty with nothing open: a bare strip over "Nothing open"
+            // is a band of chrome labelling nothing.
+            if !sessions.isEmpty {
+                EditorTabStrip(sessions: sessions)
             }
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .tileFooter { footer }
-    }
-
-    /// Hidden when there is nothing open, and hidden when the pane is simply too narrow to
-    /// carry both columns.
-    ///
-    /// A pane can be dragged down to 160pt — `LayoutMetrics.minPaneSize` — and a sidebar in
-    /// one of those leaves a content column too thin to read a line of code in. The override
-    /// is silent on purpose: a sidebar that insists on being shown in a pane that cannot hold
-    /// it costs the user the thing they were actually looking at.
-    private func showsSidebar(in width: CGFloat) -> Bool {
-        sessions.isSidebarVisible && !sessions.isEmpty && width >= sidebarWidth + 220
     }
 
     @ViewBuilder
@@ -70,18 +54,10 @@ public struct EditorTile: View {
     }
 
     private var footer: some View {
-        // The FULL path of what is showing. The sidebar has room only for a name, and two
-        // files called `index.ts` are the normal case in any real project.
+        // The FULL path of what is showing. A tab has room only for a name, and two files
+        // called `index.ts` are the normal case in any real project.
         TileFooter(summary: sessions.selected.map(summary(for:)) ?? "No file",
                    truncation: .head) {
-            // Absent rather than dimmed with nothing open: the sidebar lists what is open,
-            // so there is nothing for it to show or hide. The menu item is the one that
-            // dims — a footer is not where a command is learned.
-            if !sessions.isEmpty {
-                TileFooterButton(symbol: "sidebar.left", help: "Show or hide the sidebar (⌘⌥S)") {
-                    sessions.isSidebarVisible.toggle()
-                }
-            }
             TileFooterButton(symbol: "plus.circle", help: "New file (⌃⌘N)") { sessions.newFile() }
             TileFooterButton(symbol: "folder", help: "Open another file") { openPanel() }
             if let session = sessions.selected,
@@ -142,123 +118,124 @@ public struct EditorTile: View {
     }
 }
 
-// MARK: - Sidebar
+// MARK: - Tabs
 
-/// What is open, as a source list.
+/// What is open, as a row of tabs along the top of the pane.
 ///
-/// A real `List` in `.sidebar` style rather than a row of tabs: the system draws the
-/// selection and the section headers, it still works when twelve things are open where a row
-/// of tabs would have squeezed every label to nothing, and a full name fits on a line
-/// instead of being truncated to `ind…tsx`.
+/// A row rather than a source list: a sidebar took a column off a pane that is already as
+/// narrow as the user made it, and hid itself below 400pt — which is where most editor panes
+/// live, beside a shell. A strip costs one line of height whatever the width, and scrolls
+/// sideways when there is more open than fits, with the selected tab kept in view.
 ///
-/// Files and changes are separate sections because they are separate kinds of work — editing
-/// a file and reading a diff — and a flat list of the two mixed together makes you read every
-/// icon to find either.
-private struct EditorSidebar: View {
-    @Bindable var sessions: EditorSessions
-
-    private var selection: Binding<EditorSession.ID?> {
-        Binding(get: { sessions.selectedID },
-                set: { if let id = $0 { sessions.select(id) } })
-    }
+/// Files and diffs share the row in the order they were opened, told apart by icon. Two
+/// sections made sense in a list with headers; in a strip they would be two strips.
+private struct EditorTabStrip: View {
+    let sessions: EditorSessions
 
     var body: some View {
-        List(selection: selection) {
-            section("Files", sessions.files)
-            section("Changes", sessions.diffs)
-        }
-        .listStyle(.sidebar)
-        // The pane's own surface shows through. A list painting its own background is an
-        // opaque rectangle sitting on glass, which is the one thing a pane here never is.
-        .scrollContentBackground(.hidden)
-        .accessibilityLabel("Open files and changes")
-    }
-
-    @ViewBuilder
-    private func section(_ title: String, _ items: [EditorSession]) -> some View {
-        if !items.isEmpty {
-            Section(title) {
-                ForEach(items) { session in
-                    SidebarRow(session: session) { sessions.close(session.id) }
-                        .tag(session.id)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
+                    ForEach(sessions.sessions) { session in
+                        EditorTab(session: session,
+                                  isSelected: session.id == sessions.selectedID,
+                                  select: { sessions.select(session.id) },
+                                  close: { sessions.close(session.id) })
+                            .id(session.id)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+            }
+            .onChange(of: sessions.selectedID, initial: true) { _, selected in
+                // Selected from the keyboard (⇧⌘]) or by another pane opening a file here,
+                // the tab may be off the end of the row. Bring it in.
+                guard let selected else { return }
+                withAnimation(Token.Motion.structuralRespectingPreferences) {
+                    proxy.scrollTo(selected)
                 }
             }
         }
+        .overlay(alignment: .bottom) { Divider().overlay(Token.Colour.divider) }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Open files and changes")
     }
 }
 
-private struct SidebarRow: View {
+/// One tab: the file's icon, its name, and its unsaved dot — or, under the pointer, the
+/// close control in the icon's place.
+///
+/// Same arrangement as the session belt's tabs, one size down: ONE slot for icon and X, so
+/// the name never moves as the pointer crosses the tab, and the selection carried by a
+/// neutral wash and the label colour rather than a weight change that would make the tab
+/// wider and slide every tab after it along the row.
+private struct EditorTab: View {
     let session: EditorSession
+    let isSelected: Bool
+    let select: () -> Void
     let close: () -> Void
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: session.symbol)
-                .font(.system(size: 10))
-                .foregroundStyle(Token.Colour.accent)
-                .frame(width: 14)
+        HStack(spacing: 5) {
+            ZStack {
+                if isHovering {
+                    Button(action: close) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .frame(width: 14, height: 14)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Token.Colour.label)
+                    .help("Close")
+                } else {
+                    Image(systemName: session.symbol)
+                        .font(.system(size: 10))
+                        .foregroundStyle(isSelected ? Token.Colour.accent : Token.Colour.secondaryLabel)
+                }
+            }
+            .frame(width: 14, height: 14)
 
             Text(session.title)
                 .font(Token.Type_.monoSmall)
+                .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .frame(maxWidth: 180)
 
-            Spacer(minLength: 0)
-
-            // The dot becomes the close control on hover, in the same place — the
-            // arrangement every source list uses, and why a row needs room for only one.
-            if isHovering {
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8, weight: .bold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Token.Colour.secondaryLabel)
-                .help("Close")
-            } else if session.isDirty {
+            if session.isDirty {
                 Circle()
                     .fill(Token.Colour.accent)
                     .frame(width: 5, height: 5)
                     .help("Unsaved changes")
             }
         }
-        .padding(.vertical, 1)
-        .contentShape(.rect)
-        .onHover { isHovering = $0 }
-        .help(session.isUntitled ? "Not saved yet" : session.path)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(session.isDiff ? "Change" : "File"), \(session.title)")
-    }
-}
-
-/// The draggable edge of the sidebar.
-///
-/// Clamped so neither column can be dragged out of existence: below the lower bound the
-/// names stop fitting, and past the upper one the code column is narrower than the list of
-/// files pointing at it.
-private struct SidebarDivider: View {
-    @Binding var width: CGFloat
-    let available: CGFloat
-
-    var body: some View {
-        Divider()
-            .overlay(Token.Colour.divider)
-            // A hairline is a 1pt target. The hit area is widened without moving the line,
-            // the same trick the canvas dividers use.
-            .overlay {
-                Color.clear
-                    .frame(width: 10)
-                    .contentShape(.rect)
-                    .pointerStyle(.columnResize)
-                    .gesture(
-                        DragGesture(coordinateSpace: .global)
-                            .onChanged { value in
-                                let upper = max(120, min(320, available - 220))
-                                width = min(max(120, width + value.translation.width), upper)
-                            }
-                    )
+        .padding(.leading, 6)
+        .padding(.trailing, 9)
+        .padding(.vertical, 3)
+        .background {
+            if isSelected {
+                Capsule().fill(Token.Colour.selectionWash)
+            } else if isHovering {
+                Capsule().fill(Token.Colour.selectionWash.opacity(0.5))
             }
+        }
+        .contentShape(.capsule)
+        .onHover { isHovering = $0 }
+        // A tap rather than a `Button`, so the close button inside keeps its own click. The
+        // keyboard path is ⇧⌘] / ⇧⌘[ (Pane ▸ Editor ▸ Next / Previous), which is what makes
+        // a strip of tap targets an acceptable control in this app.
+        .onTapGesture(perform: select)
+        .help(session.isUntitled ? "Not saved yet" : session.path)
+        .contextMenu {
+            Button("Close", action: close)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel("\(session.isDiff ? "Change" : "File"), \(session.title)")
+        .accessibilityAction(named: "Close", close)
+        .accessibilityAction { select() }
     }
 }
 
@@ -278,11 +255,22 @@ private struct FilePane: View {
                 EmptyTileState(icon: "doc.questionmark", title: "Not a text file")
             } else {
                 // A new file takes the caret as it appears: it was asked for in order to be
-                // typed into, and the first responder a pane offers is otherwise its sidebar.
+                // typed into, and nothing else in the pane wants the keyboard.
                 CodeTextView(text: $document.text,
+                             language: language,
                              claimsFocus: { document.claimInitialFocus() }, onSave: save)
             }
         }
+    }
+
+    /// By name first; by shebang only for a file whose name says nothing, so that a
+    /// `deploy` script with `#!/bin/sh` on top is coloured as shell. The text is read here
+    /// only in that case: reading it for every file would redraw this view on every
+    /// keystroke.
+    private var language: CodeLanguage? {
+        guard let url = document.url else { return nil }
+        if let named = CodeLanguage.detect(path: url.path) { return named }
+        return CodeLanguage.detect(shebang: document.text.prefix { !$0.isNewline })
     }
 
     private func noticeBar(_ notice: EditorDocument.Notice) -> some View {
@@ -319,4 +307,12 @@ private struct FilePane: View {
 
 #Preview("Editor", traits: .fixedLayout(width: 620, height: 380)) {
     EditorTile(context: .inert(), sessions: EditorSessions())
+}
+
+#Preview("Editor with tabs", traits: .fixedLayout(width: 620, height: 380)) {
+    let sessions = EditorSessions()
+    sessions.open(.file(URL(fileURLWithPath: "/tmp/Package.swift")))
+    sessions.open(.file(URL(fileURLWithPath: "/tmp/README.md")))
+    sessions.newFile()
+    return EditorTile(context: .inert(), sessions: sessions)
 }

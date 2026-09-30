@@ -135,6 +135,16 @@ something another editor does better.
   started here is nearly always a note about the project, and that is where those live. The
   panel is only a default; the file goes wherever it is taken. `.ultra/` is made if the
   project has none, and removed again if the save is cancelled.
+- **Tabs along the top**, one per open file or diff, in the order they were opened. A row
+  of tabs rather than a sidebar: a sidebar took a column off a pane that is already as
+  narrow as the user made it, and hid itself below 400pt, which is where most editor panes
+  live. ⇧⌘] / ⇧⌘[ move along the row; ⌃⌘W closes the tab showing. The selected tab is
+  scrolled into view when the row is longer than the pane.
+- **Generic colouring** (`CodeHighlighter`): comments, strings, numbers, keywords,
+  capitalised types and `@`/`#`/`$` attributes, from a table of a dozen facts per language
+  (`CodeLanguage`) and one linear pass — not a grammar. The language comes from the file's
+  name, or from a shebang when the name says nothing; a file in a language the table does
+  not know is plain text. System colours only, so it reads in both appearances.
 - **Line numbers**, drawn per VISIBLE line — a 50,000-line file costs the same to scroll as
   a 50-line one.
 - **Smart substitutions off.** Curly quotes and em dashes silently replacing what you typed
@@ -147,8 +157,8 @@ something another editor does better.
 - **The open file is persisted** in the pane record, so a restored workspace reopens it.
 - Reachable from a File Tree pane's context menu — "Open in Editor".
 
-Deliberately absent: syntax highlighting, find and replace, multiple cursors, autocomplete,
-split views, and a tab bar. Each is a reason to use the editor the user already has.
+Deliberately absent: per-language grammars, find and replace, multiple cursors,
+autocomplete, and split views. Each is a reason to use the editor the user already has.
 
 ## 1d. The agent control channel
 

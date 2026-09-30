@@ -125,4 +125,37 @@ struct EditorPaneRoutingTests {
         #expect(announced.last?.subtitle == "diff")
         #expect(announced.last?.command == nil, "a diff must not be restored as an open file")
     }
+
+    /// The crash behind "New File in the file tree". Splitting a pane persists the layout;
+    /// persisting materialises the new editor; the editor opens the staged new file and
+    /// announces the selection; the announcement persists again — and the pane is not
+    /// registered yet, so it is built again. A file is reused on the second pass and the
+    /// recursion stops. A new file is never reused, so it never did.
+    @Test("a staged new file is opened once, and not announced from inside the build")
+    func stagedNewFileDoesNotRecurse() {
+        let factory = factory()
+        let paneID = PaneID()
+        var announcedDuringBuild = 0
+        factory.onRecordChange = { id, _ in
+            announcedDuringBuild += 1
+            // What the layout store's persist does when the pane has no record yet.
+            _ = factory.makeContent(for: id)
+        }
+
+        factory.stage(open: .newFile)
+        factory.stage(.editor)
+        let content = factory.makeContent(for: paneID)
+
+        let open = try! #require(factory.editorSessions(for: paneID))
+        #expect(announcedDuringBuild == 0, "the returned record already says what is selected")
+        #expect(open.sessions.count == 1)
+        #expect(open.selected?.title == "Untitled")
+        #expect(content?.record.kind == .editor)
+        #expect(content?.record.command == nil, "nothing of a new file exists to reopen")
+
+        // Once built, the pane reports its tabs like any other.
+        factory.onRecordChange = { _, _ in announcedDuringBuild += 1 }
+        open.open(.file(url("later.swift")))
+        #expect(announcedDuringBuild == 1)
+    }
 }
