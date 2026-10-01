@@ -31,6 +31,8 @@
   - [x] Chat: a code block's Copy and Type-at-the-prompt float over its header on the glass hover pill, centred on the row
   - [x] Chat: `MarkdownBlocks` cuts out headings and lists as well as fences; a list is drawn with bullets or numbers in a column, nesting stepped in; tests
   - [x] Chat: the prompt asks for plain prose — no headings, nothing bold — and a bulleted list for several things; docs
+- [x] to do pane, add a progress bar taht is caluclulated based on number of all todos completed and not completed. make sure section are not included in the claulation
+  - [x] Todo: `TodoDocument.progress` — ticked over all task lines, headings and prose never counted; a bar under the composer in the accent on a track; tests; docs
 - [x] context I want cotext to show added files nicer, i wand to see file name extension size a preview if possible, encapsulated.
   - [x] Context: `Item` carries bytes and, for a folder, its file count, measured in the one walk the token estimate already makes
   - [x] Context: one rounded, bordered card per item — a QuickLook thumbnail (the file's icon until it arrives), the name, and a caption with the extension badge, size and ~tokens

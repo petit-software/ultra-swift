@@ -33,6 +33,7 @@ public struct TodoTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             composer
+            TodoProgressBar(progress: store.document.progress)
             list
         }
         .tileToast(store.notice.map(notice(for:)), dismiss: { store.dismissNotice() })
@@ -263,6 +264,40 @@ public struct TodoTile: View {
         case .reloadedFromDisk: .reloadedFromDisk
         case .failed(let reason): .couldNotSave(reason)
         }
+    }
+}
+
+/// How much of the list is done, as a line under the composer: the accent's share of a
+/// track the width of the composer, so it reads with the pill above it. Only task lines
+/// are counted (`TodoDocument.progress`); a heading is not a thing to finish. Nothing is
+/// shown for an empty list, which has no progress to speak of.
+private struct TodoProgressBar: View {
+    let progress: TodoDocument.Progress
+
+    var body: some View {
+        if progress.total > 0 {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(Token.Colour.label.opacity(0.08))
+                    Capsule(style: .continuous)
+                        .fill(Token.Colour.accent)
+                        .frame(width: max(3, geometry.size.width * progress.fraction))
+                }
+            }
+            .frame(height: 3)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .help(summary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Progress")
+            .accessibilityValue(summary)
+            .animation(Token.Motion.structuralRespectingPreferences, value: progress)
+        }
+    }
+
+    private var summary: String {
+        "\(progress.done) of \(progress.total) task\(progress.total == 1 ? "" : "s") done"
     }
 }
 

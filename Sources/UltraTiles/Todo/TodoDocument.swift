@@ -389,6 +389,33 @@ public struct TodoDocument: Equatable, Sendable {
         lines.reduce(0) { $0 + (Self.parseTask($1.content)?.done == true ? 1 : 0) }
     }
 
+    /// How far the list has come: ticked tasks over all of them, for the bar under the
+    /// composer. Only task lines count — a heading is not a thing to finish, and prose,
+    /// fences and blank lines are not looked at — and a subtask counts the same as the
+    /// task above it, since it is one more box to tick.
+    public var progress: Progress {
+        var done = 0, total = 0
+        for line in lines {
+            guard let task = Self.parseTask(line.content) else { continue }
+            total += 1
+            if task.done { done += 1 }
+        }
+        return Progress(done: done, total: total)
+    }
+
+    public struct Progress: Equatable, Sendable {
+        public var done: Int
+        public var total: Int
+
+        public init(done: Int, total: Int) {
+            self.done = done
+            self.total = total
+        }
+
+        /// 0 for an empty list, so the bar for a list with nothing in it has nothing to show.
+        public var fraction: Double { total == 0 ? 0 : Double(done) / Double(total) }
+    }
+
     /// Move a task so it sits immediately before `target` — another task's line, or
     /// `lines.count` to put it at the end.
     ///

@@ -129,6 +129,24 @@ struct TodoDocumentTests {
         #expect(document.text == before)
     }
 
+
+    @Test("progress counts task lines only: not headings, prose or fenced lines")
+    func progress() {
+        var document = TodoDocument(text: sample)
+        let before = document.progress
+        #expect(before.total == document.items.count)
+        #expect(before.done == document.completedCount)
+        #expect(before.fraction == Double(before.done) / Double(before.total))
+
+        document.addSection("Later")
+        #expect(document.progress == before, "a heading is not a thing to finish")
+
+        #expect(TodoDocument(text: "## Only a heading\n\nProse.\n").progress == .init(done: 0, total: 0))
+        #expect(TodoDocument(text: "").progress.fraction == 0)
+        #expect(TodoDocument(text: "- [x] a\n  - [ ] b\n").progress == .init(done: 1, total: 2),
+                "a subtask is one more box to tick")
+        #expect(TodoDocument(text: "- [x] a\n- [X] b\n").progress.fraction == 1)
+    }
     @Test("prose, front matter and code fences are never treated as tasks")
     func doesNotTouchProse() {
         let document = TodoDocument(text: sample)

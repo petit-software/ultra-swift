@@ -216,6 +216,10 @@ the agent running in the next pane over.
   menu and the palette — removes every ticked task line in one edit and nothing else: an
   undone subtask under a done parent stays, prose and headings are not looked at. Dimmed when
   nothing is done. No chord, because it removes lines.
+- **A progress bar under the composer**: the accent's share of a 3pt track, ticked tasks
+  over all of them. Only task lines count — a heading is not a thing to finish, and prose and
+  fenced lines are never looked at — and a subtask counts like any other box. Hover for the
+  numbers; VoiceOver reads them as the bar's value. Nothing is shown for an empty list.
 - **Actions**: toggle, add, remove (a **minus** — one line out of a markdown file, not a
   deletion), reorder by drag, indent/outdent, edit in place, and **Send to shell** — injects the
   task text into the focused shell without submitting.
