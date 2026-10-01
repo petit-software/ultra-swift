@@ -129,7 +129,7 @@ killed by a tab switch.
 > listeners to this workspace's shells; Resources attributes by process ancestry.
 > **Outstanding:** nothing on this list — Todo reorder-by-drag and occlusion pausing both landed.
 
-- File tree: lazily-expanded project tree; click a file to send its quoted path to the shell.
+- File tree: lazily-expanded project tree; click a file to open it in the editor, double-click to reveal it in Finder.
 - Todo: lossless markdown round-trip, file watching, conflict handling, send-to-shell.
 - Ports: `lsof` polling, pane attribution, open/copy/kill.
 - Resources: `ps` polling with ppid attribution, sparklines, occlusion-paused.

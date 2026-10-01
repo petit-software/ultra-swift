@@ -110,9 +110,10 @@ The project's files, lazily expanded.
   visible, and expansion is testable without a view.
 - **Collapsing forgets descendants' open state**, so reopening a folder does not explode back
   to a tree the user just closed.
-- **Clicking a file sends its shell-quoted path** to the focused shell without submitting.
-  A file tree that opened an editor would be a worse editor than the user's own; one that
-  types a path for you is the thing a terminal actually lacks.
+- **Clicking a file opens it in the editor; double-clicking reveals it in Finder.** The
+  first click is not held back to wait for a second — the editor opens at once, and the
+  second click of a double adds the reveal. Sending a file's shell-quoted path to the
+  focused shell, without submitting, is on the hover pill and the context menu.
 - **Hovering a row floats Open, Send and Reveal** over its trailing end, on the same glass
   pill as Todo, Git and Context rows. The same three on files and folders: Open puts a file
   in the editor and re-roots the tree on a folder (a click already expands it in place).

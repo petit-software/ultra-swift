@@ -5,10 +5,9 @@ import UltraDesign
 
 /// The project's files, as a lazily-expanded tree.
 ///
-/// Clicking a file sends its path to the focused shell WITHOUT submitting — the same verb
-/// Todo and Context use. A file tree that opened an editor would be a worse editor than the
-/// one the user already has; a file tree that types a path for you is the thing a terminal
-/// actually lacks.
+/// Clicking a file opens it in the editor; double-clicking it reveals it in Finder. Sending
+/// its shell-quoted path to the focused shell — the verb Todo and Context rows share — is
+/// on the hover pill and the context menu, one click away rather than the click.
 public struct FileTreeTile: View {
     @State private var model: FileTreeModel
     @State private var selection: URL?
@@ -90,12 +89,18 @@ public struct FileTreeTile: View {
         Button("Reveal in Finder") { context.revealInFinder(node.url) }
     }
 
+    /// One handler for both clicks of a double, so the first is never held back waiting to
+    /// see whether a second follows: the editor opens at once, and the second click of a
+    /// double reveals the file in Finder on top of that. A folder expands in place on each
+    /// click, as before.
     private func activate(_ node: FileTreeModel.Node) {
         selection = node.url
         if node.isDirectory {
             model.toggle(node)
+        } else if NSApp.currentEvent?.clickCount == 2 {
+            context.revealInFinder(node.url)
         } else {
-            send(node)
+            open(node)
         }
     }
 

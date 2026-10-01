@@ -25,6 +25,8 @@
 - [x] opening new projects keeps pane from previous project open
   - [x] Storage: one document per project — `load(directory:)` takes the newest, `retireDuplicates` parks the rest in `workspaces/stale/`
   - [x] New window: opens the first start project that is not open already, restored; a twin of an open project is not saved
+- [x] clicking on the file from file tree, double click should open finder, single clikc should open editor.
+  - [x] File tree: a click on a file opens it in the editor; the second click of a double reveals it in Finder; send-to-shell stays on the hover pill and the context menu; docs
 
 ## Simulator previews in Pane
 - [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls
