@@ -106,10 +106,7 @@ public struct ChatTile: View {
             // control in the pill should sit in it, not hang off its last line.
             TodoRowSlot {
                 if store.isStreaming {
-                    Button(action: store.stop) { Image(systemName: "stop.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Token.Colour.label)
-                        .help("Stop (Esc)")
+                    ThinkingStopButton(stop: store.stop)
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up.circle.fill") }
                         .buttonStyle(.plain)
@@ -330,6 +327,44 @@ private struct ChatMessageView: View {
             .padding(.trailing, 20)
         }
     }
+}
+
+/// The composer's control while an answer is on its way: a spinning pair of arrows, so
+/// the wait reads as the model working rather than the pane doing nothing — and, under
+/// the pointer, the stop button, so stopping is in the same place as the sign that there
+/// is something to stop. The whole thing is the button: a click on the spinner stops too,
+/// and Escape stops without touching it.
+struct ThinkingStopButton: View {
+    let stop: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: stop) {
+            Image(systemName: isHovering ? "stop.circle.fill" : "arrow.trianglehead.2.clockwise.rotate.90")
+                // The symbol's own rotation, by layer, for as long as it is on screen; the
+                // swap to the stop button goes through Replace so the glyph morphs rather
+                // than blinks. Someone who asked for less motion gets a pulse instead: it
+                // still says "working", without anything going round.
+                .symbolEffect(.rotate.byLayer, options: .repeat(.continuous),
+                              isActive: !isHovering && !Token.Environment_.reduceMotion)
+                .symbolEffect(.pulse, options: .repeat(.continuous),
+                              isActive: !isHovering && Token.Environment_.reduceMotion)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: TodoRowSlot<EmptyView>.width, height: TodoRowSlot<EmptyView>.width)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isHovering ? Token.Colour.label : Token.Colour.secondaryLabel)
+        .animation(Token.Motion.chromeFade, value: isHovering)
+        .onHover { isHovering = $0 }
+        .help("Stop (Esc)")
+        .accessibilityLabel("Thinking")
+        .accessibilityHint("Stops the answer")
+    }
+}
+
+#Preview("Thinking", traits: .fixedLayout(width: 80, height: 40)) {
+    ThinkingStopButton(stop: {}).font(.system(size: 17)).padding()
 }
 
 /// One thing the model looked at on the way to its answer: "Read Package.swift". Quiet —

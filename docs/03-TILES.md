@@ -379,7 +379,10 @@ APIs. Every provider is tested against a recorded transcript.
   read back before the row says signed in. Both are tested against recorded lines of their
   protocols.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
-  Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
+  Escape also stops. While an answer is on its way the composer's send slot holds a spinning
+  pair of arrows (`ThinkingStopButton`: the symbol's own `.rotate` effect, a pulse under
+  Reduce Motion), and under the pointer it is the stop button — the whole slot is the button,
+  so a click on the spinner stops too. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
 - Each pane can show its chat light: the sun in the footer, or Pane ▸ Chat ▸ Toggle Light
   Chat (⌃⌘L — the browser's key for the same thing; the two share it, and the menu fires
   whichever is enabled). It works the way a browser pane's page mode does: the choice is
@@ -562,6 +565,9 @@ exception the design language makes to "no steady-state intersections" (docs/02)
 informational toast (reloaded) leaves on its own after four seconds, pausing while the
 pointer is on it; one that needs a decision (a conflict) or reports a failure stays until
 closed. The tone is in the symbol's colour alone — the capsule is never tinted.
+
+Close is also **Pane ▸ Dismiss Notice** in the menu and the palette, enabled only while the
+focused pane shows a toast, so a notice can be put away without the pointer.
 
 | Tile | Notices |
 |---|---|
