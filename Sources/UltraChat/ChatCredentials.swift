@@ -56,6 +56,9 @@ public enum ChatCredentials {
         // before: there is no row in Settings to see or clear it, and a chat that works
         // for reasons nothing on screen explains is worse than one that says why not.
         if provider.isRetired { return false }
+        // An engine is configured when its binary is here. Whether anyone is signed in
+        // to it is only known by asking it, which a send does; see `ChatEngine.account`.
+        if let engine = provider.engine { return engine.executable != nil }
         return !provider.requiresCredential || hasAPIKey(for: provider)
     }
 
@@ -69,6 +72,8 @@ public enum ChatCredentials {
         case .openAI: OpenAIProvider(id: .openAI, credential: credential(for: id))
         case .gemini: GeminiProvider(credential: credential(for: id))
         case .openRouter: OpenAIProvider(id: .openRouter, credential: credential(for: id))
+        case .claudeCode: ClaudeCodeProvider()
+        case .codex: CodexProvider()
         }
     }
 }

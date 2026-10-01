@@ -49,10 +49,15 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
     public var messages: [ChatMessage]
     public var createdAt: Date
     public var updatedAt: Date
+    /// An engine's own id for this conversation — Claude Code's session, Codex's thread —
+    /// so the next turn resumes it rather than replaying the history. Nil for every HTTP
+    /// provider, which is sent the history every time, and in every file written before
+    /// engines existed. Cleared when the conversation moves to another provider.
+    public var engineSession: String?
 
     public init(id: UUID = UUID(), title: String = "", provider: ChatProviderID, model: String,
                 messages: [ChatMessage] = [], createdAt: Date = Date(),
-                updatedAt: Date = Date()) {
+                updatedAt: Date = Date(), engineSession: String? = nil) {
         self.id = id
         self.title = title
         self.provider = provider
@@ -60,6 +65,7 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
         self.messages = messages
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.engineSession = engineSession
     }
 
     /// What the conversation is called: the title if one was set, else the first thing
@@ -76,18 +82,27 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
 
 /// What a provider is asked for: the system prompt, the history, the model to use, and
 /// the tools the model may call on the way to its answer.
+///
+/// An engine reads two more things: where the project is, which is where it runs and
+/// what it may read, and its own id for the conversation, which it resumes rather than
+/// being told the history again.
 public struct ChatRequest: Sendable, Equatable {
     public var model: String
     public var system: String?
     public var messages: [ChatMessage]
     public var toolbox: (any ChatToolbox)?
+    public var workingDirectory: URL?
+    public var session: String?
 
     public init(model: String, system: String? = nil, messages: [ChatMessage],
-                toolbox: (any ChatToolbox)? = nil) {
+                toolbox: (any ChatToolbox)? = nil, workingDirectory: URL? = nil,
+                session: String? = nil) {
         self.model = model
         self.system = system
         self.messages = messages
         self.toolbox = toolbox
+        self.workingDirectory = workingDirectory
+        self.session = session
     }
 
     public var tools: [ChatTool] { toolbox?.tools ?? [] }
@@ -96,7 +111,8 @@ public struct ChatRequest: Sendable, Equatable {
     /// the tools is not part of that.
     public static func == (lhs: ChatRequest, rhs: ChatRequest) -> Bool {
         lhs.model == rhs.model && lhs.system == rhs.system && lhs.messages == rhs.messages
-            && lhs.tools == rhs.tools
+            && lhs.tools == rhs.tools && lhs.workingDirectory == rhs.workingDirectory
+            && lhs.session == rhs.session
     }
 }
 
@@ -137,11 +153,18 @@ public enum ChatEvent: Sendable, Equatable {
     case toolResult(id: String, result: String)
     /// The end, and how it ended.
     case finished(ChatFinish)
+    /// An engine's id for this conversation, to be sent back as `ChatRequest.session` on
+    /// the next turn. Sent once, by a turn that started the conversation on the engine.
+    case session(String)
 }
 
 /// What went wrong with a request, in words the pane can show.
 public enum ChatError: Error, LocalizedError, Equatable, Sendable {
     case missingCredential(ChatProviderID)
+    /// The engine behind the provider is not on this Mac.
+    case notInstalled(ChatProviderID)
+    /// The engine is here but nobody is signed in to it.
+    case notSignedIn(ChatProviderID)
     case unavailable(String)
     case http(status: Int, message: String)
     case malformed(String)
@@ -150,6 +173,10 @@ public enum ChatError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .missingCredential(let provider):
             "No API key for \(provider.title). Add one in Settings ▸ Chat."
+        case .notInstalled(let provider):
+            "\(provider.title) is not installed. Settings ▸ Chat has the install command."
+        case .notSignedIn(let provider):
+            "\(provider.title) is not signed in. Sign in from Settings ▸ Chat."
         case .unavailable(let reason):
             reason
         case .http(let status, let message):

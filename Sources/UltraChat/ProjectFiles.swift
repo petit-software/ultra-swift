@@ -79,7 +79,7 @@ public struct ProjectFiles: ChatToolbox {
             }
             return "Read \(call.string("path") ?? "") from line \(start)"
         case "search_files": return "Search for “\(call.string("query") ?? "")”"
-        default: return call.name
+        default: return ChatEngine.summary(of: call) ?? call.name
         }
     }
 

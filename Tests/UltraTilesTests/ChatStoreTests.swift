@@ -226,6 +226,36 @@ struct ChatStoreTests {
         #expect(store.current.messages.last?.text == "Some")
         #expect(store.current.messages.last?.note == "Stopped.")
     }
+
+    @Test("an engine's session is saved with the conversation, sent back, and cleared by a provider change")
+    func engineSession() async throws {
+        let root = scratchRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let provider = ScriptedProvider(events: [
+            .session("thread-1"), .text("Hi"), .finished(ChatFinish(reason: .complete)),
+        ])
+        let store = ChatStore(root: root, makeProvider: { _ in provider })
+        store.setProvider(.codex)
+        store.send("Hello")
+        try await settle(store)
+
+        #expect(store.current.engineSession == "thread-1")
+        #expect(ChatArchive(root: root).load(id: store.current.id)?.engineSession == "thread-1")
+        // The first turn had no session to send; the next one does, and says where to run.
+        #expect(provider.requests.first?.session == nil)
+        #expect(provider.requests.first?.workingDirectory == root)
+        #expect(provider.requests.first?.system?.contains("list_files") == false)
+        provider.events = [.text("Again"), .finished(ChatFinish(reason: .complete))]
+        store.send("More")
+        try await settle(store)
+        #expect(provider.requests.last?.session == "thread-1")
+        #expect(store.current.engineSession == "thread-1")
+
+        // Another provider is sent the history instead; the thread was the engine's.
+        store.setProvider(.anthropic)
+        #expect(store.current.engineSession == nil)
+        #expect(provider.requests.count == 2)
+    }
 }
 
 @Suite("Chat model picker")

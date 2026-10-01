@@ -15,12 +15,19 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
     /// Many vendors' models behind one key, through OpenAI's chat API at a fixed URL.
     /// Model ids are `vendor/model`, and the list is long enough that the live one matters.
     case openRouter
+    /// The user's Claude subscription, through their own Claude Code binary: `claude -p`,
+    /// one process per turn, talking stream-json. No key and no token ever passes through
+    /// here — Anthropic's terms allow a subscription only inside the unmodified binary.
+    case claudeCode
+    /// The user's ChatGPT plan, through Codex's app server: `codex app-server` over stdio,
+    /// JSON-RPC, kept running between turns. The same way Xcode reaches it.
+    case codex
 
     public var id: String { rawValue }
 
     /// The services a pane or Settings will offer. `allCases` still includes the retired
     /// one, because decoding does.
-    public static let offered: [ChatProviderID] = [.apple, .anthropic, .gemini, .openRouter]
+    public static let offered: [ChatProviderID] = [.apple, .claudeCode, .codex, .anthropic, .gemini, .openRouter]
 
     /// Kept for old files, never for new conversations.
     public var isRetired: Bool { !Self.offered.contains(self) }
@@ -32,12 +39,30 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
         case .openAI: "OpenAI"
         case .gemini: "Google Gemini"
         case .openRouter: "OpenRouter"
+        case .claudeCode: "Claude Code"
+        case .codex: "ChatGPT (Codex)"
         }
     }
 
-    /// Whether the service needs a key at all. Only the on-device model does not.
+    /// Whether the service needs a key at all. The on-device model does not, and neither
+    /// does an engine: those are signed in on their own, outside the app.
     public var requiresCredential: Bool {
-        self != .apple
+        self != .apple && !isEngine
+    }
+
+    /// A vendor's own agent on this Mac, driven as a subprocess, rather than a service
+    /// reached over HTTP with a key. See `ChatEngine`.
+    public var isEngine: Bool {
+        self == .claudeCode || self == .codex
+    }
+
+    /// The engine behind this provider, if it is one.
+    public var engine: ChatEngine? {
+        switch self {
+        case .claudeCode: .claudeCode
+        case .codex: .codex
+        default: nil
+        }
     }
 
     /// The model a fresh conversation starts on. Every one of these can be changed from
@@ -49,6 +74,9 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
         case .openAI: "gpt-5"
         case .gemini: "gemini-2.5-flash"
         case .openRouter: "anthropic/claude-opus-5"
+        // The engine's own default — whatever the user set it to — rather than a name
+        // chosen here that would be stale by the next release of either.
+        case .claudeCode, .codex: ChatEngine.defaultModel
         }
     }
 }
