@@ -294,11 +294,14 @@ The drop target. Files, folders, and links that the agent should know about.
   the Files tile, a browser, or another app.
 - **Persistence**: security-scoped bookmarks so a dropped folder outside the project is still
   readable after relaunch. Stale bookmarks are shown as such with a re-grant action.
-- **Each item is a card**, rounded and bordered like the chat's changed-files table, and
-  every card the same height: a thumbnail, the name, and a caption — the kind as a badge
-  (`MD`, `SWIFT`, `Folder`), a folder's file count, the size in Finder's units, and a token
-  estimate (bytes/4 heuristic to start; swap in a real tokenizer later without changing
-  the UI). One walk of a folder measures all three. The thumbnail is QuickLook's — the
+- **Each item is a row**, every row the same height, with one enclosure and only under the
+  pointer: a wash, no hairline. (It was a bordered card around a bordered thumbnail around a
+  capsule badge — three frames deep for one file.) A thumbnail, the name with the pin beside
+  it, and under the name a meta line in the system face, not mono: the kind as plain text
+  (`MD`, `SWIFT`, `Folder`), a folder's file count, and a token estimate (bytes/4 heuristic
+  to start; swap in a real tokenizer later without changing the UI), with the size in
+  Finder's units on the trailing side where a number is easiest to compare down a list.
+  One walk of a folder measures all three. The thumbnail is QuickLook's — the
   file's own icon until it arrives, or for good when QuickLook has nothing for the type —
   generated off the main actor so a list of PDFs does not stall the pane. A missing item's
   caption says only `missing`: its size and tokens are stale facts about a file that is
@@ -307,7 +310,8 @@ The drop target. Files, folders, and links that the agent should know about.
   references into the focused shell **without submitting**, so the user types their sentence
   around them. Multi-select joins with spaces. Absolute paths are used when the target is
   outside the project. The footer sends the whole list; **each row sends just itself**, in the
-  same `@path` form — a list gathered over a session usually holds more than the one file the
+  same `@path` form — one click on the row, or its hover control — and a double click shows
+  it in Finder. A list gathered over a session usually holds more than the one file the
   next prompt is about. A missing file's send is dimmed.
 - **Also**: "Copy as prompt" (paths plus a short preamble), pin/unpin, remove, reveal in Finder.
   Remove is a **minus**, not a trash can: it takes a row off a list and never touches the file.

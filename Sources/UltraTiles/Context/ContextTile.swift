@@ -21,9 +21,9 @@ public struct ContextTile: View {
                 EmptyTileState(icon: "paperclip", title: "Drop files or folders here")
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: ContextCard.spacing) {
+                    LazyVStack(alignment: .leading, spacing: ContextRow.spacing) {
                         ForEach(model.items) { item in
-                            ContextCard(item: item,
+                            ContextRow(item: item,
                                         remove: { model.remove(item) },
                                         togglePin: { model.togglePin(item) },
                                         reveal: { context.revealInFinder(item.url) },
@@ -34,8 +34,8 @@ public struct ContextTile: View {
                                         })
                         }
                     }
-                    .padding(.horizontal, ContextCard.inset)
-                    .padding(.vertical, ContextCard.spacing)
+                    .padding(.horizontal, ContextRow.inset)
+                    .padding(.vertical, ContextRow.spacing)
                 }
                 .tileScrollBar()
             }
@@ -106,16 +106,20 @@ public struct ContextTile: View {
     }
 }
 
-/// One item, in its own rounded, bordered card: a thumbnail of the file, its name, and
-/// under the name what kind of file it is, how big, and roughly what it costs.
+/// One item, as a row: a thumbnail of the file, its name with the pin beside it, under the
+/// name what kind of file it is and roughly what it costs, and its size in a column of its
+/// own on the trailing side, centred on the row, where a number is easiest to compare down
+/// a list.
 ///
-/// A card rather than a row because an item here is a THING the user picked up and put
-/// down, not a line in a listing — and three facts about it do not fit on one line of a
-/// narrow tile without one of them giving way. Every card is the same height, thumbnail
-/// or not, so a list of mixed files does not ripple as previews arrive.
-private struct ContextCard: View {
+/// A row, not a card. It was a bordered card around a bordered thumbnail around a capsule
+/// badge — three frames deep for one file — and the frames said more than the file did. Now
+/// the only enclosure is a wash under the pointer, so the row is plain until it is the one
+/// being reached for. The meta line is the system face, not mono: these are a few words and
+/// a number to glance at, not a path to read. Every row is the same height, thumbnail or
+/// not, so a list of mixed files does not ripple as previews arrive.
+private struct ContextRow: View {
     static let height: CGFloat = 56
-    static let spacing: CGFloat = 6
+    static let spacing: CGFloat = 2
     static let inset: CGFloat = 8
     static let radius: CGFloat = 8
     static let thumbnailSide: CGFloat = 40
@@ -133,49 +137,63 @@ private struct ContextCard: View {
                              isMissing: item.isMissing, side: Self.thumbnailSide)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(Token.Type_.tileSubtitle)
-                    .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
-                    .strikethrough(item.isMissing)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(item.name)
+                        .font(Token.Type_.tileSubtitle)
+                        .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
+                        .strikethrough(item.isMissing)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    if item.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(Token.Colour.accent)
+                    }
+                }
 
                 // "missing" keeps its warning colour: that is a STATE, not a measurement, and
                 // it is the one thing in this tile worth interrupting a scan for.
-                HStack(spacing: 5) {
+                Group {
                     if item.isMissing {
                         Text("missing").foregroundStyle(.orange)
                     } else {
-                        ContextKindBadge(kind: item.kind)
-                        Text(captionAfterKind)
-                            .foregroundStyle(Token.Colour.tertiaryLabel)
+                        Text(details)
+                            .foregroundStyle(Token.Colour.secondaryLabel)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 }
-                .font(Token.Type_.monoSmall.monospacedDigit())
+                .font(.system(size: 12))
             }
 
-            Spacer(minLength: 8)
-
-            if item.isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Token.Colour.accent)
+            // Its own column, centred on the row rather than sat on the meta line: the
+            // size belongs to the whole item, and a number at the row's middle lines up
+            // with the thumbnail and reads down a list in one straight run.
+            if !item.isMissing {
+                Spacer(minLength: 8)
+                Text(item.sizeText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
             }
         }
         .padding(.horizontal, 10)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // The same treatment as the chat's changed-files table: a faint wash inside a
-        // hairline, rounded. Two tiles that both show "files, as cards" should look like
-        // the same idea.
-        .background(Token.Colour.label.opacity(isHovering ? 0.06 : 0.03))
-        .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-            .strokeBorder(Token.Colour.separator, lineWidth: 1))
-        // Floating over the card's trailing end — see `tileHoverControls`. Over the pin and
-        // the caption's tail, on demand, so the card is the same shape hovered or not.
+        // The one enclosure, and only under the pointer: a wash, no hairline. A border on
+        // every row made a list of boxes; a wash on the hovered one says "this row" and
+        // nothing about the others.
+        .background {
+            if isHovering {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .fill(Token.Colour.label.opacity(0.06))
+            }
+        }
+        // Floating over the row's trailing end — see `tileHoverControls`. Over the pin and
+        // the size, on demand, so the row is the same shape hovered or not.
         .tileHoverControls(isHovering, offset: CGSize(width: -8, height: 0)) {
             HStack(spacing: 7) {
                 // The tile's headline verb, per item. The footer sends the WHOLE list, which
@@ -184,7 +202,7 @@ private struct ContextCard: View {
                 //
                 // Leads the cluster because it is the thing this tile is for; a missing file
                 // has no reference worth typing, so it is dimmed rather than dropped — a
-                // cluster that changes width between cards is a cluster you cannot aim at.
+                // cluster that changes width between rows is a cluster you cannot aim at.
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send this file to the shell")
                     .disabled(item.isMissing)
@@ -194,7 +212,7 @@ private struct ContextCard: View {
                 .help(item.isPinned ? "Unpin" : "Pin — survives Clear")
                 Button(action: reveal) { Image(systemName: "magnifyingglass") }
                     .help("Reveal in Finder")
-                // Circled minus, not a cross or a trash can. Removing a card takes the file
+                // Circled minus, not a cross or a trash can. Removing a row takes the file
                 // off this list and does nothing to the file, and a trash can promises
                 // otherwise; the circle matches the footer's Clear and the Git pane's Unstage,
                 // which perform the same verb.
@@ -205,6 +223,14 @@ private struct ContextCard: View {
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
         .contentShape(.rect)
+        // The row itself is the verb: one click sends the file to the shell, the thing this
+        // tile is for, so the common case needs no aim at a pill that has not appeared yet;
+        // two clicks show it in Finder, the way two clicks open a thing anywhere on the Mac.
+        // Double first, so a second click is read as the pair and not as two sends. A
+        // missing file has no reference to type and nothing for Finder to show, so neither
+        // does anything — the pill's own controls are dimmed to say the same.
+        .onTapGesture(count: 2) { if !item.isMissing { reveal() } }
+        .onTapGesture { if !item.isMissing { send() } }
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(item.isMissing
@@ -212,27 +238,14 @@ private struct ContextCard: View {
                             : "\(item.name), \(item.caption), tokens")
     }
 
-    /// The caption with its first part — the kind — taken off, because the kind is drawn
-    /// as a badge and the rest as text. One source for both, so the accessibility label
-    /// and the picture say the same thing.
-    private var captionAfterKind: String {
-        let parts = item.caption.components(separatedBy: " · ")
-        return parts.dropFirst().joined(separator: " · ")
-    }
-}
-
-/// The item's type, set in a small capsule — `MD`, `SWIFT`, `Folder` — so the eye can
-/// pick out "the Swift files" from a mixed list before reading a single name.
-private struct ContextKindBadge: View {
-    let kind: String
-
-    var body: some View {
-        Text(kind)
-            .font(Token.Type_.monoSmall.weight(.medium))
-            .foregroundStyle(Token.Colour.secondaryLabel)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(Token.Colour.label.opacity(0.08), in: .capsule)
+    /// The meta line's leading part: the kind, a folder's file count, and the token
+    /// estimate — `item.caption` without the size, which has moved to the trailing end.
+    /// Same spellings as the caption, so the picture and the accessibility label agree.
+    private var details: String {
+        var parts = [item.kind]
+        if let count = item.fileCount { parts.append(count == 1 ? "1 file" : "\(count) files") }
+        parts.append("~" + ContextModel.Item.compact(item.tokens))
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -240,9 +253,9 @@ private struct ContextKindBadge: View {
 /// image itself, the opening lines of a source file — and the file's icon until that
 /// arrives, or for good when QuickLook has nothing to say about the type.
 ///
-/// The icon is drawn FIRST, synchronously, so no card ever shows an empty square; the
-/// thumbnail replaces it in place. Both sit in the same rounded, bordered frame, so a
-/// folder's icon and a photo's preview are the same shape in the list.
+/// The icon is drawn FIRST, synchronously, so no row ever shows an empty square; the
+/// thumbnail replaces it in place, in the same square, so a folder's icon and a photo's
+/// preview take the same room in the list.
 private struct ContextThumbnail: View {
     let url: URL
     let isDirectory: Bool
@@ -265,10 +278,10 @@ private struct ContextThumbnail: View {
             }
         }
         .frame(width: side, height: side)
-        .background(Token.Colour.label.opacity(0.04))
+        // Clipped, not framed: a preview's corners are rounded so a page of text does not
+        // land as a hard rectangle, but there is no wash or hairline around it — the row
+        // supplies the one enclosure, and an icon needs none.
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .strokeBorder(Token.Colour.separator, lineWidth: 1))
         .opacity(isMissing ? 0.4 : 1)
         .task(id: url) {
             preview = nil
