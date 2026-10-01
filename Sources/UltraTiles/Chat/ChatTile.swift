@@ -32,6 +32,7 @@ public struct ChatTile: View {
         .onAppear {
             draftFocused = true
             store.refreshModels()
+            store.refreshEngineModels()
         }
         // Escape stops an answer that is arriving — the one thing a user wants a key for
         // while text is pouring in.
@@ -144,11 +145,11 @@ public struct ChatTile: View {
     private var footer: some View {
         TileFooter(summary: "\(store.current.provider.title) · \(store.current.model)",
                    summaryHelp: "Which model this conversation is with") {
-            TileFooterButton(symbol: "square.and.pencil", help: "New chat (⌥⌘N)") {
+            TileFooterButton(symbol: "plus.capsule.fill", help: "New chat (⌥⌘N)") {
                 store.newConversation()
                 draftFocused = true
             }
-            ChromeMenuButton(symbol: "clock", help: "Earlier chats in this project") {
+            ChromeMenuButton(symbol: "tray.fill", help: "Earlier chats in this project") {
                 conversationEntries
             }
             ChromeMenuButton(symbol: "cpu", help: "Provider and model") {
@@ -185,21 +186,41 @@ public struct ChatTile: View {
     }
 
     private var modelEntries: [ChromeMenuEntry] {
-        var entries: [ChromeMenuEntry] = [.caption("Provider")]
-        for provider in ChatProviderID.offered {
-            let usable = provider == .apple ? store.appleUnavailable == nil : ChatCredentials.isConfigured(provider)
-            entries.append(.item(title: provider.title,
-                                 isOn: provider == store.current.provider,
-                                 isEnabled: usable) {
-                store.setProvider(provider)
-                store.refreshModels()
-            })
+        // Grouped by how each is paid for — on this Mac, a plan, a key — because that is
+        // the choice a user makes first; the vendor comes second.
+        var entries: [ChromeMenuEntry] = []
+        for group in ChatProviderID.Group.allCases where !group.providers.isEmpty {
+            entries.append(.caption(group.title))
+            for provider in group.providers {
+                let usable = provider == .apple ? store.appleUnavailable == nil : ChatCredentials.isConfigured(provider)
+                let isCurrent = provider == store.current.provider
+                if group == .subscription, usable {
+                    // An engine's models sit inside its row: a plan has a handful, so
+                    // picking one is one gesture, and the tick shows through the row.
+                    let models = store.models[provider] ?? [provider.defaultModel]
+                    entries.append(.submenu(title: provider.title, entries: Self.modelRows(
+                        models, current: isCurrent ? store.current.model : "") { model in
+                            store.choose(provider: provider, model: model)
+                        }))
+                } else {
+                    entries.append(.item(title: provider.title, isOn: isCurrent, isEnabled: usable) {
+                        store.setProvider(provider)
+                        store.refreshModels()
+                    })
+                }
+            }
+        }
+        // The current provider's list below, for the providers whose row does not hold it.
+        if store.current.provider.group != .subscription {
+            entries.append(.separator)
+            entries.append(.caption("Model"))
+            entries += Self.modelRows(store.modelChoices, current: store.current.model) { store.setModel($0) }
         }
         entries.append(.separator)
-        entries.append(.caption("Model"))
-        entries += Self.modelRows(store.modelChoices, current: store.current.model) { store.setModel($0) }
-        entries.append(.separator)
-        entries.append(.item(title: "Refresh Models") { store.refreshModels() })
+        entries.append(.item(title: "Refresh Models") {
+            store.refreshModels()
+            store.refreshEngineModels()
+        })
         return entries
     }
 
@@ -318,7 +339,8 @@ private struct ToolCallRow: View {
         switch call.name {
         case "read_file", "Read": "doc.text"
         case "list_files": "folder"
-        case "command": "terminal"
+        case "command", "Bash": "terminal"
+        case "Edit", "Write", "MultiEdit", "NotebookEdit", "edit": "pencil"
         default: "magnifyingglass"
         }
     }
