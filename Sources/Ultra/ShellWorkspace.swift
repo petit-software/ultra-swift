@@ -15,8 +15,11 @@ import UltraTiles
 @MainActor
 enum ShellWorkspace {
 
-    /// - Parameter restore: whether to adopt the saved layout. False for a new TAB, which
-    ///   is new work — restoring into it would clone the panes already on screen.
+    /// - Parameter restore: whether to adopt the saved layout. False only for a window on a
+    ///   project that is open ELSEWHERE already — restoring into it would clone the panes
+    ///   on screen there — and such a twin is not saved either: the project's layout is
+    ///   the other window's, and a second document under the same folder is what made
+    ///   the next launch restore a stale one.
     static func make(storage: WorkspaceStorage,
                      directory: String,
                      theme: TerminalTheme? = nil,
@@ -28,6 +31,9 @@ enum ShellWorkspace {
         // the arrangement the user chose once, re-homed onto this folder. Without one it
         // is a single shell, as before.
         let restored = restore ? storage.load(directory: directory) : nil
+        // One document per project. Any others under this folder are what an earlier
+        // build's unsaved-twin path left behind, and the next open must not find them.
+        if let restored { storage.retireDuplicates(for: directory, keeping: restored.id) }
         let document = restored ?? defaultDocument(for: directory, storage: storage)
         let records: [PaneID: PaneRecord] = document.map { document in
             Dictionary(uniqueKeysWithValues: document.panes.compactMap { key, value in
@@ -88,7 +94,7 @@ enum ShellWorkspace {
                                 metrics: .fromSettings,
                                 theme: theme,
                                 workspaceID: workspaceID,
-                                storage: storage) { paneID in
+                                storage: restore ? storage : nil) { paneID in
             // Tiles first: the factory returns nil for anything it does not own, and the
             // shell factory picks up everything else. The canvas never learns the difference.
             if let tile = tiles.makeContent(for: paneID) {
@@ -178,7 +184,7 @@ enum ShellWorkspace {
         // is written now rather than on the first change. Nothing else persists a store
         // until something moves, so a project opened, looked at and lost to a crash would
         // open next time on a single shell as if the default had never applied.
-        if restored == nil, document != nil { store.persist() }
+        if restore, restored == nil, document != nil { store.persist() }
         return store
     }
 
@@ -507,6 +513,33 @@ enum ShellWorkspace {
             return "the simulator pane did not open"
         }
         return await session.show(device, launching: app)
+    }
+
+    /// A way to close the toast the FOCUSED pane is showing, or nil when it shows none —
+    /// the menu item dims, which is how it says so.
+    ///
+    /// Only the focused pane, for the chat's reason: the toast is in front of you, and a
+    /// Dismiss that closed one in a pane you were not looking at would be a surprise. Each
+    /// tile keeps its notice in its own words — the editor's selected document, the todo
+    /// store, a session's error — and this is the one place that knows all four, so the
+    /// command does not.
+    static func dismissNotice(in store: LayoutStore) -> (() -> Void)? {
+        guard let tiles = Registry.tiles[store.workspaceID] else { return nil }
+        let focused = store.tree.focused
+        if let sessions = tiles.editorSessions(for: focused),
+           case .file(let document)? = sessions.selected?.content, document.notice != nil {
+            return { document.dismissNotice() }
+        }
+        if let todo = tiles.todoStore(for: focused), todo.notice != nil {
+            return { todo.dismissNotice() }
+        }
+        if let browser = tiles.browserSession(for: focused), browser.error != nil {
+            return { browser.error = nil }
+        }
+        if let simulator = tiles.simulatorSession(for: focused), simulator.error != nil {
+            return { simulator.error = nil }
+        }
+        return nil
     }
 
     /// The chat the focused pane holds, or nil when the focused pane is not a chat.

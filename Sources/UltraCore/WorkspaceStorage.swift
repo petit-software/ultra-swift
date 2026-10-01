@@ -85,8 +85,50 @@ public final class WorkspaceStorage: @unchecked Sendable {
     /// This is what `loadAll().first` used to stand in for, and the reason every project
     /// resolved to the same layout: "the first document on disk" is not "this project's
     /// document" once there is more than one.
+    ///
+    /// The NEWEST one, when a project has several. There should be one — a project is
+    /// opened in one place and persists to one id — but a window that opened a project
+    /// without restoring it wrote a second document for the same folder, and "whichever
+    /// file the directory listing returns first" then restored a layout the user had left
+    /// behind long ago, panes pointed at other projects and all. See `retireDuplicates`.
     public func load(directory: String) -> WorkspaceDocument? {
-        loadAll().first { $0.belongs(to: directory) }
+        documents(for: directory).first?.document
+    }
+
+    /// Put aside every document for a project but the one it is restoring from.
+    ///
+    /// Moved into `stale/` beside the live documents rather than deleted — a layout is the
+    /// user's work, and "never a silent data loss" applies to the stale ones too — and
+    /// out of `loadAll`'s way, so the project has one document again and the next open
+    /// cannot pick a different one. Returns how many were moved.
+    @discardableResult
+    public func retireDuplicates(for directory: String, keeping id: UUID) -> Int {
+        let stale = self.directory.appendingPathComponent("stale", isDirectory: true)
+        var moved = 0
+        for (url, document) in documents(for: directory) where document.id != id {
+            try? FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+            let target = stale.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.removeItem(at: target)
+            if (try? FileManager.default.moveItem(at: url, to: target)) != nil { moved += 1 }
+        }
+        return moved
+    }
+
+    /// Every document for a project with the file it came from, newest write first.
+    private func documents(for directory: String) -> [(url: URL, document: WorkspaceDocument)] {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: self.directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        return files
+            .filter { $0.pathExtension == "json" }
+            .compactMap { url -> (URL, WorkspaceDocument, Date)? in
+                guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
+                      let document = load(id), document.belongs(to: directory) else { return nil }
+                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate ?? .distantPast
+                return (url, document, date)
+            }
+            .sorted { $0.2 > $1.2 }
+            .map { ($0.0, $0.1) }
     }
 
     /// Every project with a saved workspace, most recently written first — the backing for

@@ -95,3 +95,35 @@ struct WorkspaceLaunchTests {
                                           home: home, exists: { _ in false }) == home)
     }
 }
+
+/// A new window skips the projects that are open already: a project is open in one place.
+@Suite("Launch directory for a new window")
+struct WorkspaceLaunchExclusionTests {
+
+    private let home = "/Users/x"
+    private func alwaysExists(_: String) -> Bool { true }
+
+    @Test("an open preferred folder yields to the first free recent")
+    func skipsOpenProjects() {
+        let directory = WorkspaceLaunch.directory(cwd: "/", preferred: "/p/pref",
+                                                  recents: ["/p/alpha", "/p/beta"], home: home,
+                                                  excluding: ["/p/pref", "/p/alpha"],
+                                                  exists: alwaysExists)
+        #expect(directory == "/p/beta")
+    }
+
+    @Test("an open cwd is skipped like any other rung, and spelling does not matter")
+    func cwdExcludedCanonically() {
+        let directory = WorkspaceLaunch.directory(cwd: "/p/gamma/", recents: ["/p/alpha"],
+                                                  home: home, excluding: ["/p/gamma"],
+                                                  exists: alwaysExists)
+        #expect(directory == "/p/alpha")
+    }
+
+    @Test("home is the floor even when it is open")
+    func homeIsTheFloor() {
+        let directory = WorkspaceLaunch.directory(cwd: "/", recents: [home], home: home,
+                                                  excluding: [home], exists: alwaysExists)
+        #expect(directory == home)
+    }
+}

@@ -242,3 +242,57 @@ struct ThreeProjectsTests {
         #expect(storage.load(directory: "/tmp/gamma")?.tree == projects[2].tree)
     }
 }
+
+/// A project with more than one document on disk — what an unsaved twin window used to
+/// leave behind — restores the newest and puts the rest aside.
+@Suite("One document per project")
+struct WorkspaceDuplicateTests {
+
+    private func storage() -> WorkspaceStorage {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-dup-\(UUID().uuidString)")
+        return WorkspaceStorage(directory: directory, debounce: .milliseconds(10))
+    }
+
+    @MainActor
+    private func document(_ title: String, directory: String) -> WorkspaceDocument {
+        let tree = LayoutTree(single: PaneID())
+        let panes = [tree.focused: PaneRecord(kind: .shell, title: title, cwd: directory)]
+        return WorkspaceDocument(directory: directory, title: title, tree: tree, panes: panes)
+    }
+
+    @Test("the newest of several documents restores, whatever order the disk lists them in")
+    @MainActor
+    func newestWins() throws {
+        let storage = storage()
+        let old = document("old", directory: "/tmp/alpha")
+        let new = document("new", directory: "/tmp/alpha")
+        try storage.saveNow(new)
+        try storage.saveNow(old)
+        // Dated explicitly: two writes in one test land in the same second.
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -60)],
+                                              ofItemAtPath: storage.url(for: old.id).path)
+        try FileManager.default.setAttributes([.modificationDate: Date()],
+                                              ofItemAtPath: storage.url(for: new.id).path)
+        #expect(storage.load(directory: "/tmp/alpha")?.title == "new")
+    }
+
+    @Test("retiring moves the others into stale/, not the bin, and leaves other projects alone")
+    @MainActor
+    func retire() throws {
+        let storage = storage()
+        let kept = document("kept", directory: "/tmp/alpha")
+        let stale = document("stale", directory: "/tmp/alpha")
+        let other = document("beta", directory: "/tmp/beta")
+        for document in [kept, stale, other] { try storage.saveNow(document) }
+
+        #expect(storage.retireDuplicates(for: "/tmp/alpha", keeping: kept.id) == 1)
+        #expect(storage.loadAll().map(\.title).sorted() == ["beta", "kept"])
+        #expect(storage.load(directory: "/tmp/alpha")?.title == "kept")
+        let parked = storage.directory.appendingPathComponent("stale")
+            .appendingPathComponent("\(stale.id.uuidString).json")
+        #expect(FileManager.default.fileExists(atPath: parked.path))
+        // Nothing left to retire.
+        #expect(storage.retireDuplicates(for: "/tmp/alpha", keeping: kept.id) == 0)
+    }
+}

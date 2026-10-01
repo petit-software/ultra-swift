@@ -25,14 +25,22 @@ public enum WorkspaceLaunch {
     /// Every rung is checked for existence, `preferred` included: a default folder that has
     /// since been renamed must fall through like anything else rather than open a window
     /// onto a path that is not there.
+    ///
+    /// `excluding` is the projects already open: a NEW window skips them, since a project
+    /// is open in one place, and takes the first rung that is free. Home is the floor
+    /// whether or not it is open; the caller can see that it was excluded and decide.
     public static func directory(cwd: String,
                                  preferred: String? = nil,
                                  recents: [String],
                                  home: String,
+                                 excluding: Set<String> = [],
                                  exists: (String) -> Bool) -> String {
-        if cwd != "/", exists(cwd) { return cwd }
-        if let preferred, !preferred.isEmpty, exists(preferred) { return preferred }
-        if let recent = recents.first(where: exists) { return recent }
+        func free(_ path: String) -> Bool {
+            exists(path) && !excluding.contains(WorkspaceDocument.canonical(path))
+        }
+        if cwd != "/", free(cwd) { return cwd }
+        if let preferred, !preferred.isEmpty, free(preferred) { return preferred }
+        if let recent = recents.first(where: free) { return recent }
         return home
     }
 }

@@ -137,11 +137,15 @@ final class WorkspaceModel {
     /// says nothing about intent and the app would open on the filesystem root. Falling back
     /// to home meant every launch landed in `$HOME` no matter how many projects had been
     /// opened — Open Folder every single time, which is not a feature, it is a chore.
-    static var startDirectory: String {
+    static var startDirectory: String { startDirectory(excluding: []) }
+
+    /// The same, skipping projects that are open already. See `WorkspaceLaunch.directory`.
+    static func startDirectory(excluding open: Set<String>) -> String {
         WorkspaceLaunch.directory(cwd: FileManager.default.currentDirectoryPath,
                                   preferred: Preferences.defaultProjectFolder,
                                   recents: RecentProjects.list,
                                   home: NSHomeDirectory(),
+                                  excluding: open,
                                   exists: { FileManager.default.fileExists(atPath: $0) })
     }
 
@@ -193,7 +197,18 @@ final class WorkspaceModel {
         // The first window of a launch reopens every session the last run had, which is what
         // makes a window of sessions worth arranging: it is still there tomorrow.
         if isFirst, sessions.restoreSaved() { return }
-        sessions.open(directory: Self.startDirectory, restore: isFirst)
+        // A new window opens on the first start project that is not open already, and
+        // RESTORES it like any other open: a project open in one place has one layout and
+        // nothing on screen to clone. It used to open the start project unrestored even
+        // when another window had it, and that twin persisted a second document for the
+        // same folder — so the next launch restored whichever of the two the directory
+        // listing returned first, panes from other projects included. Only when every
+        // candidate down to home is open does the window get an unsaved twin.
+        let open = Set(ShellWorkspace.Registry.stores.values
+            .compactMap(\.workspaceDirectory).map(WorkspaceDocument.canonical))
+        let directory = Self.startDirectory(excluding: open)
+        sessions.open(directory: directory,
+                      restore: !open.contains(WorkspaceDocument.canonical(directory)))
     }
 
     /// Put the window back where it was before it can be seen elsewhere. Only the restoring

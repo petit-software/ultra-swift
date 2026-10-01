@@ -417,6 +417,17 @@ Written atomically (`Data.write(to:options:.atomic)`) and debounced 500 ms after
 A `PaneDescriptor` is `{ kind, title, cwd, command?, tileState }` — enough to rebuild the pane,
 never a serialized process.
 
+**One document per project.** A project is matched to its document by directory
+(`WorkspaceDocument.belongs(to:)`), and there is one: a project is open in one place and persists
+to one id. Should a folder have several — a new window used to open the start project unrestored
+even when another window had it, and that twin wrote a second document — `load(directory:)` takes
+the newest, and opening the project moves the rest into `workspaces/stale/` (`retireDuplicates`),
+never the bin. Without that, the next launch restored whichever file the directory listing
+returned first: a layout left behind long ago, panes pointed at other projects and all. A new
+window now opens on the first start project that is not open already, restored like any other
+open (`WorkspaceLaunch.directory(excluding:)`); only when every candidate down to home is open
+does it get an unsaved twin.
+
 **Restore.** Tree and frames are restored first and synchronously, so the window appears in its
 final geometry with no visible reflow. Shells then spawn into their panes asynchronously with the
 recorded cwd/command. A pane whose cwd no longer exists restores with an inline error state and an
