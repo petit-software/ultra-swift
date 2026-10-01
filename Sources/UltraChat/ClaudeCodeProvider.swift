@@ -97,26 +97,42 @@ public struct ClaudeCodeProvider: ChatProvider {
         process.standardError = stderr
         try process.run()
         box.hold(process)
+        EngineLog.note(.claudeCode, "started pid \(process.processIdentifier) \(resume ? "resuming" : "starting") \(session) in \(request.workingDirectory?.path ?? "?")")
         stdin.fileHandleForWriting.write(Data(prompt.utf8))
         try? stdin.fileHandleForWriting.close()
         async let errorText = Subprocess.read(stderr.fileHandleForReading)
 
+        // A line must arrive now and then, or the process is given up on: one that has
+        // died without closing its pipe, or is waiting on something nobody can answer,
+        // would otherwise leave the chat waiting forever.
+        let watchdog = Watchdog(limit: Subprocess.turnInactivityLimit) { box.terminate() }
         var state = State()
+        var lines = 0
         do {
-            for try await line in stdout.fileHandleForReading.bytes.lines {
+            for try await line in stdout.fileHandleForReading.engineLines() {
                 try Task.checkCancellation()
+                await watchdog.touch()
+                lines += 1
                 for event in try Self.handle(line: line, state: &state) { yield(event) }
             }
         } catch {
+            await watchdog.stop()
             box.terminate()
+            EngineLog.note(.claudeCode, "turn failed after \(lines) lines: \(error)")
             throw error
         }
+        await watchdog.stop()
         let stderrText = await errorText
         while process.isRunning { try await Task.sleep(for: .milliseconds(20)) }
+        EngineLog.note(.claudeCode, "exited \(process.terminationStatus) after \(lines) lines, finished: \(state.finished)")
         if state.finished { return .finished }
+        if await watchdog.fired {
+            throw ChatError.unavailable("Claude Code said nothing for \(Int(Subprocess.turnInactivityLimit.components.seconds / 60)) minutes and was stopped.")
+        }
 
         // It stopped without saying how. stderr says why, in its words.
         let reason = Subprocess.lastLine(of: stderrText) ?? ""
+        EngineLog.note(.claudeCode, "stderr: \(reason)")
         if resume, reason.contains("No conversation found") { return .sessionLost }
         if reason.localizedCaseInsensitiveContains("log in")
             || reason.localizedCaseInsensitiveContains("login")
@@ -248,5 +264,38 @@ public struct ClaudeCodeProvider: ChatProvider {
     public func models() async throws -> [String] {
         guard executable != nil else { throw ChatError.notInstalled(id) }
         return [ChatEngine.defaultModel, "opus", "sonnet", "haiku"]
+    }
+}
+
+/// A timer that fires when nothing has touched it for a while, and does one thing then.
+actor Watchdog {
+    private let limit: Duration
+    private let onFire: @Sendable () -> Void
+    private var timer: Task<Void, Never>?
+    private(set) var fired = false
+
+    init(limit: Duration, onFire: @escaping @Sendable () -> Void) {
+        self.limit = limit
+        self.onFire = onFire
+        Task { await self.touch() }
+    }
+
+    func touch() {
+        timer?.cancel()
+        timer = Task { [limit] in
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled else { return }
+            await self.fire()
+        }
+    }
+
+    private func fire() {
+        fired = true
+        onFire()
+    }
+
+    func stop() {
+        timer?.cancel()
+        timer = nil
     }
 }

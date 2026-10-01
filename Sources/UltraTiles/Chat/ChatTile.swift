@@ -87,7 +87,7 @@ public struct ChatTile: View {
 
     /// The same pill the Todo pane types into, grown to several lines.
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 6) {
+        HStack(alignment: .center, spacing: 6) {
             TextField(store.canSend ? "Ask \(store.current.provider.title)…" : "See Settings ▸ Chat",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
@@ -100,6 +100,8 @@ public struct ChatTile: View {
 
             // Send while idle, stop while an answer is arriving — the same slot, so the
             // control under the pointer changes meaning rather than position.
+            // A touch bigger than the text beside it, and centred on the field: the one
+            // control in the pill should sit in it, not hang off its last line.
             TodoRowSlot {
                 if store.isStreaming {
                     Button(action: store.stop) { Image(systemName: "stop.circle.fill") }
@@ -115,7 +117,7 @@ public struct ChatTile: View {
                         .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.canSend)
                 }
             }
-            .padding(.bottom, 1)
+            .font(.system(size: 17))
         }
         .padding(.leading, 14)
         .padding(.trailing, 8)

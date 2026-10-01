@@ -283,9 +283,46 @@ final class EngineLocator: @unchecked Sendable {
     }
 }
 
+// MARK: - What the engines did
+
+/// A line per thing an engine did — started, answered, stopped, failed — in
+/// `~/Library/Logs/Ultra/engines.log`, for the day a chat says nothing and the question is
+/// why. Short lines, no prompts and no answers: what happened, not what was said.
+public enum EngineLog {
+    public static let url = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Logs/Ultra/engines.log")
+    private static let lock = NSLock()
+    /// Kept small: a log nobody reads should not grow without bound.
+    static let maxBytes = 512_000
+
+    public static func note(_ engine: ChatEngine, _ message: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(stamp) \(engine.command): \(message)\n"
+        lock.lock()
+        defer { lock.unlock() }
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let size = try? manager.attributesOfItem(atPath: url.path)[.size] as? Int, size > maxBytes {
+            try? manager.removeItem(at: url)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+}
+
 // MARK: - Running things
 
 enum Subprocess {
+    /// How long a turn may go without the engine saying anything before it is given up
+    /// on. Long enough for a build the engine is waiting on; short enough that a chat
+    /// does not wait forever on an engine that has quietly died.
+    static let turnInactivityLimit: Duration = .seconds(600)
+
     struct Outcome: Sendable {
         var status: Int32
         var stdout: String
@@ -483,7 +520,7 @@ public actor EngineSignIn {
             group.addTask { [weak self] in
                 var said = false
                 do {
-                    for try await line in stdout.fileHandleForReading.bytes.lines {
+                    for try await line in stdout.fileHandleForReading.engineLines() {
                         if let url = ChatEngine.loginURL(in: line) { await self?.report(.waitingForBrowser(url)) }
                         if line.contains("Login successful") { said = true }
                     }
@@ -612,5 +649,57 @@ public actor EngineSignIn {
             if attempt < 4 { try? await Task.sleep(for: .milliseconds(500)) }
         }
         report(.failed("The browser approved, but \(engine.title) still reports nobody signed in."))
+    }
+}
+
+// MARK: - Reading an engine
+
+extension FileHandle {
+    /// The lines a process writes, as they arrive.
+    ///
+    /// NOT `bytes.lines`. Foundation reads those on one serial queue shared by every
+    /// `FileHandle.bytes` in the process, and a read on a pipe blocks until something is
+    /// written to it. The Codex server's pipe is open for the life of the app and quiet
+    /// between turns, so its read sat on that queue for good, and every Claude Code
+    /// read queued behind it was starved: an answer that trickled through only when Codex
+    /// happened to say something. This reads through `readabilityHandler`, which calls
+    /// back on a pool thread only when there is something to read, or EOF.
+    func engineLines() -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let splitter = LineBuffer()
+            readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else {
+                    handle.readabilityHandler = nil
+                    if let last = splitter.finish() { continuation.yield(last) }
+                    continuation.finish()
+                    return
+                }
+                for line in splitter.feed(data) { continuation.yield(line) }
+            }
+            continuation.onTermination = { [self] _ in readabilityHandler = nil }
+        }
+    }
+}
+
+/// A `LineSplitter` behind a lock, for a handler that may be called from any thread.
+private final class LineBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var splitter = LineSplitter()
+
+    func feed(_ data: Data) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        var lines: [String] = []
+        for byte in data {
+            if let line = splitter.feed(byte) { lines.append(line) }
+        }
+        return lines
+    }
+
+    func finish() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return splitter.finish()
     }
 }

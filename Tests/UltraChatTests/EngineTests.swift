@@ -207,10 +207,81 @@ struct EngineTests {
             params: params(#"{"threadId":"t","willRetry":true,"error":{"message":"transient"}}"#)) == [])
     }
 
+    @Test("a signed-out server's 401 is the sign-in's fault; its reconnect attempts are not the turn's end")
+    func codexSignedOut() throws {
+        var state = CodexProvider.TurnState()
+        // What Codex sends, with no thread id, while it retries.
+        let retrying = try CodexProvider.handle(
+            method: "error",
+            params: params(#"{"error":{"message":"Reconnecting... 2/5","codexErrorInfo":{"responseStreamDisconnected":{"httpStatusCode":401}}}}"#),
+            state: &state)
+        #expect(retrying == [])
+        #expect(!state.finished)
+        #expect(throws: ChatError.notSignedIn(.codex)) {
+            try CodexProvider.handle(
+                method: "error",
+                params: params(#"{"error":{"message":"unexpected status 401 Unauthorized: Missing bearer or basic authentication in header"}}"#),
+                state: &state)
+        }
+        #expect(state.finished)
+        #expect(CodexProvider.unaddressed.contains("error"))
+        #expect(throws: ChatError.unavailable("Codex stopped in the middle of the answer.")) {
+            try CodexProvider.handle(method: CodexEngine.stoppedMethod, params: [:])
+        }
+    }
+
     @Test("the model list is the engine's default, then what the picker would show")
     func codexModels() {
         let response = params(#"{"data":[{"id":"gpt-6","hidden":false,"isDefault":true},{"id":"gpt-6-mini","hidden":false},{"id":"codex-old","hidden":true}]}"#)
         #expect(CodexProvider.parseModels(response) == ["default", "gpt-6", "gpt-6-mini"])
+    }
+
+    // MARK: - Reading
+
+    /// The bug this guards against: `FileHandle.bytes` reads on one serial queue for the
+    /// whole process, so a quiet long-lived pipe (the Codex server's) starved every other
+    /// read (Claude Code's). A second process's lines must arrive while the first is quiet.
+    @Test("a quiet long-lived process does not starve another's lines")
+    func readersDoNotStarve() async throws {
+        let quiet = Process()
+        quiet.executableURL = URL(fileURLWithPath: "/bin/cat")
+        let quietIn = Pipe(), quietOut = Pipe()
+        quiet.standardInput = quietIn
+        quiet.standardOutput = quietOut
+        try quiet.run()
+        // Its reader waits on a pipe nothing will be written to, the way Codex's does.
+        let waiting = Task {
+            var seen = 0
+            for try await _ in quietOut.fileHandleForReading.engineLines() { seen += 1 }
+            return seen
+        }
+        try await Task.sleep(for: .milliseconds(100))
+
+        let talker = Process()
+        talker.executableURL = URL(fileURLWithPath: "/bin/sh")
+        talker.arguments = ["-c", "printf 'one\\ntwo\\nthree'"]
+        let out = Pipe()
+        talker.standardOutput = out
+        try talker.run()
+        let lines = try await withThrowingTaskGroup(of: [String]?.self) { group in
+            group.addTask {
+                var lines: [String] = []
+                for try await line in out.fileHandleForReading.engineLines() { lines.append(line) }
+                return lines
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(5))
+                return nil
+            }
+            let first = try await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+        // A last line without a newline still arrives, and EOF ends the stream.
+        #expect(lines == ["one", "two", "three"])
+        try? quietIn.fileHandleForWriting.close()
+        quiet.waitUntilExit()
+        #expect(try await waiting.value == 0)
     }
 
     // MARK: - Shared

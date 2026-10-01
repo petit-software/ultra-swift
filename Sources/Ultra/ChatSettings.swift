@@ -101,6 +101,7 @@ private struct EngineRow: View {
     /// Whether the account shown was just signed in here, for a line saying so. Cleared
     /// after a while, or by the next check.
     @State private var confirmedAt: Date?
+    @State private var confirmingSignOut = false
 
     enum Status: Equatable {
         case checking
@@ -142,8 +143,8 @@ private struct EngineRow: View {
                 Image(systemName: "arrow.down.circle")
                 Text("Not installed")
             case .signedOut:
-                Image(systemName: "person.crop.circle.badge.xmark")
-                Text("Not signed in")
+                // The button says it: a "Sign In…" with nothing beside it is not signed in.
+                EmptyView()
             case .signedIn(let account):
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 VStack(alignment: .trailing, spacing: 1) {
@@ -207,7 +208,14 @@ private struct EngineRow: View {
             case .signedOut:
                 Button("Sign In…") { signIn() }
             case .signedIn:
-                Button("Sign Out") { signOut() }
+                Button("Sign Out…") { confirmingSignOut = true }
+                    .confirmationDialog("Sign out of \(engine.planName) in \(engine.title)?",
+                                        isPresented: $confirmingSignOut, titleVisibility: .visible) {
+                        Button("Sign Out", role: .destructive) { signOut() }
+                    } message: {
+                        Text("\(engine.title) itself is signed out, so the \(engine.command) "
+                             + "command in your terminal loses the login too, until you sign in again.")
+                    }
             case .signingIn(let state):
                 if case .waitingForBrowser(let url?) = state {
                     Button("Open Page Again") { NSWorkspace.shared.open(url) }

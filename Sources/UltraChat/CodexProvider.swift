@@ -45,16 +45,32 @@ public struct CodexProvider: ChatProvider {
                     let started = try await engine.request("turn/start", turn)
                     turnID = (started["turn"] as? [String: Any])?["id"] as? String
 
+                    EngineLog.note(.codex, "turn \(turnID ?? "?") on thread \(thread.id) in \(request.workingDirectory?.path ?? "?")")
+                    let watchdog = Watchdog(limit: Subprocess.turnInactivityLimit) { feed.finish() }
                     var state = TurnState()
+                    var count = 0
                     for await notification in notifications {
-                        guard let params = HTTPProviderSupport.object(notification.params),
-                              params["threadId"] as? String == thread.id else { continue }
+                        guard let params = HTTPProviderSupport.object(notification.params) else { continue }
+                        // A turn's events name its thread. An error may not — the ones
+                        // about the connection name nothing — and the server stopping
+                        // names nothing either; both are this turn's, the only one there is.
+                        let threadID = params["threadId"] as? String
+                        guard threadID == thread.id
+                            || (threadID == nil && Self.unaddressed.contains(notification.method)) else { continue }
+                        await watchdog.touch()
+                        count += 1
                         for event in try Self.handle(method: notification.method, params: params, state: &state) {
                             continuation.yield(event)
                         }
                         if state.finished { break }
                     }
+                    await watchdog.stop()
                     if let listener { await engine.unsubscribe(listener) }
+                    if !state.finished, await watchdog.fired {
+                        EngineLog.note(.codex, "turn gave up after \(count) events: silent")
+                        throw ChatError.unavailable("Codex said nothing for \(Int(Subprocess.turnInactivityLimit.components.seconds / 60)) minutes and was given up on.")
+                    }
+                    EngineLog.note(.codex, "turn ended after \(count) events, finished: \(state.finished)")
                     if Task.isCancelled, let threadID, let turnID {
                         // Stopped from the pane: tell Codex, or it keeps working unseen.
                         _ = try? await engine.request("turn/interrupt", ["threadId": threadID, "turnId": turnID])
@@ -62,6 +78,7 @@ public struct CodexProvider: ChatProvider {
                     continuation.finish()
                 } catch {
                     if let listener { await engine.unsubscribe(listener) }
+                    EngineLog.note(.codex, "turn failed: \(error)")
                     continuation.finish(throwing: error)
                 }
             }
@@ -73,6 +90,9 @@ public struct CodexProvider: ChatProvider {
         var id: String
         var isNew: Bool
     }
+
+    /// Notifications taken without a thread id: see the loop above.
+    static let unaddressed: Set<String> = ["error", CodexEngine.stoppedMethod]
 
     /// The conversation's thread: resumed if Codex still has it, else started. A thread
     /// is started where the project is, and told what the chat is for.
@@ -199,9 +219,17 @@ public struct CodexProvider: ChatProvider {
             // A retry is Codex's business; only an error it gives up on ends the turn.
             guard params["willRetry"] as? Bool != true,
                   let error = params["error"] as? [String: Any],
-                  let message = error["message"] as? String else { return [] }
+                  let message = error["message"] as? String,
+                  !message.hasPrefix("Reconnecting") else { return [] }
             state.finished = true
+            if message.contains("401") || message.localizedCaseInsensitiveContains("unauthorized") {
+                throw ChatError.notSignedIn(.codex)
+            }
             throw ChatError.http(status: 0, message: message)
+
+        case CodexEngine.stoppedMethod:
+            state.finished = true
+            throw ChatError.unavailable("Codex stopped in the middle of the answer.")
 
         default:
             return []
@@ -247,6 +275,9 @@ actor CodexEngine {
         var method: String
         var params: Data
     }
+
+    /// Sent to listeners when the server goes away, so a turn waiting on it ends.
+    static let stoppedMethod = "ultra/serverStopped"
 
     private var process: Process?
     private var input: FileHandle?
@@ -360,12 +391,13 @@ actor CodexEngine {
             Task { await self?.ended() }
         }
         try process.run()
+        EngineLog.note(.codex, "app-server started pid \(process.processIdentifier)")
         self.process = process
         input = stdin.fileHandleForWriting
         let output = stdout.fileHandleForReading
         reader = Task.detached { [weak self] in
             do {
-                for try await line in output.bytes.lines {
+                for try await line in output.engineLines() {
                     guard let self else { return }
                     await self.receive(line)
                 }
@@ -374,6 +406,7 @@ actor CodexEngine {
     }
 
     private func ended() {
+        EngineLog.note(.codex, "app-server exited \(process?.terminationStatus ?? -1) with \(pending.count) requests pending")
         process = nil
         input = nil
         handshake = nil
@@ -383,6 +416,8 @@ actor CodexEngine {
             continuation.resume(throwing: ChatError.unavailable("Codex stopped."))
         }
         pending = [:]
+        let stopped = Notification(method: Self.stoppedMethod, params: Data("{}".utf8))
+        for listener in listeners.values { listener(stopped) }
     }
 
     private func receive(_ line: String) {
