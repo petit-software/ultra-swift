@@ -658,6 +658,17 @@ struct RootView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
+            // The project's name, centred over the DETAIL column — the canvas, not the whole
+            // window — so it stays centred whether the sidebar is open or shut, the way the
+            // title of any sidebar-plus-content window on this platform sits over the
+            // content. Drawn by the column's own content under the transparent titlebar
+            // rather than as a toolbar item: a `.principal` item is laid out against the
+            // titlebar's leading width, which animates as the sidebar opens, and the name
+            // flickered. An overlay just moves with the column.
+            .overlay(alignment: .top) {
+                WindowHeaderTitle(title: store?.workspaceTitle ?? "")
+                    .ignoresSafeArea()
+            }
             // `ui.showsTabBelt` trails `columnVisibility` rather than reading it.
             //
             // Half a second AFTER the sidebar has gone, not with it. Arriving together, the
@@ -700,17 +711,8 @@ struct RootView: View {
             .navigationTitle(store?.workspaceTitle ?? "")
             // The name is still the window's — the Window menu and Mission Control read it
             // — but it is not DRAWN in the toolbar's leading slot any more. It is drawn in
-            // the middle of the window header instead (`WindowHeaderTitle`, below).
+            // the middle of the detail column's header instead (`WindowHeaderTitle`, above).
             .toolbar(removing: .title)
-        }
-        // The project's name, centred in the window header over the whole window — the
-        // sidebar included — the way a classic Mac title sits. Drawn by the window's own
-        // content under the transparent titlebar rather than as a toolbar item: a
-        // `.principal` item is laid out against the titlebar's leading width, which animates
-        // as the sidebar opens, and the name flickered. This does not move with the sidebar.
-        .overlay(alignment: .top) {
-            WindowHeaderTitle(title: store?.workspaceTitle ?? "")
-                .ignoresSafeArea()
         }
         // The window's material, at WINDOW scope — behind the sidebar and the canvas alike.
         //
@@ -993,8 +995,10 @@ struct WindowHeaderTitle: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Token.Colour.label)
+            .font(Token.Type_.windowTitle)
+            .kerning(Token.Type_.windowTitleKerning)
+            // Greyed out: the name orients, it is not the thing being worked on.
+            .foregroundStyle(Token.Colour.secondaryLabel)
             .lineLimit(1)
             .truncationMode(.middle)
             // Room either side for the leading and trailing toolbar items in a narrow window.

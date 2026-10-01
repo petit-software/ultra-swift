@@ -201,6 +201,12 @@ public enum Token {
         /// not stored: `NSFont` is not `Sendable`, so a stored global would be a data race.
         public static var tileSubtitleFont: NSFont { .systemFont(ofSize: 15, weight: .regular) }
         public static let body = Font.system(size: 13)
+        /// The project's name in the middle of the window header: SF Pro Expanded Heavy 13,
+        /// tracked +0.33 (`windowTitleKerning`). The system face with the expanded width trait
+        /// is the same design as the "SFPro-Expanded…" faces a design file names, and unlike
+        /// a font looked up by name it is on every Mac.
+        public static let windowTitle = Font.system(size: 13, weight: .heavy).width(.expanded)
+        public static let windowTitleKerning: CGFloat = 0.33
         public static let monoSmall = Font.system(size: 11, design: .monospaced)
         /// A path or file name meant to be READ, not glanced at: body size, fixed pitch.
         public static let mono = Font.system(size: 13, design: .monospaced)
