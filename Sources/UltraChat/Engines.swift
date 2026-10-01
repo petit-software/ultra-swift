@@ -170,11 +170,12 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
         }
     }
 
-    /// The files a Claude Code edit changes, counted from its arguments — the only place
-    /// the change is spelled out, since the result is a sentence. Nil for a call that is
-    /// not an edit. A `Write` is counted as all additions: whether it replaced a file,
-    /// and what that file held, is not in the call.
-    public static func fileChanges(of call: ChatToolCall) -> [ChatFileChange]? {
+    /// The files a Claude Code call changes, counted from its arguments — the only place
+    /// an edit is spelled out, since the result is a sentence. Nil for a call that is not
+    /// a change. A `Write` over a file that is there is counted against what it held; one
+    /// where there was none is an add. A command is read for the files it removes or
+    /// makes (`CommandChanges`); one that does neither is nil, a plain row.
+    public static func fileChanges(of call: ChatToolCall, in directory: URL? = nil) -> [ChatFileChange]? {
         let path = call.string("file_path") ?? call.string("notebook_path") ?? ""
         switch call.name {
         case "Edit":
@@ -192,9 +193,22 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
             }
             return [change]
         case "Write":
-            return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(call.string("content") ?? ""))]
+            let content = call.string("content") ?? ""
+            let url = path.hasPrefix("/") ? URL(fileURLWithPath: path)
+                : (directory ?? URL(fileURLWithPath: FileManager.default.currentDirectoryPath)).appendingPathComponent(path)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(content), kind: .added)]
+            }
+            guard let old = ChatFileChange.text(ofFileAt: url) else {
+                return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(content))]
+            }
+            let counts = ChatFileChange.counts(from: old, to: content)
+            return [ChatFileChange(path: path, additions: counts.additions, deletions: counts.deletions)]
         case "NotebookEdit":
             return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(call.string("new_source") ?? ""))]
+        case "Bash", "command":
+            let changes = CommandChanges.changes(in: call.string("command") ?? "", under: directory)
+            return changes.isEmpty ? nil : changes
         default:
             return nil
         }

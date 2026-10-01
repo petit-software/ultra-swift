@@ -180,7 +180,7 @@ struct EngineTests {
             method: "item/completed",
             params: params(item.replacingOccurrences(of: "inProgress", with: "completed")), state: &state)
         #expect(done == [.toolResult(id: "f1", result: "Changed /p/Sources/A.swift, /p/README.md",
-                                     changes: [ChatFileChange(path: "/p/Sources/A.swift"), ChatFileChange(path: "/p/README.md")])])
+                                     changes: [ChatFileChange(path: "/p/Sources/A.swift"), ChatFileChange(path: "/p/README.md", kind: .added)])])
     }
 
     @Test("a message that never streamed arrives whole when its item completes")

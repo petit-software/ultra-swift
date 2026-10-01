@@ -44,9 +44,11 @@ public struct ChatTile: View {
     private var transcript: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(store.current.messages) { message in
+                let messages = store.current.messages
+                ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     ChatMessageView(message: message,
-                                    isArriving: store.isStreaming && message.id == store.current.messages.last?.id,
+                                    isArriving: store.isStreaming && index == messages.indices.last,
+                                    changedFiles: ChangedFile.answer(endingAt: index, in: messages).map(ChangedFile.rows) ?? [],
                                     root: context.projectRoot,
                                     sendToShell: { context.injectIntoShell($0) },
                                     openFile: { context.openInEditor(.file($0)) })
@@ -264,6 +266,8 @@ public struct ChatTile: View {
 private struct ChatMessageView: View {
     let message: ChatMessage
     let isArriving: Bool
+    /// The files the answer this message ends changed; empty for any other message.
+    let changedFiles: [ChangedFile]
     let root: URL
     let sendToShell: (String) -> Void
     let openFile: (URL) -> Void
@@ -304,27 +308,29 @@ private struct ChatMessageView: View {
                         }
                     }
                 }
-                if let calls = message.toolCalls, !calls.isEmpty {
-                    // The edits become one table of the files they changed, standing
-                    // where the first of them was; every other call stays a row.
-                    let firstEdit = ChangedFile.firstEdit(in: calls)
+                // Every call that changed a file is in the answer's table instead of a
+                // row of its own; the reads, searches and commands stay rows.
+                let plainCalls = (message.toolCalls ?? []).filter { ($0.changes ?? []).isEmpty }
+                if !plainCalls.isEmpty {
                     VStack(alignment: .leading, spacing: 3) {
-                        ForEach(calls) { call in
-                            if (call.changes ?? []).isEmpty {
-                                ToolCallRow(call: call)
-                            } else if call.id == firstEdit {
-                                ChangedFilesTable(files: ChangedFile.rows(in: calls), root: root, open: openFile)
-                                    .padding(.vertical, 3)
-                            }
+                        ForEach(plainCalls) { call in
+                            ToolCallRow(call: call)
                         }
                     }
+                }
+                // The files the whole answer changed, under its last turn: one table for
+                // every turn's changes, not one per turn.
+                if !changedFiles.isEmpty {
+                    ChangedFilesTable(files: changedFiles, root: root, open: openFile)
+                        .padding(.vertical, 3)
+                }
+                if let calls = message.toolCalls, !calls.isEmpty,
+                   isArriving, calls.allSatisfy({ $0.result != nil }) {
                     // The tools have answered and the model has not yet gone on: the same
                     // three dots, so the wait for the next turn does not read as the end.
-                    if isArriving, calls.allSatisfy({ $0.result != nil }) {
-                        Text("…")
-                            .font(Token.Type_.tileSubtitle)
-                            .foregroundStyle(Token.Colour.tertiaryLabel)
-                    }
+                    Text("…")
+                        .font(Token.Type_.tileSubtitle)
+                        .foregroundStyle(Token.Colour.tertiaryLabel)
                 }
                 if let note = message.note {
                     Text(note)

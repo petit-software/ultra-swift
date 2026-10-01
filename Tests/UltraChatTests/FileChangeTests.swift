@@ -43,7 +43,7 @@ struct FileChangeTests {
         let edit = ChatToolCall(id: "1", name: "Edit", arguments: #"{"file_path":"/p/A.swift","old_string":"a\nb","new_string":"a\nc\nd"}"#)
         #expect(ChatEngine.fileChanges(of: edit) == [ChatFileChange(path: "/p/A.swift", additions: 2, deletions: 1)])
         let write = ChatToolCall(id: "2", name: "Write", arguments: #"{"file_path":"/p/B.md","content":"one\ntwo\n"}"#)
-        #expect(ChatEngine.fileChanges(of: write) == [ChatFileChange(path: "/p/B.md", additions: 2, deletions: 0)])
+        #expect(ChatEngine.fileChanges(of: write) == [ChatFileChange(path: "/p/B.md", additions: 2, deletions: 0, kind: .added)])
         let multi = ChatToolCall(id: "3", name: "MultiEdit", arguments: #"{"file_path":"/p/C.swift","edits":[{"old_string":"x","new_string":"y"},{"old_string":"","new_string":"z\nw"}]}"#)
         #expect(ChatEngine.fileChanges(of: multi) == [ChatFileChange(path: "/p/C.swift", additions: 3, deletions: 1)])
         let read = ChatToolCall(id: "4", name: "Read", arguments: #"{"file_path":"/p/A.swift"}"#)
@@ -90,6 +90,87 @@ struct FileChangeTests {
         let failed = completed.replacingOccurrences(of: "completed", with: "failed")
         #expect(try CodexProvider.handle(method: "item/completed", params: params(failed), state: &state)
                 == [.toolResult(id: "f1", result: "Edit failed", changes: [])])
+    }
+
+    @Test("a write where there is no file is an add; over a file it is counted against what was there")
+    func writeKinds() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ultra-write-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let existing = folder.appendingPathComponent("A.md")
+        try "one\ntwo\nthree\n".write(to: existing, atomically: true, encoding: .utf8)
+
+        let over = ChatToolCall(id: "1", name: "Write", arguments: #"{"file_path":"A.md","content":"one\nthree\nfour\n"}"#)
+        #expect(ChatEngine.fileChanges(of: over, in: folder) == [ChatFileChange(path: "A.md", additions: 1, deletions: 1)])
+        let fresh = ChatToolCall(id: "2", name: "Write", arguments: #"{"file_path":"B.md","content":"hello\n"}"#)
+        #expect(ChatEngine.fileChanges(of: fresh, in: folder) == [ChatFileChange(path: "B.md", additions: 1, kind: .added)])
+    }
+
+    @Test("a command is read for the files it removes and makes; one that does neither is no change")
+    func commands() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ultra-rm-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try "a\nb\nc\n".write(to: folder.appendingPathComponent("old.txt"), atomically: true, encoding: .utf8)
+        try "x\n".write(to: folder.appendingPathComponent("gone.txt"), atomically: true, encoding: .utf8)
+
+        #expect(CommandChanges.changes(in: "rm -f old.txt gone.txt", under: folder)
+                == [ChatFileChange(path: "old.txt", deletions: 3, kind: .deleted),
+                    ChatFileChange(path: "gone.txt", deletions: 1, kind: .deleted)])
+        #expect(CommandChanges.changes(in: "git rm --cached -- old.txt", under: folder)
+                == [ChatFileChange(path: "old.txt", deletions: 3, kind: .deleted)])
+        #expect(CommandChanges.changes(in: "mv old.txt new.txt", under: folder)
+                == [ChatFileChange(path: "old.txt", deletions: 3, kind: .deleted),
+                    ChatFileChange(path: "new.txt", additions: 3, kind: .added)])
+        #expect(CommandChanges.changes(in: "touch fresh.md old.txt", under: folder)
+                == [ChatFileChange(path: "fresh.md", kind: .added)])
+        // Chained, quoted, and a file that is not there to count.
+        #expect(CommandChanges.changes(in: #"cd x && rm 'a b.txt'; FOO=1 sudo rm "c d.txt" | cat"#, under: folder)
+                == [ChatFileChange(path: "a b.txt", kind: .deleted), ChatFileChange(path: "c d.txt", kind: .deleted)])
+        // A glob is not a file; a command that touches no file is nothing.
+        #expect(CommandChanges.changes(in: "rm -rf *.log", under: folder).isEmpty)
+        #expect(CommandChanges.changes(in: "swift build && grep rm README.md", under: folder).isEmpty)
+        let bash = ChatToolCall(id: "1", name: "Bash", arguments: #"{"command":"rm old.txt"}"#)
+        #expect(ChatEngine.fileChanges(of: bash, in: folder) == [ChatFileChange(path: "old.txt", deletions: 3, kind: .deleted)])
+        let build = ChatToolCall(id: "2", name: "Bash", arguments: #"{"command":"swift build"}"#)
+        #expect(ChatEngine.fileChanges(of: build, in: folder) == nil)
+    }
+
+    @Test("a write's result settles whether the file was new")
+    func settledByResult() {
+        let added = [ChatFileChange(path: "/p/A.md", additions: 3, kind: .added)]
+        let edited = [ChatFileChange(path: "/p/A.md", additions: 3, deletions: 2)]
+        #expect(ClaudeCodeProvider.settled(added, by: "File created successfully at: /p/A.md") == nil)
+        #expect(ClaudeCodeProvider.settled(edited, by: "File created successfully at: /p/A.md")
+                == [ChatFileChange(path: "/p/A.md", additions: 3, kind: .added)])
+        #expect(ClaudeCodeProvider.settled(added, by: "The file /p/A.md has been updated successfully.")
+                == [ChatFileChange(path: "/p/A.md", additions: 3, kind: .modified)])
+        #expect(ClaudeCodeProvider.settled(edited, by: "The file /p/A.md has been updated successfully.") == nil)
+        #expect(ClaudeCodeProvider.settled(edited, by: "1 file changed") == nil)
+        #expect(ClaudeCodeProvider.settled(nil, by: "File created successfully at: /p/A.md") == nil)
+    }
+
+    @Test("a Codex change carries its kind, and a command that failed removed nothing")
+    func codexKinds() throws {
+        var state = CodexProvider.TurnState()
+        let item = #"{"threadId":"t","item":{"type":"fileChange","id":"f1","status":"completed","changes":[{"path":"/p/New.swift","kind":"add","diff":"+++ b\n+one\n"},{"path":"/p/Old.swift","kind":"delete","diff":"--- a\n-one\n-two\n"},{"path":"/p/Moved.swift","kind":{"update":{"move_path":"/p/There.swift"}},"diff":""}]}}"#
+        let done = try CodexProvider.handle(method: "item/completed", params: params(item), state: &state)
+        #expect(done == [.toolResult(id: "f1", result: "Changed /p/New.swift, /p/Old.swift, /p/Moved.swift",
+                                     changes: [ChatFileChange(path: "/p/New.swift", additions: 1, kind: .added),
+                                               ChatFileChange(path: "/p/Old.swift", deletions: 2, kind: .deleted),
+                                               ChatFileChange(path: "/p/Moved.swift")])])
+        let failed = #"{"threadId":"t","item":{"type":"commandExecution","id":"c1","status":"failed","command":"rm x","aggregatedOutput":"rm: x: No such file"}}"#
+        #expect(try CodexProvider.handle(method: "item/completed", params: params(failed), state: &state)
+                == [.toolResult(id: "c1", result: "rm: x: No such file", changes: [])])
+    }
+
+    @Test("a change saved before kinds existed loads as an edit")
+    func decodesWithoutKind() throws {
+        let json = #"{"path":"/p/A.swift","additions":1,"deletions":0}"#
+        let change = try JSONDecoder().decode(ChatFileChange.self, from: Data(json.utf8))
+        #expect(change == ChatFileChange(path: "/p/A.swift", additions: 1))
+        let deleted = ChatFileChange(path: "/p/B.swift", deletions: 4, kind: .deleted)
+        #expect(try JSONDecoder().decode(ChatFileChange.self, from: JSONEncoder().encode(deleted)) == deleted)
     }
 
     @Test("a call saved before changes were counted loads with none")

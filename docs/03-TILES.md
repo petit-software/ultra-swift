@@ -381,14 +381,23 @@ APIs. Every provider is tested against a recorded transcript.
   talks JSON-RPC to one `codex app-server` kept for the whole app (`CodexEngine`), sandbox
   `workspace-write`, approvals off. So, unlike the API providers with our read-only tools,
   a chat on an engine CAN change the project — it is the agent the user would run in the
-  pane beside, in a chat — and every command is a row above the answer, while the edits
-  become one table of the files they changed (`ChangedFilesTable`): a bordered, rounded
-  table with a row of one height per file — name, folder from the project down, `+12 −3` —
-  which opens the file in the editor. One file is the same table, so a single change does
-  not look like a different thing from two. The counts ride on the call
-  (`ChatToolCall.changes`, `ChatFileChange`): a Claude Code edit is counted from the old
-  and new text in its arguments, a Codex edit from the unified diff it reports on
-  completing, and an edit that failed counts as nothing and stays a plain row. In the
+  pane beside, in a chat — and every read, search and command is a row above the answer,
+  while the changes become one table of the files they touched (`ChangedFilesTable`): a
+  bordered, rounded table with a row of one height per file — name, folder from the
+  project down, `+12 −3` — which opens the file in the editor. One file is the same table,
+  so a single change does not look like a different thing from two; and one ANSWER is one
+  table, drawn under its last turn with every turn's changes added up, since a turn that
+  calls tools is followed by another and the files all of them touched are one answer's.
+  A file added or deleted is a row of the same table as one edited (`ChatFileChange.kind`):
+  a new file has a plus on its doc and `+N`, a deleted one a struck name, `−N` and nothing
+  to open. The counts ride on the call (`ChatToolCall.changes`): a Claude Code edit is
+  counted from the old and new text in its arguments, a Write against the file on disk if
+  it is there (and is an add if not — the result settles it: "File created successfully"),
+  a Codex change from the unified diff it reports on completing, with the kind Codex
+  names. A command is read for the files it plainly removes or makes — `rm`, `git rm`,
+  `mv`, `touch` (`CommandChanges`), counted from disk before it runs — and anything else a
+  command does to files is not guessed at. An edit or command that failed counts as
+  nothing and stays a plain row. In the
   pane's menu each engine is a submenu of its models, so plan and model are one pick.
   Both keep the conversation themselves — the first turn starts a session or thread, saved
   as `ChatConversation.engineSession`, and every later turn resumes it — so the history is

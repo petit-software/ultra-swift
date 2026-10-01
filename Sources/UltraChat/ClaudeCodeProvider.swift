@@ -106,7 +106,7 @@ public struct ClaudeCodeProvider: ChatProvider {
         // died without closing its pipe, or is waiting on something nobody can answer,
         // would otherwise leave the chat waiting forever.
         let watchdog = Watchdog(limit: Subprocess.turnInactivityLimit) { box.terminate() }
-        var state = State()
+        var state = State(workingDirectory: request.workingDirectory)
         var lines = 0
         do {
             for try await line in stdout.fileHandleForReading.engineLines() {
@@ -154,6 +154,10 @@ public struct ClaudeCodeProvider: ChatProvider {
         var finished = false
         /// Calls already announced. The agent repeats its message as blocks arrive.
         var announcedCalls: Set<String> = []
+        /// Where the project is, so a path in a command can be looked at on disk.
+        var workingDirectory: URL?
+        /// What each announced call was counted as, to be corrected by its result.
+        var changes: [String: [ChatFileChange]] = [:]
     }
 
     /// One line of stream-json as chat events — none, for the many lines that carry
@@ -204,8 +208,9 @@ public struct ClaudeCodeProvider: ChatProvider {
                 let input = block["input"] ?? [:]
                 let arguments = (try? HTTPProviderSupport.json(input)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
                 let call = ChatToolCall(id: id, name: name, arguments: arguments)
-                return .toolCall(ChatToolCall(id: id, name: name, arguments: arguments,
-                                              changes: ChatEngine.fileChanges(of: call)))
+                let changes = ChatEngine.fileChanges(of: call, in: state.workingDirectory)
+                if let changes { state.changes[id] = changes }
+                return .toolCall(ChatToolCall(id: id, name: name, arguments: arguments, changes: changes))
             }
         case "user":
             guard let message = object["message"] as? [String: Any],
@@ -215,8 +220,10 @@ public struct ClaudeCodeProvider: ChatProvider {
                       let id = block["tool_use_id"] as? String else { return nil }
                 // An edit that failed — the old text not found, the file not read first —
                 // changed nothing, whatever its arguments promised.
+                let result = resultText(block["content"])
                 let failed = block["is_error"] as? Bool == true
-                return .toolResult(id: id, result: resultText(block["content"]), changes: failed ? [] : nil)
+                return .toolResult(id: id, result: result,
+                                   changes: failed ? [] : settled(state.changes[id], by: result))
             }
         case "result":
             state.finished = true
@@ -244,6 +251,25 @@ public struct ClaudeCodeProvider: ChatProvider {
         default:
             return []
         }
+    }
+
+    /// A write's kind, as its result tells it: whether the file was there was read off
+    /// the disk as the call was announced, and the result says for sure — "File created
+    /// successfully" for a new one, "has been updated" for one that was there. Nil when
+    /// there is nothing to correct, which leaves the call's own count.
+    static func settled(_ changes: [ChatFileChange]?, by result: String) -> [ChatFileChange]? {
+        guard var changes, changes.count == 1 else { return nil }
+        if result.hasPrefix("File created successfully") {
+            guard changes[0].kind != .added else { return nil }
+            changes[0].kind = .added
+            changes[0].deletions = 0
+        } else if result.contains("has been updated successfully") {
+            guard changes[0].kind == .added else { return nil }
+            changes[0].kind = .modified
+        } else {
+            return nil
+        }
+        return changes
     }
 
     /// A tool result's text: a string, or blocks of text joined. Cut to what the

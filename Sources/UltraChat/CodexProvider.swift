@@ -47,7 +47,7 @@ public struct CodexProvider: ChatProvider {
 
                     EngineLog.note(.codex, "turn \(turnID ?? "?") on thread \(thread.id) in \(request.workingDirectory?.path ?? "?")")
                     let watchdog = Watchdog(limit: Subprocess.turnInactivityLimit) { feed.finish() }
-                    var state = TurnState()
+                    var state = TurnState(workingDirectory: request.workingDirectory)
                     var count = 0
                     for await notification in notifications {
                         guard let params = HTTPProviderSupport.object(notification.params) else { continue }
@@ -127,6 +127,8 @@ public struct CodexProvider: ChatProvider {
         var shown: [String: String] = [:]
         var inputTokens: Int?
         var outputTokens: Int?
+        /// Where the project is, so a path in a command can be looked at on disk.
+        var workingDirectory: URL?
     }
 
     /// One notification as chat events. Public so the mapping is testable against a
@@ -149,16 +151,17 @@ public struct CodexProvider: ChatProvider {
                   let id = item["id"] as? String else { return [] }
             switch item["type"] as? String {
             case "commandExecution":
-                let arguments = ["command": item["command"] as? String ?? ""]
-                return [.toolCall(ChatToolCall(id: id, name: "command", arguments: json(arguments)))]
+                let command = item["command"] as? String ?? ""
+                let changes = CommandChanges.changes(in: command, under: state.workingDirectory)
+                return [.toolCall(ChatToolCall(id: id, name: "command", arguments: json(["command": command]),
+                                               changes: changes.isEmpty ? nil : changes))]
             case "mcpToolCall", "dynamicToolCall":
                 let name = item["tool"] as? String ?? "tool"
                 return [.toolCall(ChatToolCall(id: id, name: name, arguments: json(item["arguments"] ?? [:])))]
             case "fileChange":
                 // Named now, counted when the item completes: the diff arrives with it.
-                let changes = changedPaths(item).map { ChatFileChange(path: $0) }
                 return [.toolCall(ChatToolCall(id: id, name: "edit", arguments: json(["paths": changedPaths(item)]),
-                                               changes: changes))]
+                                               changes: fileChanges(item, counted: false)))]
             default:
                 return []
             }
@@ -178,7 +181,9 @@ public struct CodexProvider: ChatProvider {
                 let output = item["aggregatedOutput"] as? String ?? ""
                 let status = item["status"] as? String ?? ""
                 let result = output.isEmpty ? status : output
-                return [.toolResult(id: id, result: ClaudeCodeProvider.resultText(result))]
+                // A command that failed removed nothing, whatever it said it would.
+                return [.toolResult(id: id, result: ClaudeCodeProvider.resultText(result),
+                                    changes: status == "failed" ? [] : nil)]
             case "fileChange":
                 let paths = changedPaths(item)
                 let status = item["status"] as? String ?? "completed"
@@ -247,12 +252,24 @@ public struct CodexProvider: ChatProvider {
         (item["changes"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String }
     }
 
-    /// The same files with their changes counted, off the unified diff each carries.
-    static func fileChanges(_ item: [String: Any]) -> [ChatFileChange] {
+    /// The same files with what became of each — Codex names it: `add`, `delete`, or an
+    /// update — and, once counted, the size of the change off the unified diff each carries.
+    static func fileChanges(_ item: [String: Any], counted: Bool = true) -> [ChatFileChange] {
         (item["changes"] as? [[String: Any]] ?? []).compactMap { change in
             guard let path = change["path"] as? String else { return nil }
-            let counts = ChatFileChange.counts(ofUnifiedDiff: change["diff"] as? String ?? "")
-            return ChatFileChange(path: path, additions: counts.additions, deletions: counts.deletions)
+            let counts = counted ? ChatFileChange.counts(ofUnifiedDiff: change["diff"] as? String ?? "") : (0, 0)
+            return ChatFileChange(path: path, additions: counts.0, deletions: counts.1, kind: kind(of: change))
+        }
+    }
+
+    /// Codex writes the kind as a word, or as an object keyed by the word when it has
+    /// more to say — an update that moves the file.
+    static func kind(of change: [String: Any]) -> ChatFileChange.Kind {
+        let word = change["kind"] as? String ?? (change["kind"] as? [String: Any])?.keys.first ?? "update"
+        switch word {
+        case "add": return .added
+        case "delete": return .deleted
+        default: return .modified
         }
     }
 
