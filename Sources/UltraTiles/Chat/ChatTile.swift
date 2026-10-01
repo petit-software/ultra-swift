@@ -107,6 +107,7 @@ public struct ChatTile: View {
             TodoRowSlot {
                 if store.isStreaming {
                     ThinkingStopButton(stop: store.stop)
+                        .transition(ThinkingStopButton.thinkingTransition)
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up.circle.fill") }
                         .buttonStyle(.plain)
@@ -117,6 +118,10 @@ public struct ChatTile: View {
                 }
             }
             .font(.system(size: 17))
+            // The slot's two states swap with the star's own entrance and exit; the send
+            // arrow underneath simply appears, since it is faded out while the draft is
+            // empty anyway.
+            .animation(Token.Motion.thinkingArrive, value: store.isStreaming)
         }
         .padding(.leading, 14)
         .padding(.trailing, 8)
@@ -329,29 +334,58 @@ private struct ChatMessageView: View {
     }
 }
 
-/// The composer's control while an answer is on its way: a spinning pair of arrows, so
+/// The composer's control while an answer is on its way: a four-pointed star turning, so
 /// the wait reads as the model working rather than the pane doing nothing — and, under
 /// the pointer, the stop button, so stopping is in the same place as the sign that there
-/// is something to stop. The whole thing is the button: a click on the spinner stops too,
+/// is something to stop. The whole thing is the button: a click on the star stops too,
 /// and Escape stops without touching it.
+///
+/// The star does not spin at one speed. It turns half a revolution, slowing to a near
+/// stop, rests a beat, and goes again — the rhythm of something working in strokes, not a
+/// loading wheel. Half a turn on a four-pointed star lands on the same picture, so the
+/// repeat has no seam. It arrives by zooming in from small and leaves by shrinking away;
+/// the composer animates the swap (`thinkingTransition`). Someone who asked for less
+/// motion gets a slow breath of opacity instead: it still says "working", without
+/// anything going round.
 struct ThinkingStopButton: View {
     let stop: () -> Void
     @State private var isHovering = false
 
+    /// Half a turn, then a rest. The turn eases in and out so it reads as a stroke; the
+    /// rest is long enough to be a rest and short enough that the star is never mistaken
+    /// for stopped.
+    private static let turn: TimeInterval = 0.9
+    private static let rest: TimeInterval = 0.4
+
+    /// How the star comes and goes in the composer's slot. Asymmetric on purpose: in with
+    /// a spring, out with a plain ease — see `Token.Motion.thinkingArrive`.
+    static var thinkingTransition: AnyTransition {
+        if Token.Environment_.reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .scale(scale: 0.3).combined(with: .opacity)
+                .animation(Token.Motion.thinkingArrive),
+            removal: .scale(scale: 0.3).combined(with: .opacity)
+                .animation(Token.Motion.thinkingLeave))
+    }
+
+    private struct Pose {
+        var angle: Angle = .zero
+        var opacity: Double = 1
+    }
+
     var body: some View {
         Button(action: stop) {
-            Image(systemName: isHovering ? "stop.circle.fill" : "arrow.trianglehead.2.clockwise.rotate.90")
-                // The symbol's own rotation, by layer, for as long as it is on screen; the
-                // swap to the stop button goes through Replace so the glyph morphs rather
-                // than blinks. Someone who asked for less motion gets a pulse instead: it
-                // still says "working", without anything going round.
-                .symbolEffect(.rotate.byLayer, options: .repeat(.continuous),
-                              isActive: !isHovering && !Token.Environment_.reduceMotion)
-                .symbolEffect(.pulse, options: .repeat(.continuous),
-                              isActive: !isHovering && Token.Environment_.reduceMotion)
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: TodoRowSlot<EmptyView>.width, height: TodoRowSlot<EmptyView>.width)
-                .contentShape(Rectangle())
+            ZStack {
+                star.opacity(isHovering ? 0 : 1)
+                    .scaleEffect(isHovering ? 0.6 : 1)
+                Image(systemName: "stop.circle.fill")
+                    .opacity(isHovering ? 1 : 0)
+                    .scaleEffect(isHovering ? 1 : 0.6)
+            }
+            .frame(width: TodoRowSlot<EmptyView>.width, height: TodoRowSlot<EmptyView>.width)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(isHovering ? Token.Colour.label : Token.Colour.secondaryLabel)
@@ -360,6 +394,37 @@ struct ThinkingStopButton: View {
         .help("Stop (Esc)")
         .accessibilityLabel("Thinking")
         .accessibilityHint("Stops the answer")
+    }
+
+    private var star: some View {
+        let reduceMotion = Token.Environment_.reduceMotion
+        return KeyframeAnimator(initialValue: Pose(), repeating: true) { pose in
+            ThinkingStar()
+                .fill(.foreground)
+                .frame(width: 17, height: 17)
+                .rotationEffect(pose.angle)
+                .opacity(pose.opacity)
+        } keyframes: { _ in
+            KeyframeTrack(\.angle) {
+                if reduceMotion {
+                    LinearKeyframe(.zero, duration: Self.turn + Self.rest)
+                } else {
+                    // Zero velocity at both ends: the turn starts from rest and comes to
+                    // rest, and the hold that follows is the pause between strokes.
+                    CubicKeyframe(.degrees(180), duration: Self.turn,
+                                  startVelocity: .zero, endVelocity: .zero)
+                    LinearKeyframe(.degrees(180), duration: Self.rest)
+                }
+            }
+            KeyframeTrack(\.opacity) {
+                if reduceMotion {
+                    CubicKeyframe(0.45, duration: 0.8)
+                    CubicKeyframe(1, duration: 0.8)
+                } else {
+                    LinearKeyframe(1, duration: Self.turn + Self.rest)
+                }
+            }
+        }
     }
 }
 

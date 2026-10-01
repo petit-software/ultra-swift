@@ -284,6 +284,13 @@ public enum Token {
         /// and a plain curve read as the content moving. Under Reduce Motion the call site
         /// uses `chromeFade` and a fade in its place.
         public static let toast = Animation.spring(duration: 0.28, bounce: 0.12)
+
+        /// The thinking star arriving in the chat's send slot: it zooms in from small with
+        /// a touch of overshoot, so it reads as something that has started rather than a
+        /// glyph that was swapped. Leaving is the reverse at `thinkingLeave`, quicker and
+        /// without the bounce — the answer is in, and the eye has already moved to it.
+        public static let thinkingArrive = Animation.spring(duration: 0.36, bounce: 0.3)
+        public static let thinkingLeave = Animation.easeIn(duration: 0.16)
     }
 
 
