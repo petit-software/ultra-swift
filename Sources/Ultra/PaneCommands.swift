@@ -104,13 +104,21 @@ enum PaneCommands {
         },
     ]
 
-    /// The todo list's one verb that takes the whole list at once. Palette and menu, no
-    /// chord: it removes lines, and a chord that removes lines is a chord that gets hit.
+    /// The todo list's verbs that take the whole list at once. Palette and menu, no chord:
+    /// Clear removes lines, and a chord that removes lines is a chord that gets hit; the
+    /// progress bar is a look, and a look is set once.
     static let todo: [AppCommand] = [
-        AppCommand(id: "todo.clearCompleted", title: "Clear Completed Tasks", symbol: "clear.fill",
+        AppCommand(id: "todo.clearCompleted", title: "Clear Completed Tasks", symbol: "xmark.circle.fill",
                    menuPath: ["Pane", "Todo"],
                    isEnabled: { (ShellWorkspace.todoStore(in: $0)?.document.completedCount ?? 0) > 0 }) {
             ShellWorkspace.todoStore(in: $0)?.removeCompleted()
+        },
+        // The bar's own close control hides it; this is how it comes back without the
+        // pointer, and the footer's toggle is the same verb.
+        AppCommand(id: "todo.toggleProgress", title: "Toggle Progress Bar", symbol: "percent",
+                   menuPath: ["Pane", "Todo"],
+                   isEnabled: { ShellWorkspace.todoStore(in: $0) != nil }) {
+            ShellWorkspace.todoStore(in: $0)?.toggleProgress()
         },
     ]
 

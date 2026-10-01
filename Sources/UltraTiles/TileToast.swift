@@ -83,8 +83,8 @@ public struct TileNotice: Equatable, Sendable {
 /// control.
 ///
 /// Glass on the content layer is the exception docs/02-DESIGN-LANGUAGE.md makes for HUDs:
-/// a toast is one, it is the only thing that floats inside a tile, and the informational
-/// kind is gone in seconds.
+/// a toast is one, and the informational kind is gone in seconds. The Todo list's
+/// progress bar borrows the same glass and the same place, and a toast stacks above it.
 struct TileToast<Actions: View>: View {
     let notice: TileNotice
     let dismiss: () -> Void
@@ -164,8 +164,13 @@ public extension View {
     /// that a short content stack still anchors the toast at the foot, not at its own end.
     ///
     /// It arrives from below and leaves the same way; under Reduce Motion it fades.
+    ///
+    /// `lift` raises it: a tile with something else floating at the foot — the Todo list's
+    /// progress bar — passes that thing's height plus the inset, so the toast stacks above
+    /// it rather than landing on it.
     func tileToast<Actions: View>(_ notice: TileNotice?,
                                   dismiss: @escaping () -> Void,
+                                  lift: CGFloat = 0,
                                   @ViewBuilder actions: @escaping () -> Actions = { EmptyView() }) -> some View {
         let reduceMotion = Token.Environment_.reduceMotion
         return frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -173,6 +178,7 @@ public extension View {
                 if let notice {
                     TileToast(notice, dismiss: dismiss, actions: actions)
                         .padding(Token.Space.toastInset)
+                        .padding(.bottom, lift)
                         .transition(reduceMotion
                                     ? .opacity
                                     : .move(edge: .bottom).combined(with: .opacity))

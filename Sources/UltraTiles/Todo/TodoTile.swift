@@ -21,6 +21,8 @@ public struct TodoTile: View {
     /// from outside this pane. A title that no longer matches anything is simply nil again —
     /// see `target`.
     @State private var targetSection: String?
+    /// The floating progress bar's height, so a notice stacks above it rather than on it.
+    @State private var progressHeight: CGFloat = 0
     private let context: TileContext
 
     /// The store is the FACTORY's, like an editor's tabs, so a menu command can reach the
@@ -33,10 +35,13 @@ public struct TodoTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             composer
-            TodoProgressBar(progress: store.document.progress)
             list
         }
-        .tileToast(store.notice.map(notice(for:)), dismiss: { store.dismissNotice() })
+        .todoProgress(progressShown ? store.document.progress : nil,
+                      close: { store.setShowsProgress(false) },
+                      measured: { progressHeight = $0 })
+        .tileToast(store.notice.map(notice(for:)), dismiss: { store.dismissNotice() },
+                   lift: progressShown ? progressHeight + Token.Space.toastInset : 0)
         .tileFooter { footer }
     }
 
@@ -93,10 +98,16 @@ public struct TodoTile: View {
                         }
                     }
                 }
-                .padding(.bottom, 6)
+                // Room for the floating bar, so the last task scrolls out from under it.
+                .padding(.bottom, progressShown ? 44 : 6)
             }
             .tileScrollBar()
         }
+    }
+
+    /// Whether the bar is up: shown, and something to count.
+    private var progressShown: Bool {
+        store.showsProgress && store.document.progress.total > 0
     }
 
     /// The section the composer is pointed at, if it still exists.
@@ -169,7 +180,14 @@ public struct TodoTile: View {
                           help: "Where this list is stored",
                           choose: chooseLocation,
                           reset: { store.resetLocation() })
-            TileFooterButton(symbol: "clear.fill",
+            // Tinted while the bar is up, so the control says which way it will go. Also
+            // Pane ▸ Todo ▸ Toggle Progress Bar, which is how the bar comes back by key.
+            TileFooterButton(symbol: "percent",
+                             help: store.showsProgress ? "Hide progress" : "Show progress",
+                             tint: store.showsProgress ? Token.Colour.accent : nil) {
+                store.toggleProgress()
+            }
+            TileFooterButton(symbol: "xmark.circle.fill",
                              help: clearHelp,
                              isEnabled: store.document.completedCount > 0) {
                 store.removeCompleted()
@@ -267,37 +285,84 @@ public struct TodoTile: View {
     }
 }
 
-/// How much of the list is done, as a line under the composer: the accent's share of a
-/// track the width of the composer, so it reads with the pill above it. Only task lines
-/// are counted (`TodoDocument.progress`); a heading is not a thing to finish. Nothing is
-/// shown for an empty list, which has no progress to speak of.
-private struct TodoProgressBar: View {
+/// How much of the list is done, floating over the foot of the list the way a toast does:
+/// the percentage on the left, the accent's share of a track, and a close control on the
+/// right. On glass rather than in a row of its own, so showing or hiding it never moves the
+/// list. Only task lines are counted (`TodoDocument.progress`); a heading is not a thing
+/// to finish. Nothing is shown for an empty list, which has no progress to speak of.
+private struct TodoProgressToast: View {
     let progress: TodoDocument.Progress
+    let close: () -> Void
 
     var body: some View {
-        if progress.total > 0 {
+        HStack(spacing: 10) {
+            Text(percent)
+                .font(Token.Type_.monoSmall)
+                .foregroundStyle(Token.Colour.label)
+                .monospacedDigit()
+                .frame(minWidth: 30, alignment: .trailing)
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
-                        .fill(Token.Colour.label.opacity(0.08))
+                        .fill(Token.Colour.label.opacity(0.1))
                     Capsule(style: .continuous)
                         .fill(Token.Colour.accent)
                         .frame(width: max(3, geometry.size.width * progress.fraction))
                 }
             }
             .frame(height: 3)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            .help(summary)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Progress")
-            .accessibilityValue(summary)
-            .animation(Token.Motion.structuralRespectingPreferences, value: progress)
+            Button(action: close) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+            }
+            .buttonStyle(.plain)
+            .help("Hide progress")
+            .accessibilityLabel("Hide progress")
         }
+        .font(Token.Type_.body)
+        .padding(.leading, 12)
+        .padding(.trailing, 8)
+        .padding(.vertical, 8)
+        .ultraToastGlass()
+        .help(summary)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Progress")
+        .accessibilityValue(summary)
+        .animation(Token.Motion.structuralRespectingPreferences, value: progress)
     }
+
+    private var percent: String { "\(Int((progress.fraction * 100).rounded()))%" }
 
     private var summary: String {
         "\(progress.done) of \(progress.total) task\(progress.total == 1 ? "" : "s") done"
+    }
+}
+
+private extension View {
+    /// Floats the progress bar over the foot of the list, in the toast's place — applied
+    /// before `tileToast`, which is applied before `tileFooter`, so the bar sits 4pt above
+    /// the footer, 8pt in from either side, and a notice, lifted by the bar's measured
+    /// height, stacks above it. Nil for an empty list or one whose bar was closed.
+    func todoProgress(_ progress: TodoDocument.Progress?, close: @escaping () -> Void,
+                      measured: @escaping (CGFloat) -> Void) -> some View {
+        let reduceMotion = Token.Environment_.reduceMotion
+        let shown = (progress?.total ?? 0) > 0 ? progress : nil
+        return frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                if let shown {
+                    TodoProgressToast(progress: shown, close: close)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured($0) }
+                        // Wider than a toast's inset at the sides: a bar spans the pane, and
+                        // flush to its edges it reads as a border rather than a floating thing.
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, Token.Space.toastInset)
+                        .transition(reduceMotion
+                                    ? .opacity
+                                    : .move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(reduceMotion ? Token.Motion.chromeFade : Token.Motion.toast,
+                       value: shown == nil)
     }
 }
 

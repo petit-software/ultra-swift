@@ -29,6 +29,20 @@ struct TodoStoreTests {
 
     """
 
+    @Test("the progress bar is shown by default, and closing it is remembered for the project")
+    func progressFlag() throws {
+        let root = try makeProject()
+        defer { UserDefaults.standard.removeObject(forKey: TodoStore.progressKey(for: root)) }
+        let store = TodoStore(root: root)
+        #expect(store.showsProgress)
+        store.setShowsProgress(false)
+        #expect(!store.showsProgress)
+        #expect(!TodoStore(root: root).showsProgress, "a second pane on the project agrees")
+        store.toggleProgress()
+        #expect(store.showsProgress)
+        #expect(TodoStore(root: root).showsProgress)
+    }
+
     @Test("a project with no list yet reports empty rather than creating a file")
     func noFileYet() throws {
         let root = try makeProject()

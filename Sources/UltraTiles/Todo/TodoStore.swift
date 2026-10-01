@@ -22,6 +22,10 @@ public final class TodoStore {
     /// True once the file exists on disk. A tile pointed at a project with no list yet shows
     /// an empty state rather than inventing a file nobody asked for.
     public private(set) var exists: Bool = false
+    /// Whether the progress bar floats over the foot of the list. Per project and
+    /// remembered, like the list's location: closing it on the bar's own control is a
+    /// choice about this list, and the footer's toggle brings it back.
+    public private(set) var showsProgress: Bool
 
     /// Held in a box so the sources are torn down by the box's own nonisolated deinit —
     /// a main-actor deinit cannot touch main-actor state. Same shape as `ObserverBox`.
@@ -34,8 +38,20 @@ public final class TodoStore {
     public init(root: URL) {
         self.root = root
         self.url = Self.storedLocation(for: root) ?? Self.preferredLocation(in: root)
+        self.showsProgress = UserDefaults.standard.object(forKey: Self.progressKey(for: root)) as? Bool ?? true
         load()
         beginWatching()
+    }
+
+    public func toggleProgress() { setShowsProgress(!showsProgress) }
+
+    public func setShowsProgress(_ shows: Bool) {
+        showsProgress = shows
+        UserDefaults.standard.set(shows, forKey: Self.progressKey(for: root))
+    }
+
+    static func progressKey(for root: URL) -> String {
+        "ultra.todoProgress." + root.standardizedFileURL.path
     }
 
     /// Point this tile at a different file, and remember it.

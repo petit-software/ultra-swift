@@ -212,14 +212,18 @@ the agent running in the next pane over.
   edit was in flight (mtime + content hash mismatch), keep both: write the local version and
   surface a non-blocking "reloaded from disk — your edit is in the undo stack" notice.
   Notices are toasts — see § Notices below — never a strip that moves the list.
-- **Clear Completed Tasks** — the `clear.fill` button in the footer, and Pane ▸ Todo in the
+- **Clear Completed Tasks** — the `xmark.circle.fill` button in the footer, and Pane ▸ Todo in the
   menu and the palette — removes every ticked task line in one edit and nothing else: an
   undone subtask under a done parent stays, prose and headings are not looked at. Dimmed when
   nothing is done. No chord, because it removes lines.
-- **A progress bar under the composer**: the accent's share of a 3pt track, ticked tasks
-  over all of them. Only task lines count — a heading is not a thing to finish, and prose and
-  fenced lines are never looked at — and a subtask counts like any other box. Hover for the
-  numbers; VoiceOver reads them as the bar's value. Nothing is shown for an empty list.
+- **A progress bar floating over the foot of the list**, on the toast's glass and in its
+  place, 4pt above the footer and 8pt in from the sides: the percentage on the left, the accent's share of a 3pt track, and a close control
+  on the right. Ticked tasks over all of them — only task lines count; a heading is not a
+  thing to finish, prose and fenced lines are never looked at, and a subtask counts like any
+  other box. Hover for the numbers; VoiceOver reads them as the bar's value. Nothing is
+  shown for an empty list, and a notice stacks above the bar rather than on it. Closing it is
+  remembered per project; the `percent` toggle in the footer, tinted while the bar is up,
+  and **Pane ▸ Todo ▸ Toggle Progress Bar** bring it back.
 - **Actions**: toggle, add, remove (a **minus** — one line out of a markdown file, not a
   deletion), reorder by drag, indent/outdent, edit in place, and **Send to shell** — injects the
   task text into the focused shell without submitting.
@@ -600,8 +604,9 @@ cannot say "reloaded" two different ways.
 
 It was a strip across the top of the tile. A strip takes a row, so every reload pushed the
 text being edited down a line and pulled it back up on close — a notice about the file must
-not move the file. A toast covers a corner of the content instead, which is the one
-exception the design language makes to "no steady-state intersections" (docs/02): an
+not move the file. A toast covers a corner of the content instead, which is the exception
+the design language makes to "no steady-state intersections" (docs/02) — shared with the
+Todo list's progress bar (§ 2), which floats in the same place; the toast stacks above it: an
 informational toast (reloaded) leaves on its own after four seconds, pausing while the
 pointer is on it; one that needs a decision (a conflict) or reports a failure stays until
 closed. The tone is in the symbol's colour alone — the toast is never tinted.

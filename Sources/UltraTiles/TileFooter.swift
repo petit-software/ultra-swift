@@ -70,18 +70,21 @@ public struct TileFooterButton: View {
     let symbol: String
     let help: String
     var isEnabled = true
+    /// The resting colour, for a toggle that is on: the accent says "this is up".
+    var tint: Color?
     let action: () -> Void
 
-    public init(symbol: String, help: String, isEnabled: Bool = true,
+    public init(symbol: String, help: String, isEnabled: Bool = true, tint: Color? = nil,
                 action: @escaping () -> Void) {
         self.symbol = symbol
         self.help = help
         self.isEnabled = isEnabled
+        self.tint = tint
         self.action = action
     }
 
     public var body: some View {
-        ChromeIconButton(symbol: symbol, help: help, isEnabled: isEnabled, action: action)
+        ChromeIconButton(symbol: symbol, help: help, isEnabled: isEnabled, tint: tint, action: action)
     }
 }
 

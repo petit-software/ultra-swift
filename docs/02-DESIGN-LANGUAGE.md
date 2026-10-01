@@ -71,7 +71,9 @@ terminal beneath it.
   element. Tile headers reserve their own height; they do not float over the content beneath.
   The one exception is a tile's **toast** (docs/03 § Notices): a glass rounded rectangle at the foot of
   the content, there because a strip that reserved its own height moved the file it was
-  reporting on. It is transient when informational and tucked into a corner when not.
+  reporting on. It is transient when informational and tucked into a corner when not. The
+  Todo list's progress bar (docs/03 § 2) borrows the toast's glass and its place, and can
+  be closed, for the same reason: a bar in a row of its own would move the list.
 - **Strip decorated bars.** No custom bar backgrounds, no borders, no gradients. Hierarchy comes
   from layout and spacing.
 
