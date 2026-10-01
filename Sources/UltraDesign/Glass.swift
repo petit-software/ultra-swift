@@ -22,18 +22,20 @@ public extension View {
         }
     }
 
-    /// A toast floating over a tile's content: regular glass in a capsule, never tinted.
+    /// A toast floating over a tile's content: regular glass in a rounded rectangle, never
+    /// tinted. Corners of `Token.Space.toastCornerRadius`, not a capsule — see the token.
     ///
     /// Not `ultraGlassControl`: that one is interactive, and a toast is not a button — it
-    /// holds buttons. Under Reduce Transparency the capsule goes solid and takes a hairline,
+    /// holds buttons. Under Reduce Transparency the toast goes solid and takes a hairline,
     /// since without the glass's own rim nothing would separate it from the content.
     @ViewBuilder
     func ultraToastGlass() -> some View {
+        let shape = RoundedRectangle(cornerRadius: Token.Space.toastCornerRadius, style: .continuous)
         if Token.Environment_.reduceTransparency {
-            background(Token.Colour.tileBackground, in: .capsule)
-                .overlay(Capsule().strokeBorder(Token.Colour.separator, lineWidth: 1))
+            background(Token.Colour.tileBackground, in: shape)
+                .overlay(shape.strokeBorder(Token.Colour.separator, lineWidth: 1))
         } else {
-            glassEffect(.regular, in: .capsule)
+            glassEffect(.regular, in: shape)
         }
     }
 

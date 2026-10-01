@@ -65,14 +65,14 @@ public struct TileNotice: Equatable, Sendable {
     }
 }
 
-/// The capsule a tile floats over the foot of its content when something happened to its
+/// The toast a tile floats over the foot of its content when something happened to its
 /// file: reloaded, changed underneath an edit, could not be saved.
 ///
 /// It was a strip across the top of the tile. A strip takes a row of its own, so every
 /// reload pushed the text being edited down a line and pulled it back up when the strip was
 /// closed — the one thing a notice about the file must not do is move the file. A toast
-/// floats instead: glass, so the content stays legible through it; a capsule, so it reads as
-/// something that arrived rather than as part of the tile; at the foot and above the footer,
+/// floats instead: glass, so the content stays legible through it; rounded at 12pt, so it
+/// reads as something that arrived rather than as part of the tile, and not as a pill button; at the foot and above the footer,
 /// 4pt from the pane's sides, so it sits where the eye is not and never covers the title.
 ///
 /// A FILLED symbol on the left, because the line is small type and an outlined glyph at that
@@ -143,7 +143,7 @@ struct TileToast<Actions: View>: View {
         }
     }
 
-    /// The tone is carried by the symbol alone — the capsule itself is never tinted, so a
+    /// The tone is carried by the symbol alone — the toast itself is never tinted, so a
     /// warning is a warning by its glyph and its words, not by an orange band the glass
     /// would have to fight. System colours, which hold under Increase Contrast.
     private var symbolColour: Color {
@@ -159,7 +159,7 @@ public extension View {
     /// Floats a tile's notice over the foot of its content.
     ///
     /// Applied to the content and BEFORE `tileFooter`, so the toast lives in the content's
-    /// rectangle: its bottom edge is the top of the footer band, which puts the capsule 4pt
+    /// rectangle: its bottom edge is the top of the footer band, which puts the toast 4pt
     /// above the footer and 4pt in from each side of the pane. The frame is filled here so
     /// that a short content stack still anchors the toast at the foot, not at its own end.
     ///

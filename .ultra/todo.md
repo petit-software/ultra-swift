@@ -17,6 +17,11 @@
   - [x] Chat: one rounded, bordered table per answer with a fixed-height row per changed file: name, folder, +/−; a click opens it in the editor
   - [x] Chat: tests for the counts and the grouping; docs
 - [x] Chat: clicking a newly created empty file in the changed-files table showed an error — the editor now watches for a file it could not read and takes it when it appears, empty or not; opening it again reads it again
+- [x] Toast: rounded at 12pt (`Token.Space.toastCornerRadius`) rather than a full capsule
+- [x] file editor, can we have a proper markdown support for files with md extension?
+  - [x] Editor: `MarkdownHighlighter`, a line-at-a-time scanner for `.md` — headings, emphasis, code spans and fences, links, bullets, task boxes, quotes, rules, front matter
+  - [x] Editor: bold and italic faces for headings and emphasis, same size so lines keep their height; tests; docs
+- [x] file editor: the line-number ruler's edge runs past the tabs and the footer; it should stop at the tab row (or the header, with no tabs) and at the footer
 - [x] opening new projects keeps pane from previous project open
   - [x] Storage: one document per project — `load(directory:)` takes the newest, `retireDuplicates` parks the rest in `workspaces/stale/`
   - [x] New window: opens the first start project that is not open already, restored; a twin of an open project is not saved

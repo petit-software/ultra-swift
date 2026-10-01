@@ -68,7 +68,7 @@ terminal beneath it.
   Nothing else is tinted. When everything is tinted, nothing stands out.
 - **No steady-state intersections.** In a resting layout, content never sits half-under a glass
   element. Tile headers reserve their own height; they do not float over the content beneath.
-  The one exception is a tile's **toast** (docs/03 § Notices): a glass capsule at the foot of
+  The one exception is a tile's **toast** (docs/03 § Notices): a glass rounded rectangle at the foot of
   the content, there because a strip that reserved its own height moved the file it was
   reporting on. It is transient when informational and tucked into a corner when not.
 - **Strip decorated bars.** No custom bar backgrounds, no borders, no gradients. Hierarchy comes

@@ -41,9 +41,14 @@ public enum Token {
         public static let tileBodyInset: CGFloat = 10
         public static let rowSpacing: CGFloat = 4
         /// How far a toast sits in from the pane's sides and up from the footer. Tight on
-        /// purpose: a capsule floating in the middle of the content is a dialog; one tucked
+        /// purpose: a toast floating in the middle of the content is a dialog; one tucked
         /// into the corner is an aside.
         public static let toastInset: CGFloat = 4
+        /// A toast's corners. Rounded, not a capsule: at a toast's height a full capsule
+        /// reads as a pill button, and a one-line notice is not a control. The same 12pt
+        /// whatever the toast's height, so one with a second row of actions keeps the
+        /// shape of one without.
+        public static let toastCornerRadius: CGFloat = 12
     }
 
     // MARK: Colour

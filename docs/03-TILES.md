@@ -145,6 +145,14 @@ something another editor does better.
   (`CodeLanguage`) and one linear pass — not a grammar. The language comes from the file's
   name, or from a shebang when the name says nothing; a file in a language the table does
   not know is plain text. System colours only, so it reads in both appearances.
+- **Markdown** (`MarkdownHighlighter`) is the one file kind the table cannot describe — it
+  has no comments, strings or keywords — so `.md` (and README, CHANGELOG) gets a scanner of
+  its own, a line at a time: headings bold and coloured, `**strong**` bold, `*emphasis*`
+  italic, code spans and fenced blocks (which swallow everything inside them, so a `#` in
+  a shell snippet is not a heading), links with their destinations receding, bullets,
+  numbers, task boxes, quote marks, rules, front matter and HTML comments. The face stays
+  monospaced and 12pt, so a heading does not change the height of its line. Not CommonMark:
+  the common cases, and an odd one is plain text rather than wrong colour.
 - **Line numbers**, drawn per VISIBLE line — a 50,000-line file costs the same to scroll as
   a 50-line one.
 - **Smart substitutions off.** Curly quotes and em dashes silently replacing what you typed
@@ -558,7 +566,8 @@ sandbox).
 ## Notices
 
 What a tile has to say about its file — reloaded, changed underneath an edit, could not be
-saved, a page that would not load — is a **toast**: a regular-glass capsule floating over the
+saved, a page that would not load — is a **toast**: a regular-glass rounded rectangle — 12pt corners, not a capsule, which at
+that height reads as a pill button — floating over the
 foot of the content, 4pt above the footer and 4pt in from the pane's sides, with a filled
 symbol, the sentence, any verb it offers (Reload, Retry) and an `⌫`-shaped close control.
 `TileToast` draws it; `TileNotice` holds the words, once, so the Editor and the Todo list
@@ -570,7 +579,7 @@ not move the file. A toast covers a corner of the content instead, which is the 
 exception the design language makes to "no steady-state intersections" (docs/02): an
 informational toast (reloaded) leaves on its own after four seconds, pausing while the
 pointer is on it; one that needs a decision (a conflict) or reports a failure stays until
-closed. The tone is in the symbol's colour alone — the capsule is never tinted.
+closed. The tone is in the symbol's colour alone — the toast is never tinted.
 
 Close is also **Pane ▸ Dismiss Notice** in the menu and the palette, enabled only while the
 focused pane shows a toast, so a notice can be put away without the pointer.
