@@ -25,6 +25,10 @@
 - [x] opening new projects keeps pane from previous project open
   - [x] Storage: one document per project — `load(directory:)` takes the newest, `retireDuplicates` parks the rest in `workspaces/stale/`
   - [x] New window: opens the first start project that is not open already, restored; a twin of an open project is not saved
+- [x] context I want cotext to show added files nicer, i wand to see file name extension size a preview if possible, encapsulated.
+  - [x] Context: `Item` carries bytes and, for a folder, its file count, measured in the one walk the token estimate already makes
+  - [x] Context: one rounded, bordered card per item — a QuickLook thumbnail (the file's icon until it arrives), the name, and a caption with the extension badge, size and ~tokens
+  - [x] Context: tests for the measurements and captions; docs
 - [x] clicking on the file from file tree, double click should open finder, single clikc should open editor.
   - [x] File tree: a click on a file opens it in the editor; the second click of a double reveals it in Finder; send-to-shell stays on the hover pill and the context menu; docs
 

@@ -286,8 +286,15 @@ The drop target. Files, folders, and links that the agent should know about.
   the Files tile, a browser, or another app.
 - **Persistence**: security-scoped bookmarks so a dropped folder outside the project is still
   readable after relaunch. Stale bookmarks are shown as such with a re-grant action.
-- **Each chip** shows name, kind icon, size, and a token estimate (chars/4 heuristic to start;
-  swap in a real tokenizer later without changing the UI).
+- **Each item is a card**, rounded and bordered like the chat's changed-files table, and
+  every card the same height: a thumbnail, the name, and a caption — the kind as a badge
+  (`MD`, `SWIFT`, `Folder`), a folder's file count, the size in Finder's units, and a token
+  estimate (bytes/4 heuristic to start; swap in a real tokenizer later without changing
+  the UI). One walk of a folder measures all three. The thumbnail is QuickLook's — the
+  file's own icon until it arrives, or for good when QuickLook has nothing for the type —
+  generated off the main actor so a list of PDFs does not stall the pane. A missing item's
+  caption says only `missing`: its size and tokens are stale facts about a file that is
+  not there.
 - **Send to shell** — the reason the tile exists. Injects `@<path relative to project root>`
   references into the focused shell **without submitting**, so the user types their sentence
   around them. Multi-select joins with spaces. Absolute paths are used when the target is

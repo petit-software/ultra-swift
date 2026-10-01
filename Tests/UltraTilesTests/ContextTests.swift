@@ -162,4 +162,78 @@ struct ContextTests {
         let whole = ContextModel.estimateTokens(at: folder, isDirectory: true)
         #expect(whole == 3000, "a directory sums its files")
     }
+
+    /// The card shows size and, for a folder, how many files — out of the SAME walk the
+    /// token estimate makes, so a folder is not enumerated twice to say two things about it.
+    @Test("one walk measures bytes, file count and tokens together")
+    func measurement() throws {
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appendingPathComponent("src")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try String(repeating: "x", count: 4000)
+            .write(to: folder.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try String(repeating: "x", count: 8000)
+            .write(to: folder.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+
+        let file = ContextModel.measure(at: folder.appendingPathComponent("a.txt"), isDirectory: false)
+        #expect(file == .init(bytes: 4000, fileCount: nil))
+        let whole = ContextModel.measure(at: folder, isDirectory: true)
+        #expect(whole == .init(bytes: 12000, fileCount: 2))
+        #expect(whole.tokens == 3000)
+
+        let model = ContextModel(root: root)
+        model.add(folder)
+        model.add(folder.appendingPathComponent("b.txt"))
+        let dir = try #require(model.items.first { $0.isDirectory })
+        #expect(dir.bytes == 12000)
+        #expect(dir.fileCount == 2)
+        let b = try #require(model.items.first { $0.name == "b.txt" })
+        #expect(b.bytes == 8000)
+        #expect(b.fileCount == nil)
+    }
+
+    @Test("the kind is the extension in capitals, or Folder, or File")
+    func kinds() {
+        func item(_ path: String, directory: Bool = false) -> ContextModel.Item {
+            ContextModel.Item(id: UUID(), url: URL(fileURLWithPath: path), isPinned: false,
+                              tokens: 0, isDirectory: directory)
+        }
+        #expect(item("/p/notes.md").kind == "MD")
+        #expect(item("/p/Main.swift").kind == "SWIFT")
+        #expect(item("/p/Makefile").kind == "File")
+        #expect(item("/p/Sources", directory: true).kind == "Folder")
+    }
+
+    /// The caption is the accessibility label and the picture's text in one, so it is
+    /// pinned down here: kind, a folder's count, the size in Finder's units, the tokens.
+    @Test("the caption reads kind · files · size · ~count, or just missing")
+    func captions() {
+        let file = ContextModel.Item(id: UUID(), url: URL(fileURLWithPath: "/p/notes.md"),
+                                     isPinned: false, tokens: 1000, isDirectory: false, bytes: 4000)
+        #expect(file.caption == "MD · 4 KB · ~1k")
+
+        let folder = ContextModel.Item(id: UUID(), url: URL(fileURLWithPath: "/p/Sources"),
+                                       isPinned: false, tokens: 25000, isDirectory: true,
+                                       bytes: 100_000, fileCount: 12)
+        #expect(folder.caption == "Folder · 12 files · 100 KB · ~25k")
+
+        let one = ContextModel.Item(id: UUID(), url: URL(fileURLWithPath: "/p/One"),
+                                    isPinned: false, tokens: 10, isDirectory: true,
+                                    bytes: 40, fileCount: 1)
+        #expect(one.caption == "Folder · 1 file · 40 bytes · ~10")
+
+        let gone = ContextModel.Item(id: UUID(), url: URL(fileURLWithPath: "/p/gone.txt"),
+                                     isPinned: false, tokens: 0, isDirectory: false, isMissing: true)
+        #expect(gone.caption == "missing", "stale measurements of an absent file are not shown")
+    }
+
+    @Test("token counts compact to k above a thousand, without a trailing .0")
+    func compactTokens() {
+        #expect(ContextModel.Item.compact(999) == "999")
+        #expect(ContextModel.Item.compact(1000) == "1k")
+        #expect(ContextModel.Item.compact(1250) == "1.2k")
+        #expect(ContextModel.Item.compact(25000) == "25k")
+        #expect(ContextModel.Item.compact(123_456) == "123k")
+    }
 }

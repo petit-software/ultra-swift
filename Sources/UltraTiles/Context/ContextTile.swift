@@ -1,4 +1,5 @@
 import AppKit
+import QuickLookThumbnailing
 import SwiftUI
 import UltraDesign
 import UniformTypeIdentifiers
@@ -20,20 +21,21 @@ public struct ContextTile: View {
                 EmptyTileState(icon: "paperclip", title: "Drop files or folders here")
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: ContextCard.spacing) {
                         ForEach(model.items) { item in
-                            ContextRow(item: item,
-                                       remove: { model.remove(item) },
-                                       togglePin: { model.togglePin(item) },
-                                       reveal: { context.revealInFinder(item.url) },
-                                       send: {
-                                           context.injectIntoShell(
-                                            ContextModel.reference(for: item,
-                                                                   relativeTo: context.root))
-                                       })
+                            ContextCard(item: item,
+                                        remove: { model.remove(item) },
+                                        togglePin: { model.togglePin(item) },
+                                        reveal: { context.revealInFinder(item.url) },
+                                        send: {
+                                            context.injectIntoShell(
+                                             ContextModel.reference(for: item,
+                                                                    relativeTo: context.root))
+                                        })
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, ContextCard.inset)
+                    .padding(.vertical, ContextCard.spacing)
                 }
                 .tileScrollBar()
             }
@@ -58,7 +60,7 @@ public struct ContextTile: View {
     }
 
     private var footer: some View {
-        TileFooter(summary: "~\(formatted(model.totalTokens)) tokens",
+        TileFooter(summary: "~\(ContextModel.Item.compact(model.totalTokens)) tokens",
                    // Deliberately approximate, and labelled so: an exact-looking number
                    // here would be a lie, because the real tokeniser is the model's.
                    summaryHelp: "Rough estimate — bytes ÷ 4") {
@@ -102,13 +104,22 @@ public struct ContextTile: View {
         else { return }
         model.relocate(to: url)
     }
-
-    private func formatted(_ value: Int) -> String {
-        value >= 1000 ? String(format: "%.1fk", Double(value) / 1000) : String(value)
-    }
 }
 
-private struct ContextRow: View {
+/// One item, in its own rounded, bordered card: a thumbnail of the file, its name, and
+/// under the name what kind of file it is, how big, and roughly what it costs.
+///
+/// A card rather than a row because an item here is a THING the user picked up and put
+/// down, not a line in a listing — and three facts about it do not fit on one line of a
+/// narrow tile without one of them giving way. Every card is the same height, thumbnail
+/// or not, so a list of mixed files does not ripple as previews arrive.
+private struct ContextCard: View {
+    static let height: CGFloat = 56
+    static let spacing: CGFloat = 6
+    static let inset: CGFloat = 8
+    static let radius: CGFloat = 8
+    static let thumbnailSide: CGFloat = 40
+
     let item: ContextModel.Item
     let remove: () -> Void
     let togglePin: () -> Void
@@ -117,43 +128,35 @@ private struct ContextRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: item.isDirectory ? "folder" : "doc")
-                .font(.system(size: 11))
-                .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.accent)
-                .frame(width: 14)
+        HStack(spacing: 10) {
+            ContextThumbnail(url: item.url, isDirectory: item.isDirectory,
+                             isMissing: item.isMissing, side: Self.thumbnailSide)
 
-            Text(item.name)
-                .font(Token.Type_.tileSubtitle)
-                .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
-                .strikethrough(item.isMissing)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.name)
+                    .font(Token.Type_.tileSubtitle)
+                    .foregroundStyle(item.isMissing ? Token.Colour.tertiaryLabel : Token.Colour.label)
+                    .strikethrough(item.isMissing)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                // "missing" keeps its warning colour: that is a STATE, not a measurement, and
+                // it is the one thing in this tile worth interrupting a scan for.
+                HStack(spacing: 5) {
+                    if item.isMissing {
+                        Text("missing").foregroundStyle(.orange)
+                    } else {
+                        ContextKindBadge(kind: item.kind)
+                        Text(captionAfterKind)
+                            .foregroundStyle(Token.Colour.tertiaryLabel)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                .font(Token.Type_.monoSmall.monospacedDigit())
+            }
 
             Spacer(minLength: 8)
-
-            // Opposite side rather than underneath, and the same size as the name — a file
-            // and its weight are one fact, and setting the weight in small type made every
-            // row read as a title with a caption. Only colour separates them now.
-            //
-            // "missing" keeps its warning colour: that is a STATE, not the secondary half of
-            // anything, and it is the one thing in this tile worth interrupting a scan for.
-            Group {
-                if item.isMissing {
-                    Text("missing")
-                        .foregroundStyle(.orange)
-                } else {
-                    Text("~\(item.tokens / 1000 > 0 ? "\(item.tokens / 1000)k" : "\(item.tokens)")")
-                        .foregroundStyle(Token.Colour.tertiaryLabel)
-                }
-            }
-            .font(Token.Type_.tileSubtitle.monospacedDigit())
-            .lineLimit(1)
-            // Never the side that truncates. Two flexible labels in one row shrink
-            // together, and "~12k" losing its tail is a number that now reads wrong
-            // rather than one that reads clipped — the name gives up the space instead,
-            // which is what its middle truncation is already there to do.
-            .layoutPriority(1)
 
             if item.isPinned {
                 Image(systemName: "pin.fill")
@@ -161,19 +164,27 @@ private struct ContextRow: View {
                     .foregroundStyle(Token.Colour.accent)
             }
         }
-        // Floating over the row's trailing end — see `tileHoverControls`. The cluster was a
-        // column of this row, always laid out and only faded, so that nothing moved on
-        // hover; that held the name to two-thirds of a narrow tile at rest for controls
-        // nobody was reaching for. Over the weight and the pin instead, on demand.
-        .tileHoverControls(isHovering) {
+        .padding(.horizontal, 10)
+        .frame(height: Self.height)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // The same treatment as the chat's changed-files table: a faint wash inside a
+        // hairline, rounded. Two tiles that both show "files, as cards" should look like
+        // the same idea.
+        .background(Token.Colour.label.opacity(isHovering ? 0.06 : 0.03))
+        .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+            .strokeBorder(Token.Colour.separator, lineWidth: 1))
+        // Floating over the card's trailing end — see `tileHoverControls`. Over the pin and
+        // the caption's tail, on demand, so the card is the same shape hovered or not.
+        .tileHoverControls(isHovering, offset: CGSize(width: -8, height: 0)) {
             HStack(spacing: 7) {
-                // The tile's headline verb, per row. The footer sends the WHOLE list, which
+                // The tile's headline verb, per item. The footer sends the WHOLE list, which
                 // is the wrong granularity for most prompts: a list gathered over a session
                 // holds far more than the one file the next sentence is about.
                 //
                 // Leads the cluster because it is the thing this tile is for; a missing file
                 // has no reference worth typing, so it is dimmed rather than dropped — a
-                // cluster that changes width between rows is a cluster you cannot aim at.
+                // cluster that changes width between cards is a cluster you cannot aim at.
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send this file to the shell")
                     .disabled(item.isMissing)
@@ -183,7 +194,7 @@ private struct ContextRow: View {
                 .help(item.isPinned ? "Unpin" : "Pin — survives Clear")
                 Button(action: reveal) { Image(systemName: "magnifyingglass") }
                     .help("Reveal in Finder")
-                // Circled minus, not a cross or a trash can. Removing a row takes the file
+                // Circled minus, not a cross or a trash can. Removing a card takes the file
                 // off this list and does nothing to the file, and a trash can promises
                 // otherwise; the circle matches the footer's Clear and the Git pane's Unstage,
                 // which perform the same verb.
@@ -193,10 +204,98 @@ private struct ContextRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
-        .padding(.horizontal, 12)
-        .frame(height: 28)
         .contentShape(.rect)
         .onHover { isHovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(item.isMissing
+                            ? "\(item.name), missing"
+                            : "\(item.name), \(item.caption), tokens")
+    }
+
+    /// The caption with its first part — the kind — taken off, because the kind is drawn
+    /// as a badge and the rest as text. One source for both, so the accessibility label
+    /// and the picture say the same thing.
+    private var captionAfterKind: String {
+        let parts = item.caption.components(separatedBy: " · ")
+        return parts.dropFirst().joined(separator: " · ")
+    }
+}
+
+/// The item's type, set in a small capsule — `MD`, `SWIFT`, `Folder` — so the eye can
+/// pick out "the Swift files" from a mixed list before reading a single name.
+private struct ContextKindBadge: View {
+    let kind: String
+
+    var body: some View {
+        Text(kind)
+            .font(Token.Type_.monoSmall.weight(.medium))
+            .foregroundStyle(Token.Colour.secondaryLabel)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Token.Colour.label.opacity(0.08), in: .capsule)
+    }
+}
+
+/// A picture of the file: QuickLook's thumbnail — the first page of a document, the
+/// image itself, the opening lines of a source file — and the file's icon until that
+/// arrives, or for good when QuickLook has nothing to say about the type.
+///
+/// The icon is drawn FIRST, synchronously, so no card ever shows an empty square; the
+/// thumbnail replaces it in place. Both sit in the same rounded, bordered frame, so a
+/// folder's icon and a photo's preview are the same shape in the list.
+private struct ContextThumbnail: View {
+    let url: URL
+    let isDirectory: Bool
+    let isMissing: Bool
+    let side: CGFloat
+    @Environment(\.displayScale) private var displayScale
+    @State private var preview: CGImage?
+
+    var body: some View {
+        Group {
+            if let preview {
+                Image(decorative: preview, scale: displayScale)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Image(nsImage: icon)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .padding(4)
+            }
+        }
+        .frame(width: side, height: side)
+        .background(Token.Colour.label.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .strokeBorder(Token.Colour.separator, lineWidth: 1))
+        .opacity(isMissing ? 0.4 : 1)
+        .task(id: url) {
+            preview = nil
+            guard !isMissing, !isDirectory else { return }
+            preview = await Self.thumbnail(for: url, side: side, scale: displayScale)
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// The icon Finder would show — the right one for the extension, or the generic
+    /// document when the file is gone and nothing can be asked of it.
+    private var icon: NSImage {
+        isMissing
+            ? NSWorkspace.shared.icon(for: isDirectory ? .folder : .data)
+            : NSWorkspace.shared.icon(forFile: url.path)
+    }
+
+    /// QuickLook's best picture of the file at this size, or nothing. Off the main actor
+    /// for the whole of the wait: the generator renders documents, and a list of twenty
+    /// PDFs must not stall the pane while it does.
+    nonisolated static func thumbnail(for url: URL, side: CGFloat, scale: CGFloat) async -> CGImage? {
+        let request = QLThumbnailGenerator.Request(fileAt: url,
+                                                   size: CGSize(width: side, height: side),
+                                                   scale: scale,
+                                                   representationTypes: .thumbnail)
+        return try? await QLThumbnailGenerator.shared
+            .generateBestRepresentation(for: request).cgImage
     }
 }
 

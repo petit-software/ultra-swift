@@ -18,7 +18,53 @@ public final class ContextModel {
         public var tokens: Int
         public var isDirectory: Bool
         public var isMissing: Bool = false
+        /// On-disk size; a folder's is the sum of its files, up to the walk's cap.
+        public var bytes: Int = 0
+        /// How many files a folder holds, up to the cap. Nil for a file.
+        public var fileCount: Int? = nil
         public var name: String { url.lastPathComponent }
+
+        /// What the card calls the item's type: the extension in capitals — `MD`, `SWIFT` —
+        /// or `Folder`, and `File` for a file with no extension, so the slot is never blank.
+        public var kind: String {
+            if isDirectory { return "Folder" }
+            let ext = url.pathExtension
+            return ext.isEmpty ? "File" : ext.uppercased()
+        }
+
+        /// `3.9 KB`, in the units Finder uses, so the number here agrees with the one in
+        /// Get Info.
+        public var sizeText: String { Self.sizeText(bytes) }
+
+        /// The caption under the name: kind, then the measurements that apply, each separated
+        /// by a middle dot. A folder adds its file count. The tokens are `~114k`, the same
+        /// compact spelling as the footer's total, which is where the word "tokens" and the
+        /// tilde's explanation live — on a narrow tile a folder's caption has no room for
+        /// the word, and a count clipped to `~114k to…` reads as a different number. A
+        /// missing item says only that — its size and tokens are stale facts about a file
+        /// that is not there.
+        public var caption: String {
+            if isMissing { return "missing" }
+            var parts = [kind]
+            if let fileCount { parts.append(fileCount == 1 ? "1 file" : "\(fileCount) files") }
+            parts.append(sizeText)
+            parts.append("~" + Self.compact(tokens))
+            return parts.joined(separator: " · ")
+        }
+
+        static func sizeText(_ bytes: Int) -> String {
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            return formatter.string(fromByteCount: Int64(bytes))
+        }
+
+        static func compact(_ value: Int) -> String {
+            guard value >= 1000 else { return String(value) }
+            let thousands = Double(value) / 1000
+            return thousands >= 100
+                ? String(format: "%.0fk", thousands)
+                : String(format: "%.1fk", thousands).replacingOccurrences(of: ".0k", with: "k")
+        }
     }
 
     /// What actually goes to disk.
@@ -90,11 +136,14 @@ public final class ContextModel {
         bookmarks[id] = try? standardized.bookmarkData(options: [],
                                                        includingResourceValuesForKeys: nil,
                                                        relativeTo: nil)
+        let measure = Self.measure(at: standardized, isDirectory: isDirectory)
         items.append(Item(id: id,
                           url: standardized,
                           isPinned: false,
-                          tokens: Self.estimateTokens(at: standardized, isDirectory: isDirectory),
-                          isDirectory: isDirectory))
+                          tokens: measure.tokens,
+                          isDirectory: isDirectory,
+                          bytes: measure.bytes,
+                          fileCount: measure.fileCount))
         sort()
         save()
         return true
@@ -152,17 +201,31 @@ public final class ContextModel {
         return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : path
     }
 
-    // MARK: Token estimate
+    // MARK: Measurement
 
-    /// Bytes ÷ 4 — the usual rule of thumb for English source text. A directory is summed
-    /// over its files, capped, because walking a huge tree to produce a number nobody will
-    /// act on precisely is not worth the stall.
-    static func estimateTokens(at url: URL, isDirectory: Bool, fileCap: Int = 400) -> Int {
-        guard isDirectory else { return tokens(forFileAt: url) }
+    /// What one walk of an item learns: its size, how many files it holds, and the token
+    /// estimate derived from the size.
+    struct Measure: Equatable {
+        var bytes: Int
+        /// Nil for a file; a folder's count stops at the walk's cap.
+        var fileCount: Int?
+        /// Bytes ÷ 4 — the usual rule of thumb for English source text.
+        var tokens: Int { bytes / 4 }
+    }
+
+    /// A file is measured directly. A directory is summed over its files, capped, because
+    /// walking a huge tree to produce a number nobody will act on precisely is not worth the
+    /// stall — and the same walk counts the files, so the card can say `312 files` without
+    /// a second one.
+    static func measure(at url: URL, isDirectory: Bool, fileCap: Int = 400) -> Measure {
+        guard isDirectory else {
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return Measure(bytes: size, fileCount: nil)
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]) else { return 0 }
+            options: [.skipsHiddenFiles]) else { return Measure(bytes: 0, fileCount: 0) }
         var total = 0
         var seen = 0
         for case let child as URL in enumerator {
@@ -170,14 +233,14 @@ public final class ContextModel {
             let values = try? child.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values?.isRegularFile == true else { continue }
             seen += 1
-            total += (values?.fileSize ?? 0) / 4
+            total += values?.fileSize ?? 0
         }
-        return total
+        return Measure(bytes: total, fileCount: seen)
     }
 
-    private static func tokens(forFileAt url: URL) -> Int {
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-        return size / 4
+    /// The token half of `measure`, for callers that want only the number.
+    static func estimateTokens(at url: URL, isDirectory: Bool, fileCap: Int = 400) -> Int {
+        measure(at: url, isDirectory: isDirectory, fileCap: fileCap).tokens
     }
 
     // MARK: Persistence
@@ -208,12 +271,17 @@ public final class ContextModel {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?
                 .isDirectory ?? false
             bookmarks[entry.id] = entry.bookmark
+            let measure = exists
+                ? Self.measure(at: url, isDirectory: isDirectory)
+                : Measure(bytes: 0, fileCount: nil)
             return Item(id: entry.id,
                         url: url,
                         isPinned: entry.isPinned,
-                        tokens: exists ? Self.estimateTokens(at: url, isDirectory: isDirectory) : 0,
+                        tokens: measure.tokens,
                         isDirectory: isDirectory,
-                        isMissing: !exists)
+                        isMissing: !exists,
+                        bytes: measure.bytes,
+                        fileCount: measure.fileCount)
         }
         sort()
         // A bookmark that resolved to a new location is re-recorded, so the next launch does
