@@ -152,6 +152,9 @@ something another editor does better.
   `TextEditor`, which inherits them and cannot carry a ruler either.
 - **Binary files are refused**, not shown as garbage that looks editable and corrupts on
   save. A NUL byte in the first 8KB is the test.
+- **A file that is not there yet** — clicked in a chat's list of changes before the engine
+  has written it — opens on a "could not read" toast, watches its folder, and becomes the
+  file the moment it appears, an empty one included; opening it again reads it again.
 - **External changes**: reloaded when there are no local edits, and when there ARE, neither
   side is touched and the user is told. Nothing here overwrites work without being asked.
 - **The open file is persisted** in the pane record, so a restored workspace reopens it.
@@ -379,10 +382,13 @@ APIs. Every provider is tested against a recorded transcript.
   read back before the row says signed in. Both are tested against recorded lines of their
   protocols.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
-  Escape also stops. While an answer is on its way the composer's send slot holds a spinning
-  pair of arrows (`ThinkingStopButton`: the symbol's own `.rotate` effect, a pulse under
-  Reduce Motion), and under the pointer it is the stop button — the whole slot is the button,
-  so a click on the spinner stops too. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
+  Escape also stops. While an answer is on its way the composer's send slot holds the
+  thinking star (`ThinkingStopButton` around `ThinkingStar`, the design's own four-pointed
+  shape): it turns half a revolution, easing to a stop, rests a beat and goes again, so it
+  reads as working in strokes rather than as a loading wheel. It zooms in from small when
+  the answer starts and shrinks away when it is in; under Reduce Motion it breathes in
+  opacity and does not turn. Under the pointer it is the stop button — the whole slot is
+  the button, so a click on the star stops too. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
 - Each pane can show its chat light: the sun in the footer, or Pane ▸ Chat ▸ Toggle Light
   Chat (⌃⌘L — the browser's key for the same thing; the two share it, and the menu fires
   whichever is enabled). It works the way a browser pane's page mode does: the choice is

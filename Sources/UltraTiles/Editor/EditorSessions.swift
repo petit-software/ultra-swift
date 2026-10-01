@@ -137,6 +137,13 @@ public final class EditorSessions {
             // A diff is a view of state that moves under it. Coming back to one after
             // staging a hunk must show what the file looks like NOW.
             if case .diff(let diff) = existing.content { diff.invalidate() }
+            // A file that could not be read is read again: asking for it a second time is
+            // the user saying it is there now — a folder that did not exist when the row
+            // was first clicked has no watch to notice it on its own.
+            if case .file(let document) = existing.content, case .failed = document.notice,
+               case .file(let url) = request {
+                document.open(url)
+            }
             return existing
         }
         let session: EditorSession = switch request {

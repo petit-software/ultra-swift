@@ -46,6 +46,26 @@ struct EditorSessionTests {
 
     /// A file and its diff are two different things to look at, so they are two rows — in two
     /// different sections — even though they name the same path.
+    @Test("reopening a file that could not be read reads it again")
+    func reopenRetriesFailedRead() throws {
+        let missing = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-sessions-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: missing) }
+        let open = EditorSessions()
+        let first = open.open(.file(missing))
+        guard case .file(let document) = first.content else {
+            Issue.record("not a file")
+            return
+        }
+        #expect(document.notice == .failed("Could not read \(missing.lastPathComponent)"))
+
+        try "".write(to: missing, atomically: true, encoding: .utf8)
+        let again = open.open(.file(missing))
+        #expect(again.id == first.id)
+        #expect(document.notice == nil)
+        #expect(document.text == "")
+    }
+
     @Test("a file and its diff are listed separately")
     func fileAndDiffCoexist() {
         let open = EditorSessions()

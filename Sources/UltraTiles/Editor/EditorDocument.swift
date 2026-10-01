@@ -69,6 +69,10 @@ public final class EditorDocument {
         guard let data = try? Data(contentsOf: url) else {
             savedText = ""; text = ""; isDirty = false
             notice = .failed("Could not read \(url.lastPathComponent)")
+            // Watched all the same. A file opened from a chat's list of changes can be
+            // clicked before the engine has written it; the folder watch sees it arrive,
+            // and `externalChange` turns this failure into the file.
+            beginWatching()
             return
         }
         // A NUL byte is the practical test for "this is not text". Opening a binary in a
@@ -155,6 +159,19 @@ public final class EditorDocument {
         guard let url, !isBinary,
               let data = try? Data(contentsOf: url),
               let contents = String(data: data, encoding: .utf8) else { return }
+        // A file that could not be read when it was opened is here now. Taken whatever it
+        // holds, EMPTY included: a new file is usually empty, and "nothing changed since
+        // the failure" would otherwise leave the failure on screen over a file that exists.
+        if case .failed = notice {
+            savedText = contents
+            text = contents
+            isDirty = false
+            notice = nil
+            // The file-level watch could not be taken while the file was missing; now that
+            // it exists, both watches are.
+            beginWatching()
+            return
+        }
         guard contents != savedText else { return }   // our own write echoing back
 
         if isDirty {

@@ -60,6 +60,27 @@ struct EditorTests {
         #expect(document.isDirty == false)
     }
 
+    @Test("a file opened before it exists becomes the file when it appears, even an empty one")
+    func appearsLater() throws {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-edit-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = EditorDocument(url: url)
+        #expect(document.notice == .failed("Could not read \(url.lastPathComponent)"))
+
+        try "".write(to: url, atomically: true, encoding: .utf8)
+        document.externalChange()
+        #expect(document.notice == nil)
+        #expect(document.text == "")
+        #expect(document.isDirty == false)
+
+        // And it is watched from then on, like a file that was there to begin with.
+        try "later".write(to: url, atomically: true, encoding: .utf8)
+        document.externalChange()
+        #expect(document.text == "later")
+        #expect(document.notice == .reloadedFromDisk)
+    }
+
     @Test("an external change WITH local edits keeps both and says so")
     func conflict() throws {
         let url = try makeFile("first")
