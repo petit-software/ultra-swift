@@ -103,6 +103,12 @@ public final class ChatStore {
         onChange?(current)
     }
 
+    /// Provider and model in one step: a model picked from a provider's own submenu.
+    public func choose(provider: ChatProviderID, model: String) {
+        setProvider(provider)
+        setModel(model)
+    }
+
     public func setModel(_ model: String) {
         guard model != current.model else { return }
         current.model = model
@@ -276,11 +282,23 @@ public final class ChatStore {
     /// Ask the current provider what it offers. Quietly: a service that cannot be reached
     /// leaves the picker with what it already had.
     public func refreshModels() {
-        let provider = current.provider
+        refreshModels(for: current.provider)
+    }
+
+    public func refreshModels(for provider: ChatProviderID) {
         let client = makeProvider(provider)
         Task { [weak self] in
             guard let list = try? await client.models(), !list.isEmpty else { return }
             self?.models[provider] = list
+        }
+    }
+
+    /// The engines' lists, for the menu that shows them inside each engine's row. Only
+    /// the engines: their lists are local and quick, where a service's is a request.
+    public func refreshEngineModels() {
+        for provider in ChatProviderID.Group.subscription.providers
+        where ChatCredentials.isConfigured(provider) && models[provider] == nil {
+            refreshModels(for: provider)
         }
     }
 
@@ -318,9 +336,9 @@ public final class ChatStore {
         """
         if provider.isEngine {
             return common + " " + """
-            This is a chat beside the terminal, not an editing session: read the code a \
-            question is about before answering it, rather than guessing, and answer in \
-            words and code blocks. Do not change files; the user runs commands themselves.
+            Read the code a question is about before answering it, rather than guessing. \
+            You may change files in the project when the user asks for a change; say what \
+            you changed, briefly, and leave the rest of the project as it was.
             """
         }
         return common + " " + """

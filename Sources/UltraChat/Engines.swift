@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// A vendor's own agent on this Mac — Claude Code, Codex — driven as a subprocess so a
 /// chat can run on the user's subscription rather than a key.
@@ -83,20 +84,50 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
                              plan: object["subscriptionType"] as? String)
     }
 
-    /// Start the engine's own sign-in and wait for it to end. Claude Code opens the
-    /// browser itself; Codex hands back a URL, which `openURL` is asked to open.
-    public func signIn(openURL: @escaping @Sendable (URL) -> Void) async throws {
+    /// Start the engine's own sign-in. What happens next is reported through the
+    /// session's states; see `EngineSignIn`.
+    public func beginSignIn() -> EngineSignIn {
+        EngineSignIn(engine: self)
+    }
+
+    /// Forget the engine's login. The engine's own command, so it is gone the way the
+    /// engine expects it to be.
+    public func signOut() async throws {
         switch self {
         case .claudeCode:
             guard let executable else { throw ChatError.notInstalled(provider) }
-            let run = try await Subprocess.run(executable, arguments: ["auth", "login"])
+            let run = try await Subprocess.run(executable, arguments: ["auth", "logout"])
             guard run.status == 0 else {
                 throw ChatError.unavailable(Subprocess.lastLine(of: run.stderr + run.stdout)
-                                            ?? "Sign-in did not complete.")
+                                            ?? "Sign-out did not complete.")
             }
         case .codex:
-            try await CodexEngine.shared.signIn(openURL: openURL)
+            _ = try await CodexEngine.shared.request("account/logout", [:])
         }
+    }
+
+    /// The page `claude auth login` says to visit, from the line it prints saying so.
+    public static func loginURL(in line: String) -> URL? {
+        guard let range = line.range(of: "https://") else { return nil }
+        let rest = line[range.lowerBound...]
+        let end = rest.firstIndex(where: { $0.isWhitespace }) ?? rest.endIndex
+        return URL(string: String(rest[..<end]))
+    }
+
+    /// When Claude Code last wrote its login to the keychain. A sign-in that completes
+    /// moves this, which is how one is noticed even when the user was signed in before
+    /// — `claude auth status` would say the same thing before and after.
+    public static func claudeCredentialModified() -> Date? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let attributes = item as? [String: Any] else { return nil }
+        return attributes[kSecAttrModificationDate as String] as? Date
     }
 
     // MARK: - Conversations
@@ -125,8 +156,15 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
             return "Find \(call.string("pattern") ?? "")"
         case "Grep":
             return "Search for “\(call.string("pattern") ?? "")”"
-        case "command":
+        case "command", "Bash":
             return "Run \(call.string("command") ?? "")"
+        case "Edit", "MultiEdit", "NotebookEdit":
+            return "Edit \(shortPath(call.string("file_path") ?? call.string("notebook_path") ?? ""))"
+        case "Write":
+            return "Write \(shortPath(call.string("file_path") ?? ""))"
+        case "edit":
+            let paths = (call.argumentValues["paths"] as? [String] ?? []).map(shortPath)
+            return "Edit \(paths.joined(separator: ", "))"
         default:
             return nil
         }
@@ -317,5 +355,262 @@ final class ProcessBox: @unchecked Sendable {
         let process = process
         lock.unlock()
         if let process, process.isRunning { process.terminate() }
+    }
+}
+
+// MARK: - Signing in
+
+/// Where a sign-in is, in words the row can show.
+public enum EngineSignInState: Sendable, Equatable {
+    case starting
+    /// The vendor's page is open; waiting for the user to approve there. The URL is for
+    /// opening it again, and nil until the engine has said what it is.
+    case waitingForBrowser(URL?)
+    /// Approved, or so it seems; the engine is being asked what it now knows.
+    case verifying
+    case signedIn(EngineAccount)
+    case failed(String)
+    case cancelled
+
+    /// Whether this is the end of the session.
+    public var isTerminal: Bool {
+        switch self {
+        case .signedIn, .failed, .cancelled: true
+        default: false
+        }
+    }
+}
+
+/// One sign-in, from the button to the account. The states arrive as they happen; a
+/// terminal one ends the stream.
+///
+/// Claude Code's login is a process: it opens the browser, runs a callback server and
+/// prints "Login successful" when the browser comes back, or waits for a code pasted at
+/// its prompt when it cannot. Both are handled — the prompt's stdin is kept, `submit` writes
+/// to it — and both are checked rather than believed: the keychain entry the login writes
+/// is watched, so approval is noticed even if the process is slow to say so, and the
+/// account is read back before anything is called signed in. Codex's login is a request to
+/// its server, which opens nothing: the URL comes back for the app to open, and completion
+/// is a notification, confirmed the same way.
+public actor EngineSignIn {
+    public nonisolated let engine: ChatEngine
+    public nonisolated let states: AsyncStream<EngineSignInState>
+    private nonisolated let feed: AsyncStream<EngineSignInState>.Continuation
+
+    /// How long an approval is waited for. A browser tab left open for longer than this
+    /// is one the user has forgotten.
+    static let timeout: Duration = .seconds(600)
+    static let pollInterval: Duration = .milliseconds(1500)
+
+    private var task: Task<Void, Never>?
+    private let process = ProcessBox()
+    private var input: FileHandle?
+    private var codexLoginID: String?
+    private var ended = false
+
+    init(engine: ChatEngine) {
+        self.engine = engine
+        (states, feed) = AsyncStream<EngineSignInState>.makeStream()
+        Task { await self.start() }
+    }
+
+    private func start() {
+        task = Task { [weak self] in
+            guard let self else { return }
+            switch engine {
+            case .claudeCode: await runClaude()
+            case .codex: await runCodex()
+            }
+        }
+    }
+
+    private func report(_ state: EngineSignInState) {
+        guard !ended else { return }
+        feed.yield(state)
+        if state.isTerminal {
+            ended = true
+            feed.finish()
+        }
+    }
+
+    /// Stop waiting. The engine's own login is stopped too, so it is not left running.
+    public func cancel() async {
+        guard !ended else { return }
+        task?.cancel()
+        process.terminate()
+        if engine == .codex, let codexLoginID {
+            _ = try? await CodexEngine.shared.request("account/login/cancel", ["loginId": codexLoginID])
+        }
+        report(.cancelled)
+    }
+
+    /// The code the browser showed, for Claude Code's prompt. Nothing to Codex.
+    public func submit(code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let input else { return }
+        try? input.write(contentsOf: Data((trimmed + "\n").utf8))
+    }
+
+    // MARK: Claude Code
+
+    private func runClaude() async {
+        guard let executable = engine.executable else {
+            report(.failed(ChatError.notInstalled(engine.provider).errorDescription ?? ""))
+            return
+        }
+        report(.starting)
+        let before = ChatEngine.claudeCredentialModified()
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["auth", "login"]
+        process.environment = Subprocess.environment()
+        let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = stderr
+        do {
+            try process.run()
+        } catch {
+            report(.failed("Could not start Claude Code: \(error.localizedDescription)"))
+            return
+        }
+        self.process.hold(process)
+        input = stdin.fileHandleForWriting
+
+        // Three things can say it is done: the process, by printing so and exiting; the
+        // keychain, by changing; or the clock, by running out. Whichever is first.
+        let outcome = await withTaskGroup(of: ClaudeOutcome.self) { group -> ClaudeOutcome in
+            group.addTask { [weak self] in
+                var said = false
+                do {
+                    for try await line in stdout.fileHandleForReading.bytes.lines {
+                        if let url = ChatEngine.loginURL(in: line) { await self?.report(.waitingForBrowser(url)) }
+                        if line.contains("Login successful") { said = true }
+                    }
+                } catch {}
+                while process.isRunning { try? await Task.sleep(for: .milliseconds(50)) }
+                let err = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                return said || process.terminationStatus == 0
+                    ? .finished
+                    : .exited(Subprocess.lastLine(of: err) ?? "Claude Code stopped without signing in.")
+            }
+            group.addTask {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.pollInterval)
+                    if let now = ChatEngine.claudeCredentialModified(), now > (before ?? .distantPast) {
+                        return .keychainChanged
+                    }
+                }
+                return .cancelled
+            }
+            group.addTask {
+                try? await Task.sleep(for: Self.timeout)
+                return Task.isCancelled ? .cancelled : .timedOut
+            }
+            let first = await group.next() ?? .cancelled
+            group.cancelAll()
+            return first
+        }
+        if Task.isCancelled { return }
+        switch outcome {
+        case .finished, .keychainChanged:
+            process.terminate()
+            await verify()
+        case .exited(let reason):
+            report(.failed(reason))
+        case .timedOut:
+            process.terminate()
+            report(.failed("No approval arrived from the browser. Try again."))
+        case .cancelled:
+            break
+        }
+    }
+
+    private enum ClaudeOutcome: Sendable {
+        case finished, keychainChanged, timedOut, cancelled
+        case exited(String)
+    }
+
+    // MARK: Codex
+
+    private func runCodex() async {
+        guard engine.executable != nil else {
+            report(.failed(ChatError.notInstalled(engine.provider).errorDescription ?? ""))
+            return
+        }
+        report(.starting)
+        let server = CodexEngine.shared
+        let (completions, completed) = AsyncStream<Data>.makeStream()
+        let listener = await server.subscribe { notification in
+            if notification.method == "account/login/completed" { completed.yield(notification.params) }
+        }
+        defer { Task { await server.unsubscribe(listener) } }
+        let started: [String: Any]
+        do {
+            started = try await server.request("account/login/start", ["type": "chatgpt"])
+        } catch {
+            report(.failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription))
+            return
+        }
+        guard let loginID = started["loginId"] as? String else {
+            report(.failed("Codex did not start a sign-in."))
+            return
+        }
+        codexLoginID = loginID
+        report(.waitingForBrowser((started["authUrl"] as? String).flatMap(URL.init(string:))))
+
+        let outcome = await withTaskGroup(of: CodexOutcome.self) { group -> CodexOutcome in
+            group.addTask {
+                for await params in completions {
+                    guard let object = HTTPProviderSupport.object(params),
+                          (object["loginId"] as? String ?? loginID) == loginID else { continue }
+                    return object["success"] as? Bool == true
+                        ? .completed
+                        : .failed(object["error"] as? String ?? "Codex did not complete the sign-in.")
+                }
+                return .cancelled
+            }
+            group.addTask {
+                try? await Task.sleep(for: Self.timeout)
+                return Task.isCancelled ? .cancelled : .timedOut
+            }
+            let first = await group.next() ?? .cancelled
+            group.cancelAll()
+            return first
+        }
+        if Task.isCancelled { return }
+        switch outcome {
+        case .completed:
+            await verify()
+        case .failed(let reason):
+            report(.failed(reason))
+        case .timedOut:
+            _ = try? await server.request("account/login/cancel", ["loginId": loginID])
+            report(.failed("No approval arrived from the browser. Try again."))
+        case .cancelled:
+            break
+        }
+    }
+
+    private enum CodexOutcome: Sendable {
+        case completed, timedOut, cancelled
+        case failed(String)
+    }
+
+    // MARK: Both
+
+    /// The engine said it is done; ask it who it is now. Said signed in only once it
+    /// answers with an account.
+    private func verify() async {
+        report(.verifying)
+        // The engine may take a moment to write what it has just been given.
+        for attempt in 0..<5 {
+            if let account = try? await engine.account() {
+                report(.signedIn(account))
+                return
+            }
+            if attempt < 4 { try? await Task.sleep(for: .milliseconds(500)) }
+        }
+        report(.failed("The browser approved, but \(engine.title) still reports nobody signed in."))
     }
 }

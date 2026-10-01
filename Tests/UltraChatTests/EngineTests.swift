@@ -13,17 +13,18 @@ struct EngineTests {
 
     // MARK: - Claude Code
 
-    @Test("the command line is the documented headless shape, with read-only tools")
+    @Test("the command line is the documented headless shape, with edits accepted")
     func claudeArguments() {
         let fresh = ClaudeCodeProvider.arguments(model: "default", system: "Be terse.",
                                                  session: "abc", resume: false)
         #expect(fresh.first == "-p")
         #expect(fresh.contains("stream-json"))
         #expect(fresh.contains("--include-partial-messages"))
-        // The tools, and no more: nothing that writes, nothing that asks.
-        let tools = fresh.firstIndex(of: "--tools")!
-        #expect(Array(fresh[(tools + 1)...(tools + 3)]) == ["Read", "Glob", "Grep"])
-        #expect(!fresh.contains("Bash") && !fresh.contains("Edit") && !fresh.contains("Write"))
+        // Its own tools, edits without a prompt, and nothing that would raise one.
+        #expect(!fresh.contains("--tools"))
+        let mode = fresh.firstIndex(of: "--permission-mode")!
+        #expect(fresh[mode + 1] == "acceptEdits")
+        #expect(!fresh.contains("--dangerously-skip-permissions"))
         #expect(fresh.contains("--strict-mcp-config"))
         // The engine's default model is not named; a chosen one is.
         #expect(!fresh.contains("--model"))
@@ -98,6 +99,24 @@ struct EngineTests {
         #expect(events == [.finished(ChatFinish(reason: .length))])
     }
 
+    @Test("the sign-in page is read out of the line `claude auth login` prints")
+    func loginURL() {
+        let line = "If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?code=true&state=abc"
+        #expect(ChatEngine.loginURL(in: line)?.absoluteString == "https://claude.com/cai/oauth/authorize?code=true&state=abc")
+        #expect(ChatEngine.loginURL(in: "Opening browser to sign in…") == nil)
+        #expect(ChatEngine.loginURL(in: "Paste code here if prompted > ") == nil)
+    }
+
+    @Test("a sign-in ends on signed in, failed or cancelled, and on nothing else")
+    func signInStates() {
+        #expect(EngineSignInState.signedIn(EngineAccount()).isTerminal)
+        #expect(EngineSignInState.failed("x").isTerminal)
+        #expect(EngineSignInState.cancelled.isTerminal)
+        #expect(!EngineSignInState.starting.isTerminal)
+        #expect(!EngineSignInState.waitingForBrowser(nil).isTerminal)
+        #expect(!EngineSignInState.verifying.isTerminal)
+    }
+
     @Test("the account comes from `claude auth status`")
     func claudeAccount() {
         let signedIn = ChatEngine.claudeAccount(from: #"{"loggedIn":true,"email":"a@b.c","subscriptionType":"max"}"#)
@@ -144,6 +163,23 @@ struct EngineTests {
         #expect(results.first?.1 == "commit abc\n")
         #expect(events.last == .finished(ChatFinish(reason: .complete, inputTokens: 40, outputTokens: 10)))
         #expect(state.finished)
+    }
+
+    @Test("a file change is an edit row naming the files, then what became of it")
+    func codexFileChange() throws {
+        var state = CodexProvider.TurnState()
+        let item = #"{"threadId":"t","item":{"type":"fileChange","id":"f1","status":"inProgress","changes":[{"path":"/p/Sources/A.swift","kind":"update","diff":""},{"path":"/p/README.md","kind":"add","diff":""}]}}"#
+        let started = try CodexProvider.handle(method: "item/started", params: params(item), state: &state)
+        guard case .toolCall(let call)? = started.first else {
+            Issue.record("no call")
+            return
+        }
+        #expect(call.name == "edit")
+        #expect(ProjectFiles.summary(of: call) == "Edit Sources/A.swift, p/README.md")
+        let done = try CodexProvider.handle(
+            method: "item/completed",
+            params: params(item.replacingOccurrences(of: "inProgress", with: "completed")), state: &state)
+        #expect(done == [.toolResult(id: "f1", result: "Changed /p/Sources/A.swift, /p/README.md")])
     }
 
     @Test("a message that never streamed arrives whole when its item completes")
@@ -200,7 +236,11 @@ struct EngineTests {
                 == "Read Sources/A.swift")
         #expect(ChatEngine.summary(of: ChatToolCall(id: "2", name: "Grep", arguments: #"{"pattern":"TODO"}"#))
                 == "Search for “TODO”")
-        #expect(ChatEngine.summary(of: ChatToolCall(id: "3", name: "something_else", arguments: "{}")) == nil)
+        #expect(ChatEngine.summary(of: ChatToolCall(id: "3", name: "Edit", arguments: #"{"file_path":"/p/Sources/A.swift","old_string":"a","new_string":"b"}"#))
+                == "Edit Sources/A.swift")
+        #expect(ChatEngine.summary(of: ChatToolCall(id: "4", name: "Bash", arguments: #"{"command":"swift build"}"#))
+                == "Run swift build")
+        #expect(ChatEngine.summary(of: ChatToolCall(id: "5", name: "something_else", arguments: "{}")) == nil)
     }
 
     @Test("the engine providers are offered, need no key, and default to the engine's own model")

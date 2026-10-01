@@ -255,6 +255,12 @@ struct ChatStoreTests {
         store.setProvider(.anthropic)
         #expect(store.current.engineSession == nil)
         #expect(provider.requests.count == 2)
+
+        // A model picked from an engine's own row sets both at once.
+        store.choose(provider: .claudeCode, model: "opus")
+        #expect(store.current.provider == .claudeCode)
+        #expect(store.current.model == "opus")
+        #expect(store.current.engineSession == nil)
     }
 }
 

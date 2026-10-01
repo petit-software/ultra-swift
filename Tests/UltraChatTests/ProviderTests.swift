@@ -278,6 +278,26 @@ struct OpenAIProviderTests {
         #expect(try provider.makeRequest(sample).url?.host() == "api.openai.com")
     }
 
+    @Test("Gemini is retired the same way")
+    func geminiIsRetired() throws {
+        #expect(!ChatProviderID.offered.contains(.gemini))
+        #expect(ChatProviderID.gemini.isRetired)
+        #expect(try JSONDecoder().decode(ChatProviderID.self, from: Data("\"gemini\"".utf8)) == .gemini)
+        #expect(!ChatCredentials.isConfigured(.gemini))
+        let before = UserDefaults.standard.string(forKey: ChatDefaults.providerKey)
+        defer { UserDefaults.standard.set(before, forKey: ChatDefaults.providerKey) }
+        UserDefaults.standard.set("gemini", forKey: ChatDefaults.providerKey)
+        #expect(ChatDefaults.provider == .apple)
+    }
+
+    @Test("the offered providers are grouped by how they are paid for, every one in a group")
+    func groups() {
+        #expect(ChatProviderID.Group.device.providers == [.apple])
+        #expect(ChatProviderID.Group.subscription.providers == [.claudeCode, .codex])
+        #expect(ChatProviderID.Group.api.providers == [.anthropic, .openRouter])
+        #expect(ChatProviderID.Group.allCases.flatMap(\.providers) == ChatProviderID.offered)
+    }
+
     @Test("OpenRouter is the same API at its own URL, with the app named for attribution")
     func openRouter() async throws {
         let transport = RecordedTransport(body: Self.transcript)

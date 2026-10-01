@@ -11,15 +11,18 @@ import UltraDesign
 struct ChatSettings: View {
     @State private var defaultProvider = ChatDefaults.provider
     @State private var anthropicKey = ChatCredentials.apiKey(for: .anthropic)
-    @State private var geminiKey = ChatCredentials.apiKey(for: .gemini)
     @State private var openRouterKey = ChatCredentials.apiKey(for: .openRouter)
 
     var body: some View {
         Form {
             Section {
                 Picker("New chats use", selection: $defaultProvider) {
-                    ForEach(ChatProviderID.offered) { provider in
-                        Text(provider.title).tag(provider)
+                    ForEach(ChatProviderID.Group.allCases) { group in
+                        Section(group.title) {
+                            ForEach(group.providers) { provider in
+                                Text(provider.title).tag(provider)
+                            }
+                        }
                     }
                 }
                 .onChange(of: defaultProvider) { _, new in ChatDefaults.provider = new }
@@ -41,15 +44,14 @@ struct ChatSettings: View {
                 SettingNote("Your Claude or ChatGPT plan, through the vendor's own agent on "
                             + "this Mac: a chat starts `claude` or `codex app-server` in "
                             + "the project and reads what it answers. Ultra never sees a "
-                            + "token. Sign-in opens the vendor's page in your browser. The "
-                            + "chat can read the project and run read-only commands, not "
-                            + "change files.")
+                            + "token. Sign-in opens the vendor's page in your browser. A chat on "
+                            + "either can read and change the project's files and run "
+                            + "commands there.")
             }
 
             Section {
                 keyRow("Anthropic", key: $anthropicKey, provider: .anthropic,
                        placeholder: "sk-ant-…")
-                keyRow("Google Gemini", key: $geminiKey, provider: .gemini, placeholder: "AIza…")
                 keyRow("OpenRouter", key: $openRouterKey, provider: .openRouter,
                        placeholder: "sk-or-…")
             } header: {
@@ -57,8 +59,8 @@ struct ChatSettings: View {
             } footer: {
                 SettingNote("Stored in your keychain, never in a file. Each service's own "
                             + "model list is fetched when a pane opens on it. OpenRouter "
-                            + "offers many vendors' models — OpenAI's included — behind one "
-                            + "key, named vendor/model. Nothing else to set up.")
+                            + "offers many vendors' models — OpenAI's and Google's included — "
+                            + "behind one key, named vendor/model. Nothing else to set up.")
             }
         }
         .formStyle(.grouped)
@@ -88,61 +90,93 @@ struct ChatSettings: View {
     }
 }
 
-/// One engine: whether it is here, who is signed in, and the one thing to do about
-/// either — copy the install command, or start the sign-in.
+/// One engine: whether it is here, who is signed in, and the sign-in itself as it
+/// happens — the page is open, approve it there; checking; signed in, just now — so the
+/// row says at every step what is going on and what, if anything, is wanted of the user.
 private struct EngineRow: View {
     let engine: ChatEngine
     @State private var status: Status = .checking
-    @State private var isSigningIn = false
+    @State private var session: EngineSignIn?
+    @State private var code = ""
+    /// Whether the account shown was just signed in here, for a line saying so. Cleared
+    /// after a while, or by the next check.
+    @State private var confirmedAt: Date?
 
-    enum Status {
+    enum Status: Equatable {
         case checking
         case missing
         case signedOut
         case signedIn(EngineAccount)
+        case signingIn(EngineSignInState)
         case failed(String)
     }
 
     var body: some View {
         LabeledContent(engine.title) {
-            HStack(spacing: 6) {
-                Text(statusText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 240, alignment: .trailing)
-                    .help(statusHelp)
-                switch status {
-                case .checking:
-                    ProgressView().controlSize(.small)
-                case .missing:
-                    Button("Copy Install Command") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(engine.installCommand, forType: .string)
-                    }
-                    .help(engine.installCommand)
-                    Button("Check Again") { Task { await refresh() } }
-                case .signedOut, .failed:
-                    Button(isSigningIn ? "Signing In…" : "Sign In…") { signIn() }
-                        .disabled(isSigningIn)
-                case .signedIn:
-                    Button("Sign In Again…") { signIn() }
-                        .disabled(isSigningIn)
+            VStack(alignment: .trailing, spacing: 6) {
+                // The buttons beside the account, on one line: what is signed in and
+                // what to do about it, read together.
+                HStack(spacing: 8) {
+                    statusLine
+                    buttons
+                }
+                if case .signingIn(.waitingForBrowser) = status, engine == .claudeCode {
+                    codeField
                 }
             }
         }
         .task(id: engine) { await refresh() }
+        .animation(.default, value: status)
     }
 
-    private var statusText: String {
-        switch status {
-        case .checking: "Checking…"
-        case .missing: "Not installed"
-        case .signedOut: "Not signed in"
-        case .signedIn(let account):
-            account.description.isEmpty ? "Signed in" : account.description
-        case .failed(let reason): reason
+    // MARK: Status
+
+    @ViewBuilder
+    private var statusLine: some View {
+        HStack(spacing: 5) {
+            switch status {
+            case .checking:
+                ProgressView().controlSize(.small)
+                Text("Checking…")
+            case .missing:
+                Image(systemName: "arrow.down.circle")
+                Text("Not installed")
+            case .signedOut:
+                Image(systemName: "person.crop.circle.badge.xmark")
+                Text("Not signed in")
+            case .signedIn(let account):
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(account.description.isEmpty ? "Signed in" : account.description)
+                        .foregroundStyle(.primary)
+                    if confirmedAt != nil {
+                        Text("Approved in the browser just now")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+            case .signingIn(let state):
+                ProgressView().controlSize(.small)
+                Text(signingInText(state))
+            case .failed(let reason):
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text(reason)
+            }
+        }
+        .font(.callout)
+        .foregroundStyle(.secondary)
+        .lineLimit(2)
+        .multilineTextAlignment(.trailing)
+        .frame(maxWidth: 260, alignment: .trailing)
+        .help(statusHelp)
+    }
+
+    private func signingInText(_ state: EngineSignInState) -> String {
+        switch state {
+        case .starting: "Starting \(engine.title)…"
+        case .waitingForBrowser: "Approve in the browser — the \(engine.planName) page is open"
+        case .verifying: "Approved. Checking with \(engine.title)…"
+        case .signedIn, .failed, .cancelled: ""
         }
     }
 
@@ -150,9 +184,59 @@ private struct EngineRow: View {
         switch status {
         case .missing: "Install with: \(engine.installCommand)"
         case .signedIn(let account): "Signed in to \(engine.planName) as \(account.description)"
-        default: statusText
+        case .signingIn: "\(engine.title) runs its own sign-in; Ultra only waits for it to finish"
+        default: ""
         }
     }
+
+    // MARK: Buttons
+
+    @ViewBuilder
+    private var buttons: some View {
+        HStack(spacing: 6) {
+            switch status {
+            case .checking:
+                EmptyView()
+            case .missing:
+                Button("Copy Install Command") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(engine.installCommand, forType: .string)
+                }
+                .help(engine.installCommand)
+                Button("Check Again") { Task { await refresh() } }
+            case .signedOut:
+                Button("Sign In…") { signIn() }
+            case .signedIn:
+                Button("Sign Out") { signOut() }
+            case .signingIn(let state):
+                if case .waitingForBrowser(let url?) = state {
+                    Button("Open Page Again") { NSWorkspace.shared.open(url) }
+                }
+                Button("Cancel") { cancel() }
+                    .keyboardShortcut(.cancelAction)
+            case .failed:
+                Button("Try Again") { signIn() }
+                Button("Check Again") { Task { await refresh() } }
+            }
+        }
+        .controlSize(.small)
+    }
+
+    /// Claude Code's fallback: when the browser cannot reach its callback it shows a code
+    /// instead, and the code goes to the prompt this row is keeping open.
+    private var codeField: some View {
+        HStack(spacing: 6) {
+            TextField("Code, if the browser shows one", text: $code)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 220)
+                .onSubmit(submitCode)
+            Button("Use Code", action: submitCode)
+                .disabled(code.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .controlSize(.small)
+    }
+
+    // MARK: Actions
 
     private func refresh() async {
         // A fresh look for the binary: this is the row the user comes back to after
@@ -170,18 +254,55 @@ private struct EngineRow: View {
     }
 
     private func signIn() {
-        isSigningIn = true
+        confirmedAt = nil
+        code = ""
+        let session = engine.beginSignIn()
+        self.session = session
+        status = .signingIn(.starting)
+        Task {
+            for await state in session.states {
+                switch state {
+                case .signedIn(let account):
+                    status = .signedIn(account)
+                    confirmedAt = Date()
+                    // The confirmation says its piece and goes; the account line stays.
+                    try? await Task.sleep(for: .seconds(12))
+                    if confirmedAt != nil { confirmedAt = nil }
+                case .failed(let reason):
+                    status = .failed(reason)
+                case .cancelled:
+                    await refresh()
+                default:
+                    status = .signingIn(state)
+                }
+            }
+            self.session = nil
+        }
+    }
+
+    private func cancel() {
+        guard let session else { return }
+        Task { await session.cancel() }
+    }
+
+    private func submitCode() {
+        guard let session else { return }
+        let entered = code
+        code = ""
+        status = .signingIn(.verifying)
+        Task { await session.submit(code: entered) }
+    }
+
+    private func signOut() {
+        confirmedAt = nil
+        status = .checking
         Task {
             do {
-                try await engine.signIn { url in
-                    Task { @MainActor in NSWorkspace.shared.open(url) }
-                }
+                try await engine.signOut()
             } catch {
                 status = .failed((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
-                isSigningIn = false
                 return
             }
-            isSigningIn = false
             await refresh()
         }
     }

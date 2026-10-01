@@ -5,9 +5,10 @@ import Foundation
 /// One `claude -p` per turn, speaking stream-json on stdout: the same events the API
 /// streams, wrapped in a line each, plus the agent's own — the tools it called, the
 /// result. The conversation is Claude Code's: the first turn names a session, every
-/// later one resumes it, so the history is never sent twice. Only the user's Read, Glob
-/// and Grep tools are offered, confined by Claude Code to where it was started: the chat
-/// reads the project and does not change it, like every other provider here.
+/// later one resumes it, so the history is never sent twice. It has its own tools and may
+/// change the project with them: edits are accepted without asking, since nobody is at
+/// the prompt to ask; a command is allowed by the user's own Claude Code rules or not at
+/// all. The pane shows each edit and command as a row above the answer.
 public struct ClaudeCodeProvider: ChatProvider {
     public let id = ChatProviderID.claudeCode
     let executable: URL?
@@ -23,10 +24,11 @@ public struct ClaudeCodeProvider: ChatProvider {
         var arguments = [
             "-p", "--verbose",
             "--output-format", "stream-json", "--include-partial-messages",
-            // No MCP servers from the project's settings and no browser: a chat that
-            // cannot answer a permission prompt must not be offered tools that raise one.
+            // No MCP servers from the project's settings and no browser: a chat has
+            // nobody at a prompt to answer the questions those raise. Edits are accepted
+            // for the same reason; a command follows the user's own permission rules.
             "--strict-mcp-config", "--no-chrome",
-            "--tools", "Read", "Glob", "Grep",
+            "--permission-mode", "acceptEdits",
         ]
         if model != ChatEngine.defaultModel { arguments += ["--model", model] }
         if let system, !system.isEmpty { arguments += ["--append-system-prompt", system] }

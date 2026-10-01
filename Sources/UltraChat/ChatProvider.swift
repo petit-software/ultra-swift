@@ -11,6 +11,8 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
     /// written while it was can still be read. OpenRouter reaches the same models, and
     /// every other vendor's, behind one key — a second key for one vendor bought nothing.
     case openAI
+    /// RETIRED, like OpenAI, and for the same reason: OpenRouter reaches Gemini behind the
+    /// one key. The case stays so a conversation file written on it can still be read.
     case gemini
     /// Many vendors' models behind one key, through OpenAI's chat API at a fixed URL.
     /// Model ids are `vendor/model`, and the list is long enough that the live one matters.
@@ -27,7 +29,29 @@ public enum ChatProviderID: String, Codable, CaseIterable, Sendable, Identifiabl
 
     /// The services a pane or Settings will offer. `allCases` still includes the retired
     /// one, because decoding does.
-    public static let offered: [ChatProviderID] = [.apple, .claudeCode, .codex, .anthropic, .gemini, .openRouter]
+    public static let offered: [ChatProviderID] = [.apple, .claudeCode, .codex, .anthropic, .openRouter]
+
+    /// How a provider is paid for, which is how the pane's menu and Settings group them:
+    /// a choice between "my plan" and "my key" comes before a choice of vendor.
+    public enum Group: String, CaseIterable, Sendable, Identifiable {
+        case device = "On this Mac"
+        case subscription = "Subscription"
+        case api = "API key"
+
+        public var id: String { rawValue }
+        public var title: String { rawValue }
+
+        /// The offered providers of this group, in the order they are offered.
+        public var providers: [ChatProviderID] { ChatProviderID.offered.filter { $0.group == self } }
+    }
+
+    public var group: Group {
+        switch self {
+        case .apple: .device
+        case .claudeCode, .codex: .subscription
+        case .anthropic, .openAI, .gemini, .openRouter: .api
+        }
+    }
 
     /// Kept for old files, never for new conversations.
     public var isRetired: Bool { !Self.offered.contains(self) }

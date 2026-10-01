@@ -302,16 +302,18 @@ Listening TCP ports, and which pane owns them.
 
 ## 7. Chat
 
-A conversation with a model, beside the terminal. Six providers behind one protocol
+A conversation with a model, beside the terminal. Five providers behind one protocol
 (`UltraChat.ChatProvider`): Apple's on-device model through Foundation Models, which needs
 no key and is the default; the two engines, Claude Code and Codex, which run the user's
-subscription (below); Anthropic; Gemini; and OpenRouter, many vendors' models behind
-one key — an API key is the whole of its setup. OpenRouter speaks OpenAI's chat API, so it
-is served by the OpenAI provider type at its own base URL. OpenAI itself was offered and
-is retired: OpenRouter reaches its models and everyone else's with the one key, so a second
-key-and-vendor row bought nothing. The case stays in `ChatProviderID` so a conversation
-saved on it still opens; nothing offers it, and a default left pointing at it falls back to
-Apple. A local server (Ollama, LM Studio) was once offered too, "OpenAI-compatible", and was
+subscription (below); Anthropic; and OpenRouter, many vendors' models behind one key — an
+API key is the whole of its setup. The pane's menu and Settings group them by how they are
+paid for (`ChatProviderID.Group`: on this Mac, subscription, API key), since that is the
+choice made first. OpenRouter speaks OpenAI's chat API, so it is served by the OpenAI
+provider type at its own base URL. OpenAI and Gemini were each offered with their own key
+and are retired: OpenRouter reaches their models and everyone else's with the one key, so
+a second key-and-vendor row bought nothing. Their cases stay in `ChatProviderID` so a
+conversation saved on either still opens; nothing offers them, and a default left pointing
+at one falls back to Apple. A local server (Ollama, LM Studio) was once offered too, "OpenAI-compatible", and was
 dropped: a base URL, an optional key and a model name that had to be typed was more setup
 than it was worth. Each is raw HTTP over `URLSession.bytes` with a small SSE parser — no
 SDK, because none of the services ships a Swift one and the community packages lag the
@@ -346,8 +348,13 @@ APIs. Every provider is tested against a recorded transcript.
   OpenAI opens a ChatGPT plan to third parties only through Codex — so nothing in Ultra
   holds a token, and sign-in is the engine's own; Xcode and Notepad.exe reach the plans the
   same way. `ClaudeCodeProvider` runs one `claude -p` per turn, speaking stream-json, with
-  only Read, Glob and Grep offered; `CodexProvider` talks JSON-RPC to one `codex
-  app-server` kept for the whole app (`CodexEngine`), sandbox read-only, approvals off.
+  its own tools and edits accepted without a prompt (`acceptEdits`: nobody is at a prompt
+  to answer one; a command follows the user's own Claude Code rules); `CodexProvider`
+  talks JSON-RPC to one `codex app-server` kept for the whole app (`CodexEngine`), sandbox
+  `workspace-write`, approvals off. So, unlike the API providers with our read-only tools,
+  a chat on an engine CAN change the project — it is the agent the user would run in the
+  pane beside, in a chat — and every edit and command is a row above the answer. In the
+  pane's menu each engine is a submenu of its models, so plan and model are one pick.
   Both keep the conversation themselves — the first turn starts a session or thread, saved
   as `ChatConversation.engineSession`, and every later turn resumes it — so the history is
   never sent twice; an engine that has lost it is started again and told the transcript.
@@ -355,7 +362,14 @@ APIs. Every provider is tested against a recorded transcript.
   homes of a developer's tools and then asked of the login shell, since a GUI app's PATH
   is the bare one. Settings ▸ Chat shows who is signed in to each (`claude auth status`,
   `account/read`), starts the sign-in, and offers the install command when the binary is
-  missing. Both are tested against recorded lines of their protocols.
+  missing. A sign-in is a session with states the row shows as they happen
+  (`EngineSignIn`: the page is open, approve it there; checking; signed in, just now), with
+  the page's link to open again, a Cancel, a ten-minute limit and, for Claude Code, a field
+  for the code its login falls back to when the browser cannot reach its callback.
+  Completion is checked, not believed: Claude Code's keychain entry is watched for the
+  write its login makes, Codex's completion notification is waited for, and the account is
+  read back before the row says signed in. Both are tested against recorded lines of their
+  protocols.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
   Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
 - Each pane can show its chat light: the sun in the footer, or Pane ▸ Chat ▸ Toggle Light

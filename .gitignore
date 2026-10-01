@@ -2,8 +2,10 @@
 .build/
 .swiftpm/
 
-# Packaged app bundle (rebuilt from source)
+# Packaged app bundle (rebuilt from source), and the copy of it with its own bundle id that
+# runs beside an installed Ultra for trying a build without quitting the one in use.
 Ultra.app/
+Ultra Dev.app/
 
 # Release output: signed DMGs and the generated appcast. Built by scripts/release.sh and
 # uploaded to a GitHub release — a DMG in git is a hundred megabytes nobody can diff, and an

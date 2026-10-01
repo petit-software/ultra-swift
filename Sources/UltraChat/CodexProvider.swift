@@ -6,8 +6,8 @@ import Foundation
 /// JSON-RPC over stdio, with the ChatGPT sign-in inside it. One server is kept for the
 /// whole app (`CodexEngine`), since it starts a few MCP servers of its own and takes a
 /// second to come up. A conversation is a Codex thread: the first turn starts one and the
-/// rest resume it. The sandbox is read-only and nothing asks for approval, so the chat can
-/// look at the project and run `git log`, and cannot change a file.
+/// rest resume it. The sandbox is the workspace and nothing asks for approval, so the chat
+/// can read and change the project's files and run commands there, and nothing beyond it.
 public struct CodexProvider: ChatProvider {
     public let id = ChatProviderID.codex
 
@@ -77,7 +77,7 @@ public struct CodexProvider: ChatProvider {
     /// The conversation's thread: resumed if Codex still has it, else started. A thread
     /// is started where the project is, and told what the chat is for.
     static func openThread(for request: ChatRequest, on engine: CodexEngine) async throws -> Thread {
-        var settings: [String: Any] = ["approvalPolicy": "never", "sandbox": "read-only"]
+        var settings: [String: Any] = ["approvalPolicy": "never", "sandbox": "workspace-write"]
         if let cwd = request.workingDirectory?.path { settings["cwd"] = cwd }
         if let session = request.session {
             var resume = settings
@@ -134,6 +134,8 @@ public struct CodexProvider: ChatProvider {
             case "mcpToolCall", "dynamicToolCall":
                 let name = item["tool"] as? String ?? "tool"
                 return [.toolCall(ChatToolCall(id: id, name: name, arguments: json(item["arguments"] ?? [:])))]
+            case "fileChange":
+                return [.toolCall(ChatToolCall(id: id, name: "edit", arguments: json(["paths": changedPaths(item)])))]
             default:
                 return []
             }
@@ -154,6 +156,11 @@ public struct CodexProvider: ChatProvider {
                 let status = item["status"] as? String ?? ""
                 let result = output.isEmpty ? status : output
                 return [.toolResult(id: id, result: ClaudeCodeProvider.resultText(result))]
+            case "fileChange":
+                let paths = changedPaths(item)
+                let status = item["status"] as? String ?? "completed"
+                return [.toolResult(id: id, result: status == "completed"
+                                    ? "Changed \(paths.joined(separator: ", "))" : "Edit \(status)")]
             case "mcpToolCall", "dynamicToolCall":
                 if let error = item["error"] as? [String: Any], let message = error["message"] as? String {
                     return [.toolResult(id: id, result: message)]
@@ -199,6 +206,11 @@ public struct CodexProvider: ChatProvider {
         default:
             return []
         }
+    }
+
+    /// The files a Codex edit touched, as it names them.
+    static func changedPaths(_ item: [String: Any]) -> [String] {
+        (item["changes"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String }
     }
 
     static func json(_ object: Any) -> String {
@@ -309,28 +321,6 @@ actor CodexEngine {
             return EngineAccount(email: nil, plan: "API key")
         default:
             return EngineAccount()
-        }
-    }
-
-    /// Codex's own ChatGPT sign-in: it gives a URL, the browser does the rest, and the
-    /// server says when it is done.
-    func signIn(openURL: @escaping @Sendable (URL) -> Void) async throws {
-        let (completions, feed) = AsyncStream<Data>.makeStream()
-        let listener = subscribe { notification in
-            if notification.method == "account/login/completed" { feed.yield(notification.params) }
-        }
-        defer { unsubscribe(listener) }
-        let started = try await request("account/login/start", ["type": "chatgpt"])
-        guard let loginID = started["loginId"] as? String,
-              let url = (started["authUrl"] as? String).flatMap(URL.init(string:)) else {
-            throw ChatError.malformed("Codex gave no sign-in page")
-        }
-        openURL(url)
-        for await params in completions {
-            guard let object = HTTPProviderSupport.object(params),
-                  object["loginId"] as? String == loginID else { continue }
-            if object["success"] as? Bool == true { return }
-            throw ChatError.unavailable(object["error"] as? String ?? "Sign-in did not complete.")
         }
     }
 
