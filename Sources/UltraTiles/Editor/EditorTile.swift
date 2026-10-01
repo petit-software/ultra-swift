@@ -248,7 +248,6 @@ private struct FilePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let notice = document.notice { noticeBar(notice) }
             if document.isBinary {
                 // WHICH file is the footer's job — it carries the full path in every state
                 // of this tile, including this one.
@@ -259,6 +258,14 @@ private struct FilePane: View {
                 CodeTextView(text: $document.text,
                              language: language,
                              claimsFocus: { document.claimInitialFocus() }, onSave: save)
+            }
+        }
+        // Closing a conflict keeps YOUR edits: the buffer is left exactly as it is and the
+        // toast goes away. The one thing that drops them is Reload, which is why it is the
+        // only other control there.
+        .tileToast(document.notice.map(notice(for:)), dismiss: { document.dismissNotice() }) {
+            if document.notice == .conflict {
+                Button("Reload") { document.revert(); document.externalChange() }
             }
         }
     }
@@ -273,34 +280,11 @@ private struct FilePane: View {
         return CodeLanguage.detect(shebang: document.text.prefix { !$0.isNewline })
     }
 
-    private func noticeBar(_ notice: EditorDocument.Notice) -> some View {
-        NoticeBar(symbol: icon(for: notice),
-                  message: message(for: notice),
-                  tint: notice == .conflict ? Color.orange.opacity(0.18)
-                                            : Token.Colour.accentWash,
-                  // Closing a conflict keeps YOUR edits: the buffer is left exactly as it
-                  // is and the strip goes away. The one thing that drops them is Reload,
-                  // which is why it is the only other control here.
-                  dismiss: { document.dismissNotice() }) {
-            if notice == .conflict {
-                Button("Reload") { document.revert(); document.externalChange() }
-            }
-        }
-    }
-
-    private func icon(for notice: EditorDocument.Notice) -> String {
+    private func notice(for notice: EditorDocument.Notice) -> TileNotice {
         switch notice {
-        case .reloadedFromDisk: "arrow.clockwise.circle.fill"
-        case .conflict: "exclamationmark.triangle.fill"
-        case .failed: "xmark.octagon.fill"
-        }
-    }
-
-    private func message(for notice: EditorDocument.Notice) -> String {
-        switch notice {
-        case .reloadedFromDisk: "Reloaded — the file changed on disk"
-        case .conflict: "Changed on disk while you were editing. Nothing was overwritten."
-        case .failed(let reason): reason
+        case .reloadedFromDisk: .reloadedFromDisk
+        case .conflict: .conflict
+        case .failed(let reason): .failed(reason)
         }
     }
 }

@@ -366,6 +366,15 @@ enum PaneCommands {
             }
             store.closeFocused()
         },
+        // The toast's close control, as a command, so a notice can be put away without
+        // reaching for the pointer. No key of its own: ⎋ belongs to the palette and to
+        // whatever TUI has the keyboard, and a notice is rare enough that the palette is
+        // the right way to it.
+        AppCommand(id: "pane.dismissNotice", title: "Dismiss Notice", symbol: "xmark.circle",
+                   menuPath: ["Pane"],
+                   isEnabled: { ShellWorkspace.dismissNotice(in: $0) != nil }) { store in
+            ShellWorkspace.dismissNotice(in: store)?()
+        },
         AppCommand(id: "pane.zoom", title: "Toggle Zoom",
                    symbol: "arrow.up.left.and.arrow.down.right", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),

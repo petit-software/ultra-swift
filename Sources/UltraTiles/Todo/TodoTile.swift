@@ -32,10 +32,10 @@ public struct TodoTile: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            if let notice = store.notice { noticeBar(notice) }
             composer
             list
         }
+        .tileToast(store.notice.map(notice(for:)), dismiss: { store.dismissNotice() })
         .tileFooter { footer }
     }
 
@@ -258,17 +258,10 @@ public struct TodoTile: View {
         store.removeHeading(heading.id)
     }
 
-    private func noticeBar(_ notice: TodoStore.Notice) -> some View {
-        NoticeBar(symbol: notice == .reloadedFromDisk
-                          ? "arrow.clockwise.circle.fill" : "exclamationmark.triangle.fill",
-                  message: message(for: notice),
-                  dismiss: { store.dismissNotice() })
-    }
-
-    private func message(for notice: TodoStore.Notice) -> String {
+    private func notice(for notice: TodoStore.Notice) -> TileNotice {
         switch notice {
-        case .reloadedFromDisk: "Reloaded — the file changed on disk"
-        case .failed(let reason): "Could not save: \(reason)"
+        case .reloadedFromDisk: .reloadedFromDisk
+        case .failed(let reason): .couldNotSave(reason)
         }
     }
 }

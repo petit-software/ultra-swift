@@ -22,6 +22,21 @@ public extension View {
         }
     }
 
+    /// A toast floating over a tile's content: regular glass in a capsule, never tinted.
+    ///
+    /// Not `ultraGlassControl`: that one is interactive, and a toast is not a button — it
+    /// holds buttons. Under Reduce Transparency the capsule goes solid and takes a hairline,
+    /// since without the glass's own rim nothing would separate it from the content.
+    @ViewBuilder
+    func ultraToastGlass() -> some View {
+        if Token.Environment_.reduceTransparency {
+            background(Token.Colour.tileBackground, in: .capsule)
+                .overlay(Capsule().strokeBorder(Token.Colour.separator, lineWidth: 1))
+        } else {
+            glassEffect(.regular, in: .capsule)
+        }
+    }
+
     /// An interactive glass control — scales and shimmers on hover/press.
     /// Only ever applied to a PRIMARY action; when everything is tinted, nothing stands out.
     @ViewBuilder

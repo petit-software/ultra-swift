@@ -40,6 +40,10 @@ public enum Token {
         public static let trafficLightSpacing: CGFloat = 20
         public static let tileBodyInset: CGFloat = 10
         public static let rowSpacing: CGFloat = 4
+        /// How far a toast sits in from the pane's sides and up from the footer. Tight on
+        /// purpose: a capsule floating in the middle of the content is a dialog; one tucked
+        /// into the corner is an aside.
+        public static let toastInset: CGFloat = 4
     }
 
     // MARK: Colour
@@ -269,6 +273,12 @@ public enum Token {
         /// has appeared. Deliberately not gated on Reduce Motion: a cross-fade is what that
         /// setting asks for in place of movement, not something it asks to be rid of.
         public static let chromeFade = Animation.easeOut(duration: 0.12)
+
+        /// A toast arriving at the foot of a tile, or leaving. A small spring, so it settles
+        /// rather than slides: the palette's bounce would be too much for a one-line aside,
+        /// and a plain curve read as the content moving. Under Reduce Motion the call site
+        /// uses `chromeFade` and a fade in its place.
+        public static let toast = Animation.spring(duration: 0.28, bounce: 0.12)
     }
 
 

@@ -21,13 +21,9 @@ public struct SimulatorTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             devicePicker
-            if let error = session.error {
-                NoticeBar(symbol: "exclamationmark.triangle.fill", message: error,
-                          tint: Color.orange.opacity(0.18),
-                          dismiss: { session.error = nil }) { EmptyView() }
-            }
             screen
         }
+        .tileToast(session.error.map(TileNotice.unreachable), dismiss: { session.error = nil })
         .tileFooter { footer }
         .onAppear { session.start() }
         .onDisappear { session.stop() }

@@ -27,14 +27,10 @@ public struct BrowserTile: View {
     public var body: some View {
         VStack(spacing: 0) {
             addressBar
-            if let error = session.error {
-                NoticeBar(symbol: "exclamationmark.triangle.fill", message: error,
-                          tint: Color.orange.opacity(0.18),
-                          dismiss: { session.error = nil }) {
-                    Button("Retry") { session.reload() }
-                }
-            }
             page
+        }
+        .tileToast(session.error.map(TileNotice.unreachable), dismiss: { session.error = nil }) {
+            Button("Retry") { session.reload() }
         }
         .tileFooter { footer }
         .onAppear {
