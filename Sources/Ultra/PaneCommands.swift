@@ -16,8 +16,8 @@ enum PaneCommands {
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
                                  + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
 
-    /// The two verbs a chat pane has that a keystroke should reach: another thread, and
-    /// stop. Both act on the focused pane and dim when it is not a chat.
+    /// A chat pane's verbs that a keystroke should reach: another thread, stop, and its
+    /// look. All act on the focused pane and dim when it is not a chat.
     ///
     /// ⌥⌘N sits beside ⌘N (window) and ⇧⌘N (project) as the third kind of new. ⌘. is
     /// the platform's cancel, and it has been free here because a shell's cancel is ⌃C.
@@ -31,6 +31,15 @@ enum PaneCommands {
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
+        },
+        // ⌃⌘L, the browser's key for the same thing. The two share it on purpose: one key
+        // for "this pane, light or not", and the menu fires whichever is enabled — this one
+        // only with a chat focused, the browser's whenever a browser pane exists.
+        AppCommand(id: "chat.toggleLight", title: "Toggle Light Chat", symbol: "sun.max",
+                   menuPath: ["Pane", "Chat"],
+                   binding: KeyBinding("l", [.command, .control]),
+                   isEnabled: { ShellWorkspace.chatStore(in: $0) != nil }) { store in
+            ShellWorkspace.chatStore(in: store)?.toggleLight()
         },
     ]
 

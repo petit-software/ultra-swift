@@ -179,7 +179,8 @@ public final class TileFactory {
             let projectRoot = context.projectRoot
             let store = chats[paneID] ?? ChatStore(
                 root: projectRoot,
-                conversationID: records[paneID]?.command.flatMap(UUID.init(uuidString:)))
+                conversationID: records[paneID]?.command.flatMap(UUID.init(uuidString:)),
+                isLight: records[paneID]?.appearance == .light)
             chats[paneID] = store
             store.onChange = { [weak self] conversation in
                 self?.noteChat(paneID, conversation, root: projectRoot)
@@ -187,7 +188,7 @@ public final class TileFactory {
             view = NSHostingView(rootView: ChatTile(context: paneContext, store: store))
             view.setAccessibilityLabel("Chat")
             hosts[paneID] = view
-            let record = Self.chatRecord(for: store.current, root: projectRoot)
+            let record = Self.chatRecord(for: store.current, isLight: store.isLight, root: projectRoot)
             records[paneID] = record
             return (view, record)
         case .browser:
@@ -303,16 +304,25 @@ public final class TileFactory {
     /// Keep a chat pane's header on the model it is talking to, and its record on the
     /// conversation it is showing, so a restored workspace reopens the same thread.
     private func noteChat(_ paneID: PaneID, _ conversation: ChatConversation, root: URL) {
-        let record = Self.chatRecord(for: conversation, root: root)
+        let record = Self.chatRecord(for: conversation, isLight: chats[paneID]?.isLight ?? false,
+                                     root: root)
+        guard records[paneID] != record else { return }
         records[paneID] = record
         onRecordChange?(paneID, record)
     }
 
     /// `command` carries the conversation id, the way it carries an editor's open file.
-    static func chatRecord(for conversation: ChatConversation, root: URL) -> PaneRecord {
+    ///
+    /// A chat shown light is the PANE's appearance, the way a browser's page mode is: the
+    /// canvas paints the whole pane white to match, and the setting is saved with the pane.
+    /// Unlike a browser, which is always pinned one way or the other, a chat that is not
+    /// pinned light follows the app, so the record carries nil.
+    public static func chatRecord(for conversation: ChatConversation, isLight: Bool = false,
+                                  root: URL) -> PaneRecord {
         PaneRecord(kind: .chat, title: "Chat", subtitle: conversation.model,
                    icon: icon(for: .chat), cwd: root.path,
-                   command: conversation.messages.isEmpty ? nil : conversation.id.uuidString)
+                   command: conversation.messages.isEmpty ? nil : conversation.id.uuidString,
+                   appearance: isLight ? .light : nil)
     }
 
     /// Keep a pane's header on the tab that is showing.

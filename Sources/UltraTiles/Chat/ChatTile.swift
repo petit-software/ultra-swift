@@ -87,7 +87,7 @@ public struct ChatTile: View {
     /// The same pill the Todo pane types into, grown to several lines.
     private var composer: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            TextField(store.canSend ? "Ask \(store.current.provider.title)…" : "Add a key in Settings ▸ Chat",
+            TextField(store.canSend ? "Ask \(store.current.provider.title)…" : "See Settings ▸ Chat",
                       text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Token.Type_.tileSubtitle)
@@ -153,6 +153,13 @@ public struct ChatTile: View {
             }
             ChromeMenuButton(symbol: "cpu", help: "Provider and model") {
                 modelEntries
+            }
+            // The browser's sun and moon, with the same key: a pane pinned light, or one
+            // that follows the app. Also on Pane ▸ Chat, so it is not pointer-only.
+            TileFooterButton(symbol: store.isLight ? "moon" : "sun.max",
+                             help: store.isLight ? "Follow the App's Appearance (⌃⌘L)"
+                                                 : "Show Chat Light (⌃⌘L)") {
+                store.toggleLight()
             }
         }
     }
@@ -309,8 +316,9 @@ private struct ToolCallRow: View {
 
     private var symbol: String {
         switch call.name {
-        case "read_file": "doc.text"
+        case "read_file", "Read": "doc.text"
         case "list_files": "folder"
+        case "command": "terminal"
         default: "magnifyingglass"
         }
     }
@@ -393,4 +401,10 @@ private struct CodeBlockView: View {
 #Preview("Chat", traits: .fixedLayout(width: 420, height: 520)) {
     let root = URL(fileURLWithPath: NSTemporaryDirectory())
     ChatTile(context: .inert(root: root), store: ChatStore(root: root))
+}
+
+#Preview("Chat — light", traits: .fixedLayout(width: 420, height: 520)) {
+    let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    ChatTile(context: .inert(root: root), store: ChatStore(root: root, isLight: true))
+        .preferredColorScheme(.light)
 }

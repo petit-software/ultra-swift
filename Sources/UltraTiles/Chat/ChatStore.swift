@@ -23,8 +23,15 @@ public final class ChatStore {
     /// Why the on-device model cannot be used, read once at construction so the empty
     /// state can say so before anyone types.
     public let appleUnavailable: String?
+    /// Whether the chat is shown light, whatever the app's own appearance is. Per pane and
+    /// saved with it, the way a browser pane's page mode is: a transcript reads better on
+    /// white for some people, and that is a choice about this pane, not the window.
+    ///
+    /// Off — the default — follows the app, so a chat in a light window is light anyway.
+    public private(set) var isLight: Bool
 
-    /// The header follows the conversation: its title, and the model it is on.
+    /// The header follows the conversation: its title, and the model it is on. Also fired
+    /// when the pane's look changes, since the record carries that too.
     public var onChange: ((ChatConversation) -> Void)?
 
     private let archive: ChatArchive
@@ -34,10 +41,11 @@ public final class ChatStore {
     private let toolbox: any ChatToolbox
     private var task: Task<Void, Never>?
 
-    public init(root: URL, conversationID: UUID? = nil,
+    public init(root: URL, conversationID: UUID? = nil, isLight: Bool = false,
                 toolbox: (any ChatToolbox)? = nil,
                 makeProvider: @escaping (ChatProviderID) -> any ChatProvider = ChatCredentials.provider(for:)) {
         self.root = root
+        self.isLight = isLight
         self.archive = ChatArchive(root: root)
         self.toolbox = toolbox ?? ProjectFiles(root: root)
         self.makeProvider = makeProvider
@@ -89,6 +97,8 @@ public final class ChatStore {
         guard provider != current.provider else { return }
         current.provider = provider
         current.model = models[provider]?.first { $0 == provider.defaultModel } ?? provider.defaultModel
+        // An engine's thread belongs to that engine; another provider is sent the history.
+        current.engineSession = nil
         saveIfStarted()
         onChange?(current)
     }
@@ -99,6 +109,19 @@ public final class ChatStore {
         saveIfStarted()
         onChange?(current)
     }
+
+    // MARK: - Appearance
+
+    /// Pin the pane light, or let it follow the app again. Not written to the conversation:
+    /// the look belongs to the pane, and the same thread opened in another pane keeps that
+    /// pane's look.
+    public func setLight(_ light: Bool) {
+        guard light != isLight else { return }
+        isLight = light
+        onChange?(current)
+    }
+
+    public func toggleLight() { setLight(!isLight) }
 
     /// Whether the conversation on screen can be sent right now.
     public var canSend: Bool {
@@ -112,8 +135,10 @@ public final class ChatStore {
         if current.provider.isRetired {
             return "\(current.provider.title) is no longer offered. Choose another provider below."
         }
-        return ChatCredentials.isConfigured(current.provider) ? nil
-            : "No API key for \(current.provider.title). Add one in Settings ▸ Chat."
+        if ChatCredentials.isConfigured(current.provider) { return nil }
+        let error: ChatError = current.provider.isEngine
+            ? .notInstalled(current.provider) : .missingCredential(current.provider)
+        return error.errorDescription
     }
 
     // MARK: - Sending
@@ -129,9 +154,11 @@ public final class ChatStore {
         onChange?(current)
 
         let request = ChatRequest(model: current.model,
-                                  system: Self.systemPrompt(root: root),
+                                  system: Self.systemPrompt(root: root, provider: current.provider),
                                   messages: Array(current.messages.dropLast()),
-                                  toolbox: toolbox)
+                                  toolbox: toolbox,
+                                  workingDirectory: root,
+                                  session: current.engineSession)
         let provider = makeProvider(current.provider)
         let conversationID = current.id
         isStreaming = true
@@ -148,6 +175,11 @@ public final class ChatStore {
                         self.setResult(result, ofCall: id)
                     case .finished(let finish):
                         self.note(for: finish).map { self.annotateAnswer($0) }
+                    case .session(let id):
+                        // Saved at once: the engine has the thread even if the answer
+                        // never finishes, and the next turn should find it.
+                        self.current.engineSession = id
+                        self.save()
                     }
                 }
                 self?.finishStreaming()
@@ -275,13 +307,23 @@ public final class ChatStore {
         conversations.insert(current, at: 0)
     }
 
-    /// What every model is told before the conversation.
-    static func systemPrompt(root: URL) -> String {
-        """
+    /// What every model is told before the conversation. An engine brings its own tools
+    /// and is told only what the chat is for; the rest are told about ours.
+    static func systemPrompt(root: URL, provider: ChatProviderID = .apple) -> String {
+        let common = """
         You are a coding assistant inside Ultra, a macOS terminal for working alongside \
         agent command-line tools. The user is working in the project folder \(root.path). \
         Be concise. Put shell commands and code in fenced code blocks with a language tag, \
-        because the user can send a block straight to their terminal. \
+        because the user can send a block straight to their terminal.
+        """
+        if provider.isEngine {
+            return common + " " + """
+            This is a chat beside the terminal, not an editing session: read the code a \
+            question is about before answering it, rather than guessing, and answer in \
+            words and code blocks. Do not change files; the user runs commands themselves.
+            """
+        }
+        return common + " " + """
         You can look at the project with the list_files, find_files, read_file and \
         search_files tools: read the code a question is about before answering it, rather \
         than guessing. The tools only read; you cannot change files or run commands.

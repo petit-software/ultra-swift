@@ -302,9 +302,10 @@ Listening TCP ports, and which pane owns them.
 
 ## 7. Chat
 
-A conversation with a model, beside the terminal. Four providers behind one protocol
+A conversation with a model, beside the terminal. Six providers behind one protocol
 (`UltraChat.ChatProvider`): Apple's on-device model through Foundation Models, which needs
-no key and is the default; Anthropic; Gemini; and OpenRouter, many vendors' models behind
+no key and is the default; the two engines, Claude Code and Codex, which run the user's
+subscription (below); Anthropic; Gemini; and OpenRouter, many vendors' models behind
 one key — an API key is the whole of its setup. OpenRouter speaks OpenAI's chat API, so it
 is served by the OpenAI provider type at its own base URL. OpenAI itself was offered and
 is retired: OpenRouter reaches its models and everyone else's with the one key, so a second
@@ -338,8 +339,32 @@ APIs. Every provider is tested against a recorded transcript.
   one message per round, so a conversation replays to the service as it happened. The pane
   shows each as a quiet row — "Read Package.swift" — above the answer it led to.
 - Keys live in the keychain (`ChatCredentials`); Settings ▸ Chat is where they go in.
+- Two more providers are ENGINES rather than services: the user's Claude or ChatGPT plan,
+  through the vendor's own agent on this Mac (`ChatEngine`). This is the only way a
+  subscription can be used from another app — Anthropic's terms allow a Claude plan only
+  inside the unmodified Claude Code binary, signed in through Anthropic's own flow, and
+  OpenAI opens a ChatGPT plan to third parties only through Codex — so nothing in Ultra
+  holds a token, and sign-in is the engine's own; Xcode and Notepad.exe reach the plans the
+  same way. `ClaudeCodeProvider` runs one `claude -p` per turn, speaking stream-json, with
+  only Read, Glob and Grep offered; `CodexProvider` talks JSON-RPC to one `codex
+  app-server` kept for the whole app (`CodexEngine`), sandbox read-only, approvals off.
+  Both keep the conversation themselves — the first turn starts a session or thread, saved
+  as `ChatConversation.engineSession`, and every later turn resumes it — so the history is
+  never sent twice; an engine that has lost it is started again and told the transcript.
+  A model named `default` means the engine's own. The binaries are looked for in the usual
+  homes of a developer's tools and then asked of the login shell, since a GUI app's PATH
+  is the bare one. Settings ▸ Chat shows who is signed in to each (`claude auth status`,
+  `account/read`), starts the sign-in, and offers the install command when the binary is
+  missing. Both are tested against recorded lines of their protocols.
 - Commands: Pane ▸ Chat ▸ New Chat (⌥⌘N) and Stop Response (⌘.), both on the focused pane.
   Escape also stops. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
+- Each pane can show its chat light: the sun in the footer, or Pane ▸ Chat ▸ Toggle Light
+  Chat (⌃⌘L — the browser's key for the same thing; the two share it, and the menu fires
+  whichever is enabled). It works the way a browser pane's page mode does: the choice is
+  saved as `PaneRecord.appearance`, which the canvas reads to paint the pane's surface,
+  header and glass, so the transcript sits on solid white rather than light glass gone
+  grey. It is the pane's, not the conversation's — the same thread opened in another pane
+  keeps that pane's look. Off, the default, records nil and follows the app.
 
 ## 8. Browser
 
