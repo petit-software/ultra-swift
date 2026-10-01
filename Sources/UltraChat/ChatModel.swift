@@ -150,7 +150,9 @@ public enum ChatEvent: Sendable, Equatable {
     /// The model called a tool. The provider runs it; this is so the pane can show it.
     case toolCall(ChatToolCall)
     /// What the tool returned, for the call with this id. More of the answer follows.
-    case toolResult(id: String, result: String)
+    /// `changes` is what the result says was changed, when it says: the files an edit
+    /// touched once it had, or none for an edit that failed. Nil leaves the call's own.
+    case toolResult(id: String, result: String, changes: [ChatFileChange]? = nil)
     /// The end, and how it ended.
     case finished(ChatFinish)
     /// An engine's id for this conversation, to be sent back as `ChatRequest.session` on

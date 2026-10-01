@@ -199,6 +199,7 @@ the agent running in the next pane over.
   to survive atomic-replace saves). Reload on change. If the file changed on disk while a local
   edit was in flight (mtime + content hash mismatch), keep both: write the local version and
   surface a non-blocking "reloaded from disk — your edit is in the undo stack" notice.
+  Notices are toasts — see § Notices below — never a strip that moves the list.
 - **Clear Completed Tasks** — the `clear.fill` button in the footer, and Pane ▸ Todo in the
   menu and the palette — removes every ticked task line in one edit and nothing else: an
   undone subtask under a done parent stays, prose and headings are not looked at. Dimmed when
@@ -353,7 +354,14 @@ APIs. Every provider is tested against a recorded transcript.
   talks JSON-RPC to one `codex app-server` kept for the whole app (`CodexEngine`), sandbox
   `workspace-write`, approvals off. So, unlike the API providers with our read-only tools,
   a chat on an engine CAN change the project — it is the agent the user would run in the
-  pane beside, in a chat — and every edit and command is a row above the answer. In the
+  pane beside, in a chat — and every command is a row above the answer, while the edits
+  become one table of the files they changed (`ChangedFilesTable`): a bordered, rounded
+  table with a row of one height per file — name, folder from the project down, `+12 −3` —
+  which opens the file in the editor. One file is the same table, so a single change does
+  not look like a different thing from two. The counts ride on the call
+  (`ChatToolCall.changes`, `ChatFileChange`): a Claude Code edit is counted from the old
+  and new text in its arguments, a Codex edit from the unified diff it reports on
+  completing, and an edit that failed counts as nothing and stays a plain row. In the
   pane's menu each engine is a submenu of its models, so plan and model are one pick.
   Both keep the conversation themselves — the first turn starts a session or thread, saved
   as `ChatConversation.engineSession`, and every later turn resumes it — so the history is
@@ -411,7 +419,7 @@ goes in a second pane.
   uses it. A page without one, which is most dev servers, is inverted by an injected style,
   with its images and video inverted back. Light pins the page light, whatever the app is.
 - `target="_blank"` and `window.open` load in the same pane: a pane has no second window.
-- A failed load shows in the notice bar, with the dev-server case put in words: "Nothing is
+- A failed load shows in the pane's toast, with the dev-server case put in words: "Nothing is
   answering at localhost:5173 — is the server running?" and a Retry.
 - `NSAllowsArbitraryLoadsInWebContent` is set, so plain-HTTP servers on the LAN load. No
   entitlement is needed: WebContent runs in WebKit's own processes.
@@ -511,7 +519,7 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   verb only puts the device on screen. The reply says what happened: an unknown device, no
   room for a pane, or — on a device that was already up — the launch's own error, such as an
   app that is not installed. A device that has to boot first launches the app when it is up,
-  and a failure then is the pane's notice bar's to show.
+  and a failure then is the pane's toast's to show.
 - **A device booting in the pane.** It connects as soon as `simctl` says Booted, which can
   be before the device has a framebuffer: the pane then shows a screenshot of the boot
   screen, input off, until the first surface arrives. The view is re-pointed whenever it is
@@ -537,6 +545,30 @@ notarized and stapled — the same pipeline documented in the Electron app's `AG
 deliberate distribution decision, not an oversight, and it is why security-scoped bookmarks are
 still used in the Context tile (they are about restoring user intent across launches, not the
 sandbox).
+
+## Notices
+
+What a tile has to say about its file — reloaded, changed underneath an edit, could not be
+saved, a page that would not load — is a **toast**: a regular-glass capsule floating over the
+foot of the content, 4pt above the footer and 4pt in from the pane's sides, with a filled
+symbol, the sentence, any verb it offers (Reload, Retry) and an `⌫`-shaped close control.
+`TileToast` draws it; `TileNotice` holds the words, once, so the Editor and the Todo list
+cannot say "reloaded" two different ways.
+
+It was a strip across the top of the tile. A strip takes a row, so every reload pushed the
+text being edited down a line and pulled it back up on close — a notice about the file must
+not move the file. A toast covers a corner of the content instead, which is the one
+exception the design language makes to "no steady-state intersections" (docs/02): an
+informational toast (reloaded) leaves on its own after four seconds, pausing while the
+pointer is on it; one that needs a decision (a conflict) or reports a failure stays until
+closed. The tone is in the symbol's colour alone — the capsule is never tinted.
+
+| Tile | Notices |
+|---|---|
+| Editor | reloaded · conflict (+ Reload) · failed |
+| Todo | reloaded · could not save |
+| Browser | load failed (+ Retry) |
+| Simulator | failed |
 
 ## Adding a tile later
 

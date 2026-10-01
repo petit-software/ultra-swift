@@ -59,12 +59,18 @@ public struct ChatToolCall: Identifiable, Codable, Equatable, Sendable {
     public var arguments: String
     /// Nil until the tool has answered — or for good, if the answer was stopped first.
     public var result: String?
+    /// The files the call changed, with the size of each change. Nil for a call that
+    /// does not edit — a read, a search, a command — and in every file written before
+    /// changes were counted. Empty for an edit that changed nothing: one that failed.
+    public var changes: [ChatFileChange]?
 
-    public init(id: String, name: String, arguments: String, result: String? = nil) {
+    public init(id: String, name: String, arguments: String, result: String? = nil,
+                changes: [ChatFileChange]? = nil) {
         self.id = id
         self.name = name
         self.arguments = arguments
         self.result = result
+        self.changes = changes
     }
 
     /// The arguments, parsed. Empty for text that is not a JSON object, which a tool then

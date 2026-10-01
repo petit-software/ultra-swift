@@ -203,7 +203,9 @@ public struct ClaudeCodeProvider: ChatProvider {
                       state.announcedCalls.insert(id).inserted else { return nil }
                 let input = block["input"] ?? [:]
                 let arguments = (try? HTTPProviderSupport.json(input)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
-                return .toolCall(ChatToolCall(id: id, name: name, arguments: arguments))
+                let call = ChatToolCall(id: id, name: name, arguments: arguments)
+                return .toolCall(ChatToolCall(id: id, name: name, arguments: arguments,
+                                              changes: ChatEngine.fileChanges(of: call)))
             }
         case "user":
             guard let message = object["message"] as? [String: Any],
@@ -211,7 +213,10 @@ public struct ClaudeCodeProvider: ChatProvider {
             return content.compactMap { block in
                 guard block["type"] as? String == "tool_result",
                       let id = block["tool_use_id"] as? String else { return nil }
-                return .toolResult(id: id, result: resultText(block["content"]))
+                // An edit that failed — the old text not found, the file not read first —
+                // changed nothing, whatever its arguments promised.
+                let failed = block["is_error"] as? Bool == true
+                return .toolResult(id: id, result: resultText(block["content"]), changes: failed ? [] : nil)
             }
         case "result":
             state.finished = true

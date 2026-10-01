@@ -170,6 +170,36 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
         }
     }
 
+    /// The files a Claude Code edit changes, counted from its arguments — the only place
+    /// the change is spelled out, since the result is a sentence. Nil for a call that is
+    /// not an edit. A `Write` is counted as all additions: whether it replaced a file,
+    /// and what that file held, is not in the call.
+    public static func fileChanges(of call: ChatToolCall) -> [ChatFileChange]? {
+        let path = call.string("file_path") ?? call.string("notebook_path") ?? ""
+        switch call.name {
+        case "Edit":
+            let counts = ChatFileChange.counts(from: call.string("old_string") ?? "",
+                                               to: call.string("new_string") ?? "")
+            return [ChatFileChange(path: path, additions: counts.additions, deletions: counts.deletions)]
+        case "MultiEdit":
+            let edits = call.argumentValues["edits"] as? [[String: Any]] ?? []
+            var change = ChatFileChange(path: path)
+            for edit in edits {
+                let counts = ChatFileChange.counts(from: edit["old_string"] as? String ?? "",
+                                                   to: edit["new_string"] as? String ?? "")
+                change.additions += counts.additions
+                change.deletions += counts.deletions
+            }
+            return [change]
+        case "Write":
+            return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(call.string("content") ?? ""))]
+        case "NotebookEdit":
+            return [ChatFileChange(path: path, additions: ChatFileChange.lineCount(call.string("new_source") ?? ""))]
+        default:
+            return nil
+        }
+    }
+
     /// The last two components of an absolute path: enough to know which file, without
     /// the project's whole path in front of every row.
     static func shortPath(_ path: String) -> String {

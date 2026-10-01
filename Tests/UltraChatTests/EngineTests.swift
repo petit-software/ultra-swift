@@ -65,7 +65,7 @@ struct EngineTests {
         #expect(calls.map(\.id) == ["toolu_1"])
         #expect(calls.first?.name == "Read")
         #expect(calls.first?.string("file_path") == "/p/Package.swift")
-        let results = events.compactMap { if case .toolResult(let id, let r) = $0 { (id, r) } else { nil } }
+        let results = events.compactMap { if case .toolResult(let id, let r, _) = $0 { (id, r) } else { nil } }
         #expect(results.count == 1)
         #expect(results.first?.0 == "toolu_1")
         #expect(results.first?.1 == "// swift-tools-version: 6.2")
@@ -158,7 +158,7 @@ struct EngineTests {
         #expect(calls.map(\.name) == ["command"])
         #expect(calls.first?.string("command") == "git log -1")
         #expect(ProjectFiles.summary(of: calls[0]) == "Run git log -1")
-        let results = events.compactMap { if case .toolResult(let id, let r) = $0 { (id, r) } else { nil } }
+        let results = events.compactMap { if case .toolResult(let id, let r, _) = $0 { (id, r) } else { nil } }
         #expect(results.first?.0 == "c1")
         #expect(results.first?.1 == "commit abc\n")
         #expect(events.last == .finished(ChatFinish(reason: .complete, inputTokens: 40, outputTokens: 10)))
@@ -179,7 +179,8 @@ struct EngineTests {
         let done = try CodexProvider.handle(
             method: "item/completed",
             params: params(item.replacingOccurrences(of: "inProgress", with: "completed")), state: &state)
-        #expect(done == [.toolResult(id: "f1", result: "Changed /p/Sources/A.swift, /p/README.md")])
+        #expect(done == [.toolResult(id: "f1", result: "Changed /p/Sources/A.swift, /p/README.md",
+                                     changes: [ChatFileChange(path: "/p/Sources/A.swift"), ChatFileChange(path: "/p/README.md")])])
     }
 
     @Test("a message that never streamed arrives whole when its item completes")

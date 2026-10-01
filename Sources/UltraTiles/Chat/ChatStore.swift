@@ -177,8 +177,8 @@ public final class ChatStore {
                         self.appendToAnswer(piece)
                     case .toolCall(let call):
                         self.appendToAnswer(call)
-                    case .toolResult(let id, let result):
-                        self.setResult(result, ofCall: id)
+                    case .toolResult(let id, let result, let changes):
+                        self.setResult(result, changes: changes, ofCall: id)
                     case .finished(let finish):
                         self.note(for: finish).map { self.annotateAnswer($0) }
                     case .session(let id):
@@ -246,10 +246,11 @@ public final class ChatStore {
         current.messages[index].toolCalls = (current.messages[index].toolCalls ?? []) + [call]
     }
 
-    private func setResult(_ result: String, ofCall id: String) {
+    private func setResult(_ result: String, changes: [ChatFileChange]?, ofCall id: String) {
         guard let index = current.messages.indices.last,
               let call = current.messages[index].toolCalls?.firstIndex(where: { $0.id == id }) else { return }
         current.messages[index].toolCalls?[call].result = result
+        if let changes { current.messages[index].toolCalls?[call].changes = changes }
         // Saved as it goes: a long answer's reads are not lost to a crash half-way.
         save()
     }

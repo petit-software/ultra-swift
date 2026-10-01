@@ -47,7 +47,9 @@ public struct ChatTile: View {
                 ForEach(store.current.messages) { message in
                     ChatMessageView(message: message,
                                     isArriving: store.isStreaming && message.id == store.current.messages.last?.id,
-                                    sendToShell: { context.injectIntoShell($0) })
+                                    root: context.projectRoot,
+                                    sendToShell: { context.injectIntoShell($0) },
+                                    openFile: { context.openInEditor(.file($0)) })
                 }
             }
             .padding(.horizontal, 12)
@@ -260,7 +262,9 @@ public struct ChatTile: View {
 private struct ChatMessageView: View {
     let message: ChatMessage
     let isArriving: Bool
+    let root: URL
     let sendToShell: (String) -> Void
+    let openFile: (URL) -> Void
 
     var body: some View {
         switch message.role {
@@ -295,8 +299,18 @@ private struct ChatMessageView: View {
                     }
                 }
                 if let calls = message.toolCalls, !calls.isEmpty {
+                    // The edits become one table of the files they changed, standing
+                    // where the first of them was; every other call stays a row.
+                    let firstEdit = ChangedFile.firstEdit(in: calls)
                     VStack(alignment: .leading, spacing: 3) {
-                        ForEach(calls) { ToolCallRow(call: $0) }
+                        ForEach(calls) { call in
+                            if (call.changes ?? []).isEmpty {
+                                ToolCallRow(call: call)
+                            } else if call.id == firstEdit {
+                                ChangedFilesTable(files: ChangedFile.rows(in: calls), root: root, open: openFile)
+                                    .padding(.vertical, 3)
+                            }
+                        }
                     }
                     // The tools have answered and the model has not yet gone on: the same
                     // three dots, so the wait for the next turn does not read as the end.

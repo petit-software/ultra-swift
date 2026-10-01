@@ -53,7 +53,7 @@ private let question = [ChatMessage(role: .user, text: "What does the package bu
 private func expectOneRead(_ events: [ChatEvent], path: String = "Package.swift") {
     guard events.count == 4,
           case .toolCall(let call) = events[0],
-          case .toolResult(let id, let result) = events[1],
+          case .toolResult(let id, let result, _) = events[1],
           case .text(let text) = events[2],
           case .finished(let finish) = events[3] else {
         Issue.record("unexpected events: \(events)")

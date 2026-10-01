@@ -155,7 +155,10 @@ public struct CodexProvider: ChatProvider {
                 let name = item["tool"] as? String ?? "tool"
                 return [.toolCall(ChatToolCall(id: id, name: name, arguments: json(item["arguments"] ?? [:])))]
             case "fileChange":
-                return [.toolCall(ChatToolCall(id: id, name: "edit", arguments: json(["paths": changedPaths(item)])))]
+                // Named now, counted when the item completes: the diff arrives with it.
+                let changes = changedPaths(item).map { ChatFileChange(path: $0) }
+                return [.toolCall(ChatToolCall(id: id, name: "edit", arguments: json(["paths": changedPaths(item)]),
+                                               changes: changes))]
             default:
                 return []
             }
@@ -179,8 +182,11 @@ public struct CodexProvider: ChatProvider {
             case "fileChange":
                 let paths = changedPaths(item)
                 let status = item["status"] as? String ?? "completed"
-                return [.toolResult(id: id, result: status == "completed"
-                                    ? "Changed \(paths.joined(separator: ", "))" : "Edit \(status)")]
+                guard status == "completed" else {
+                    return [.toolResult(id: id, result: "Edit \(status)", changes: [])]
+                }
+                return [.toolResult(id: id, result: "Changed \(paths.joined(separator: ", "))",
+                                    changes: fileChanges(item))]
             case "mcpToolCall", "dynamicToolCall":
                 if let error = item["error"] as? [String: Any], let message = error["message"] as? String {
                     return [.toolResult(id: id, result: message)]
@@ -239,6 +245,15 @@ public struct CodexProvider: ChatProvider {
     /// The files a Codex edit touched, as it names them.
     static func changedPaths(_ item: [String: Any]) -> [String] {
         (item["changes"] as? [[String: Any]] ?? []).compactMap { $0["path"] as? String }
+    }
+
+    /// The same files with their changes counted, off the unified diff each carries.
+    static func fileChanges(_ item: [String: Any]) -> [ChatFileChange] {
+        (item["changes"] as? [[String: Any]] ?? []).compactMap { change in
+            guard let path = change["path"] as? String else { return nil }
+            let counts = ChatFileChange.counts(ofUnifiedDiff: change["diff"] as? String ?? "")
+            return ChatFileChange(path: path, additions: counts.additions, deletions: counts.deletions)
+        }
     }
 
     static func json(_ object: Any) -> String {
