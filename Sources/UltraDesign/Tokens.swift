@@ -56,13 +56,43 @@ public enum Token {
         /// all of them — see `Preferences.AccentColour`.
         public static var accent: Color { Preferences.accentColour.color }
 
-        /// A soft fill behind something tinted: a selected row, a notice bar, a highlight.
-        /// One value rather than the 0.10 / 0.12 / 0.18 / 0.20 that had accumulated across
-        /// the tiles, all of them meaning "a bit of the accent behind this".
-        public static var accentWash: Color { accent.opacity(0.14) }
+        /// A soft fill behind something tinted: a selected row, a notice bar, a highlight,
+        /// the bubble behind what the user said in a chat. One value rather than the
+        /// 0.10 / 0.12 / 0.18 / 0.20 that had accumulated across the tiles, all of them
+        /// meaning "a bit of the accent behind this".
+        public static var accentWash: Color { wash(0.14) }
 
         /// The same idea, but for something the pointer is actively over — a drop target.
-        public static var accentWashStrong: Color { accent.opacity(0.24) }
+        public static var accentWashStrong: Color { wash(0.24) }
+
+        /// The accent at `alpha` — except when the accent is white, which is the DEFAULT.
+        ///
+        /// White at 14% is a wash in dark appearance and nothing at all in light: the chat's
+        /// user bubble, the context tile's highlight and the notice bar all vanished the
+        /// moment a pane was shown light, because a translucent white veil on a white pane
+        /// is the pane. So the white accent's wash inverts with the appearance, as
+        /// `selectionWash` does and for the same reason — see `whiteWashColour`.
+        ///
+        /// A coloured accent is left alone. Blue at 14% reads on both appearances, and
+        /// darkening it would change the hue the user picked. `accent` stays a SwiftUI
+        /// colour on that path so System Accent keeps following the system.
+        static func wash(_ alpha: Double, accent: Preferences.AccentColour = Preferences.accentColour) -> Color {
+            accent == .white ? Color(nsColor: whiteWashColour(alpha)) : accent.color.opacity(alpha)
+        }
+
+        /// The white accent's wash: white at `alpha` on a dark pane, black on a light one.
+        ///
+        /// DYNAMIC, resolved inside the pane's own appearance, so a chat pinned light inside
+        /// a dark window takes the light wash. It takes a little less of itself in light —
+        /// dark-on-light needs less to read as the same wash — by the ratio `selectionWash`
+        /// settled on, 0.10 over 0.16.
+        static func whiteWashColour(_ alpha: Double) -> NSColor {
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.white.withAlphaComponent(alpha)
+                    : NSColor.black.withAlphaComponent(alpha * (0.10 / 0.16))
+            }
+        }
 
         /// The window's own surface: a tint laid over the backdrop material so the glass
         /// reads as smoked rather than as clear frost.
