@@ -344,9 +344,13 @@ APIs. Every provider is tested against a recorded transcript.
 - The store (`ChatStore`) is owned by the tile factory, like an editor's tabs, so an answer
   still streaming survives the pane being rebuilt. The pane's record carries the
   conversation id in `command`, the way an editor's carries its file.
-- The answer is rendered in blocks: prose through Foundation's Markdown parser, fenced code
-  in a box with Copy and "type at the prompt" — the latter is `injectIntoShell`, the same
-  verb every other tile sends with.
+- The answer is rendered in blocks (`MarkdownBlocks`): paragraphs through Foundation's
+  Markdown parser; lists drawn with bullets or their numbers in a column, nesting stepped
+  in; a heading as its own line; fenced code in a box whose Copy and "type at the prompt"
+  float over the header on the same glass pill as a row's hover controls — the latter is
+  `injectIntoShell`, the same verb every other tile sends with. The prompt asks the model
+  for plain prose — no headings, nothing bold, backticks for names — and a bulleted list
+  whenever there are several things to say.
 - The model can read the project. Every request carries a `ChatToolbox` — `ProjectFiles`:
   `list_files`, `find_files`, `read_file`, `search_files` — and each provider runs its own
   tool loop, because only it knows its service's shape for a call and a result; within a

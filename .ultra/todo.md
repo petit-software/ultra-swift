@@ -34,6 +34,10 @@
 
 - [x] clicking on the file from file tree, double click should open finder, single clikc should open editor.
   - [x] File tree: a click on a file opens it in the editor; the second click of a double reveals it in Finder; send-to-shell stays on the hover pill and the context menu; docs
+- [x] inside chat pane when zsh returns a result to copy and type to prompt symbols should be show inside the glass capsue as when hovering on files make sure capsule is centered. Also chat make sure returned output is without a bold when it's not needed. lists are always styled when returns multiple things as bullet points.
+  - [x] Chat: a code block's Copy and Type-at-the-prompt float over its header on the glass hover pill, centred on the row
+  - [x] Chat: `MarkdownBlocks` cuts out headings and lists as well as fences; a list is drawn with bullets or numbers in a column, nesting stepped in; tests
+  - [x] Chat: the prompt asks for plain prose — no headings, nothing bold — and a bulleted list for several things; docs
 
 ## Simulator previews in Pane
 - [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls

@@ -295,6 +295,10 @@ private struct ChatMessageView: View {
                         switch block {
                         case .prose(let text):
                             ProseView(markdown: text)
+                        case .heading(let text):
+                            HeadingView(markdown: text)
+                        case .list(let items):
+                            ListView(items: items)
                         case .code(let language, let code):
                             CodeBlockView(language: language, code: code, sendToShell: sendToShell)
                         }
@@ -463,20 +467,20 @@ private struct ToolCallRow: View {
 }
 
 /// Prose, through Foundation's Markdown parser: emphasis, links and inline code, with
-/// line breaks kept. Block structure — lists, headings — comes through as plain lines,
-/// which reads fine at chat width.
+/// line breaks kept. Block structure — lists, headings, fences — was cut out before it
+/// got here (`MarkdownBlocks`), so one of these is one paragraph.
 private struct ProseView: View {
     let markdown: String
 
     var body: some View {
-        Text(attributed)
+        Text(ProseView.attributed(markdown))
             .font(Token.Type_.tileSubtitle)
             .foregroundStyle(Token.Colour.label)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var attributed: AttributedString {
+    static func attributed(_ markdown: String) -> AttributedString {
         var options = AttributedString.MarkdownParsingOptions()
         options.interpretedSyntax = .inlineOnlyPreservingWhitespace
         guard var text = try? AttributedString(markdown: markdown, options: options) else {
@@ -492,8 +496,48 @@ private struct ProseView: View {
     }
 }
 
+/// A heading, as its own line in the title weight — the one place an answer is allowed
+/// to be heavier than its prose. The prompt asks the model not to use them, so this is for
+/// the answers that do anyway.
+private struct HeadingView: View {
+    let markdown: String
+
+    var body: some View {
+        Text(ProseView.attributed(markdown))
+            .font(Token.Type_.tileTitle)
+            .foregroundStyle(Token.Colour.label)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 4)
+    }
+}
+
+/// A list, drawn as one: a bullet or the item's number in a column of its own, the text
+/// beside it and wrapping under itself, each level of nesting stepped in. The marker is
+/// quieter than the text, so a list of twelve things is twelve things and not a fence.
+private struct ListView: View {
+    let items: [MarkdownListItem]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.ordinal ?? "•")
+                        .font(Token.Type_.tileSubtitle)
+                        .foregroundStyle(Token.Colour.secondaryLabel)
+                        .frame(minWidth: 14, alignment: .trailing)
+                    ProseView(markdown: item.text)
+                }
+                .padding(.leading, CGFloat(item.depth) * 18)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// A fenced block: monospaced, in a box, with the two things worth doing to code in a
-/// terminal app — copy it, or type it at the prompt without running it.
+/// terminal app — copy it, or type it at the prompt without running it. Both float over
+/// the header's trailing end on the glass pill every other tile's rows use.
 private struct CodeBlockView: View {
     let language: String?
     let code: String
@@ -507,19 +551,25 @@ private struct CodeBlockView: View {
                     .font(Token.Type_.monoSmall)
                     .foregroundStyle(Token.Colour.tertiaryLabel)
                 Spacer(minLength: 4)
-                if isHovering {
-                    ChromeIconButton(symbol: "doc.on.doc", help: "Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(code, forType: .string)
-                    }
-                    ChromeIconButton(symbol: "arrow.right.to.line", help: "Type at the prompt, without running") {
-                        sendToShell(code.trimmingCharacters(in: .newlines))
-                    }
-                }
             }
             .frame(height: 24)
-            .padding(.leading, 10)
-            .padding(.trailing, 2)
+            .padding(.horizontal, 10)
+            // Over the header row, so the pill sits on the row's centre line, in from the
+            // box's corner by the same margin the label keeps on the other side.
+            .tileHoverControls(isHovering, offset: CGSize(width: -6, height: 0)) {
+                HStack(spacing: 7) {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    } label: { Image(systemName: "doc.on.doc") }
+                        .help("Copy")
+                    Button {
+                        sendToShell(code.trimmingCharacters(in: .newlines))
+                    } label: { Image(systemName: "arrow.right.to.line") }
+                        .help("Type at the prompt, without running")
+                }
+                .font(.system(size: 11))
+            }
 
             ScrollView(.horizontal) {
                 Text(code)

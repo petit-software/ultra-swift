@@ -478,6 +478,57 @@ struct MarkdownBlocksTests {
         #expect(blocks == [.prose("Here:"), .code(language: "swift", text: "let x = 1\nlet y =")])
     }
 
+    @Test("list lines are one list, bullets and numbers alike, nesting by indentation")
+    func lists() {
+        let blocks = MarkdownBlocks.split("""
+        Two ways:
+        - `swift build`
+        - `swift test`
+          which runs headless
+        1. first
+        2) second
+            * under second
+        """)
+        #expect(blocks == [
+            .prose("Two ways:"),
+            .list([
+                MarkdownListItem("`swift build`"),
+                MarkdownListItem("`swift test` which runs headless"),
+                MarkdownListItem("first", ordinal: "1."),
+                MarkdownListItem("second", ordinal: "2)"),
+                MarkdownListItem("under second", depth: 2),
+            ]),
+        ])
+    }
+
+    @Test("a blank line inside a list keeps it; a blank line before prose ends it")
+    func listGaps() {
+        #expect(MarkdownBlocks.split("- a\n\n- b") == [.list([MarkdownListItem("a"), MarkdownListItem("b")])])
+        #expect(MarkdownBlocks.split("- a\n\nThen.") == [.list([MarkdownListItem("a")]), .prose("Then.")])
+        #expect(MarkdownBlocks.split("- a\nThen.") == [.list([MarkdownListItem("a")]), .prose("Then.")])
+    }
+
+    @Test("a dash or number that is not a list marker stays prose")
+    func notLists() {
+        #expect(MarkdownBlocks.split("--flag is set") == [.prose("--flag is set")])
+        #expect(MarkdownBlocks.split("3.14 is pi") == [.prose("3.14 is pi")])
+        #expect(MarkdownBlocks.split("-") == [.prose("-")])
+        #expect(MarkdownBlocks.split("1.") == [.prose("1.")])
+        #expect(MarkdownBlocks.split("2024. A year.") == [.prose("2024. A year.")])
+    }
+
+    @Test("headings are their own block without the hashes; a hashtag is not one")
+    func headings() {
+        #expect(MarkdownBlocks.split("## Why\nBecause.") == [.heading("Why"), .prose("Because.")])
+        #expect(MarkdownBlocks.split("#tag here") == [.prose("#tag here")])
+        #expect(MarkdownBlocks.split("####### seven") == [.prose("####### seven")])
+    }
+
+    @Test("a blank line splits paragraphs; a line break within one is kept")
+    func paragraphs() {
+        #expect(MarkdownBlocks.split("one\ntwo\n\nthree") == [.prose("one\ntwo"), .prose("three")])
+    }
+
     @Test("prose alone is one block, and tildes fence too")
     func plainAndTildes() {
         #expect(MarkdownBlocks.split("just words") == [.prose("just words")])

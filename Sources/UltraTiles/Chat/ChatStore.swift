@@ -333,7 +333,9 @@ public final class ChatStore {
         You are a coding assistant inside Ultra, a macOS terminal for working alongside \
         agent command-line tools. The user is working in the project folder \(root.path). \
         Be concise. Put shell commands and code in fenced code blocks with a language tag, \
-        because the user can send a block straight to their terminal.
+        because the user can send a block straight to their terminal. Write plain prose: no \
+        headings, and nothing in bold — a name, a flag or a path goes in backticks instead. \
+        When you have several things to list, use a bulleted list, one item per line.
         """
         if provider.isEngine {
             return common + " " + """
