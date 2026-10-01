@@ -144,13 +144,21 @@ struct CodeTextView: NSViewRepresentable {
         func highlight(_ storage: NSTextStorage) {
             let full = NSRange(location: 0, length: storage.length)
             guard full.length > 0 else { return }
-            storage.addAttribute(.foregroundColor, value: NSColor(Token.Colour.label), range: full)
+            // The face is reset along with the colour: a Markdown heading is bold, and
+            // the bold must not outlive the `#` that made it.
+            storage.addAttributes([.foregroundColor: NSColor(Token.Colour.label), .font: Self.baseFont],
+                                  range: full)
             guard let language, full.length <= 1_000_000 else { return }
             for token in CodeHighlighter.tokens(in: storage.string, language: language) {
                 storage.addAttribute(.foregroundColor, value: Self.colour(for: token.kind),
                                      range: token.range)
+                if let font = Self.font(for: token.kind) {
+                    storage.addAttribute(.font, value: font, range: token.range)
+                }
             }
         }
+
+        static let baseFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
 
         /// System colours, every one dynamic, so the same file reads in light and dark
         /// appearance and under Increase Contrast without a palette of our own to keep.
@@ -162,6 +170,30 @@ struct CodeTextView: NSViewRepresentable {
             case .number: .systemBlue
             case .type: .systemTeal
             case .attribute: .systemOrange
+            // Markdown. Headings take the keyword colour — they are the file's shape — and
+            // links the number's; emphasis is carried by the face alone, below.
+            case .heading: .systemPurple
+            case .strong, .emphasis: NSColor(Token.Colour.label)
+            case .code: .systemTeal
+            case .link: .systemBlue
+            case .marker: .systemOrange
+            }
+        }
+
+        /// The face a kind is set in, where the colour is not the whole of it: bold for a
+        /// heading and for `**strong**`, italic for `*emphasis*`. Still monospaced — the
+        /// editor is one column of code and prose in it is prose in a code font — and
+        /// still 12pt, so a heading does not change the height of its line and the ruler's
+        /// numbers stay beside the lines they count.
+        static func font(for kind: CodeTokenKind) -> NSFont? {
+            switch kind {
+            case .heading, .strong:
+                return .monospacedSystemFont(ofSize: 12, weight: .bold)
+            case .emphasis:
+                let descriptor = baseFont.fontDescriptor.withSymbolicTraits(.italic)
+                return NSFont(descriptor: descriptor, size: 12) ?? baseFont
+            default:
+                return nil
             }
         }
     }
@@ -208,6 +240,12 @@ final class LineNumberRuler: NSRulerView {
         super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = 34
+        // Since macOS 14 a view's drawing is NOT clipped to its bounds, and `NSRulerView`
+        // paints its background and its edge line across the whole rect it is asked to
+        // draw — so the ruler's column ran on through the tab strip above it and the
+        // footer below, as a line through chrome that is not the editor's. The frame was
+        // right all along; only the paint overflowed.
+        clipsToBounds = true
     }
 
     @available(*, unavailable)

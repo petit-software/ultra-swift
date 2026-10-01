@@ -31,8 +31,9 @@ struct CodeHighlighterTests {
         #expect(CodeLanguage.detect(path: "/p/Gemfile")?.name == "Ruby")
         #expect(CodeLanguage.detect(path: "/p/config.yml")?.name == "YAML")
         #expect(CodeLanguage.detect(path: "/p/index.tsx")?.name == "TypeScript")
-        #expect(CodeLanguage.detect(path: "/p/notes.md") == nil, "prose is not coloured")
-        #expect(CodeLanguage.detect(path: "/p/LICENSE") == nil)
+        #expect(CodeLanguage.detect(path: "/p/notes.md")?.name == "Markdown")
+        #expect(CodeLanguage.detect(path: "/p/README")?.name == "Markdown")
+        #expect(CodeLanguage.detect(path: "/p/LICENSE") == nil, "prose with no shape is plain")
     }
 
     @Test("a shebang names the language of a file whose name does not")

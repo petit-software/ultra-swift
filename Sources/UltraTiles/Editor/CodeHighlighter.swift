@@ -1,14 +1,28 @@
 import Foundation
 
-/// What a run of source is, for colouring. Six kinds, not a grammar.
+/// What a run of source is, for colouring. A dozen kinds, not a grammar.
 ///
 /// A generic colouriser rather than a parser per language: the editor is for fixing a
 /// config file without leaving the terminal, and what makes a file readable at a glance is
 /// the same everywhere — comments recede, strings and numbers stand apart from code, and
 /// the keywords give the shape. Anything finer is the job of the editor the user already
 /// has.
+///
+/// The second half is Markdown's, where the shape is structure rather than syntax: a
+/// heading, a list bullet, a code span, a link. See `MarkdownHighlighter`.
 public enum CodeTokenKind: Equatable, Sendable {
     case keyword, string, comment, number, type, attribute
+    /// A heading line, `#` to `######` or underlined.
+    case heading
+    /// `**strong**` and `*emphasis*`, marks included.
+    case strong, emphasis
+    /// A code span, or a line inside a fenced block.
+    case code
+    /// A link's text, an autolink, a bare URL, a reference definition's name.
+    case link
+    /// Structure that is not content: a bullet, a number, a task box, a quote mark, a
+    /// rule, a fence line.
+    case marker
 }
 
 public struct CodeToken: Equatable, Sendable {
@@ -36,7 +50,12 @@ public struct CodeLanguage: Equatable, Sendable {
         }
     }
 
+    /// How the text is scanned. The table below serves every language but one; Markdown
+    /// has no comments, strings or keywords and is read line by line instead.
+    enum Scanner: Equatable, Sendable { case generic, markdown }
+
     public let name: String
+    let scanner: Scanner
     let keywords: Set<String>
     let lineComments: [[UInt16]]
     let blockComment: BlockComment?
@@ -55,8 +74,9 @@ public struct CodeLanguage: Equatable, Sendable {
     init(name: String, keywords: String, lineComments: [String] = [],
          blockComment: BlockComment? = nil, quotes: String = "\"'",
          multilineQuotes: String = "", tripleQuotes: Bool = false, sigils: String = "",
-         capitalisedTypes: Bool = true) {
+         capitalisedTypes: Bool = true, scanner: Scanner = .generic) {
         self.name = name
+        self.scanner = scanner
         self.keywords = Set(keywords.split(separator: " ").map(String.init))
         self.lineComments = lineComments.map { Array($0.utf16) }
         self.blockComment = blockComment
@@ -78,6 +98,8 @@ public struct CodeLanguage: Equatable, Sendable {
         case "dockerfile", "containerfile": return .dockerfile
         case "gemfile", "rakefile", "podfile", "fastfile", "brewfile": return .ruby
         case "cmakelists.txt": return .cmake
+        // Prose files that go without an extension more often than not.
+        case "readme", "changelog", "contributing": return .markdown
         default: break
         }
         return byExtension[(name as NSString).pathExtension.lowercased()]
@@ -124,6 +146,8 @@ public struct CodeLanguage: Equatable, Sendable {
         "plist": .markup, "xib": .markup, "storyboard": .markup, "xsl": .markup,
         "sql": .sql, "mk": .makefile, "cmake": .cmake,
         "graphql": .graphql, "gql": .graphql, "proto": .proto,
+        "md": .markdown, "markdown": .markdown, "mdown": .markdown, "mkd": .markdown,
+        "mdx": .markdown,
     ]
 
     // MARK: Languages
@@ -280,6 +304,9 @@ public struct CodeLanguage: Equatable, Sendable {
         name: "Protobuf",
         keywords: "syntax package import option message enum service rpc returns repeated optional required oneof map reserved extend extensions stream true false double float int32 int64 uint32 uint64 sint32 sint64 fixed32 fixed64 sfixed32 sfixed64 bool string bytes",
         lineComments: ["//"], blockComment: BlockComment("/*", "*/"))
+
+    /// No table: see `MarkdownHighlighter`.
+    static let markdown = CodeLanguage(name: "Markdown", keywords: "", scanner: .markdown)
 }
 
 /// The scan itself. Pure: text and a language in, ranges out, so what gets coloured is
@@ -293,6 +320,7 @@ public enum CodeHighlighter {
     /// inside it, a string swallows the keywords inside it, and neither is opened by the
     /// other. That ordering is the whole of what makes a colouriser look right.
     public static func tokens(in text: String, language: CodeLanguage) -> [CodeToken] {
+        if language.scanner == .markdown { return MarkdownHighlighter.tokens(in: text) }
         let chars = Array(text.utf16)
         let count = chars.count
         var tokens: [CodeToken] = []
