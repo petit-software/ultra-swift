@@ -24,11 +24,14 @@ enum PreferenceBridge {
     /// Idempotent — every window calls it, one observer runs.
     static func start() {
         guard observer == nil else { return }
-        // Pinned NOW, before any window exists, not only when a preference changes. The
-        // pin used to be applied by the canvas as it configured its window, which meant a
-        // window with no canvas — a launch that restored no session, or a second instance
-        // — followed the system and opened light against a dark preference, and every
-        // sheet and popover it spawned came up light with it.
+        // Pinned again here, not only when a preference changes. The first pin is in
+        // `UltraApp.init`, before any window exists: this runs from the window's `onAppear`,
+        // which is too late to stop the window opening in the system's appearance and
+        // flipping. It stays because the pin used to be applied only by the canvas as it
+        // configured its window, which meant a window with no canvas — a launch that
+        // restored no session, or a second instance — followed the system and opened light
+        // against a dark preference, and every sheet and popover it spawned came up light
+        // with it; a guarded re-sync costs nothing and keeps that from coming back.
         syncAppAppearance()
         observer = NotificationCenter.default.addObserver(
             forName: Preferences.didChange, object: nil, queue: .main) { _ in

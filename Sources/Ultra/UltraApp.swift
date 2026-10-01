@@ -44,6 +44,12 @@ struct UltraApp: App {
         // An SPM executable has no bundle, so it needs to ask for a regular app's
         // activation policy. The Xcode app target (M8) will not need this.
         NSApplication.shared.setActivationPolicy(.regular)
+        // The appearance is pinned HERE, before SwiftUI makes the first window. It was
+        // pinned from the window content's `onAppear`, which runs after the window is on
+        // screen: the window came up in the system's appearance — light, on a light Mac —
+        // and flipped to the theme a frame later. A window inherits `NSApp.appearance` at
+        // creation, so set first it opens in the theme and never wears the other one.
+        PreferenceBridge.syncAppAppearance()
         // Native window tabs are off APP-WIDE, not just per window.
         //
         // `WindowChrome.configure` already sets `tabbingMode = .disallowed` on every window,
@@ -797,17 +803,10 @@ struct RootView: View {
             // the glyph on the window's own material, the way a pane header's controls sit
             // on the pane's.
             .toolbar {
-                // The palette on the LEADING side, beside the sidebar toggle. It is the way
-                // into everything, so it sits where navigation starts — with the sidebar,
-                // not with the verbs that act on the window's contents.
-                ToolbarItem(placement: .navigation) {
-                    Button { ui.isPaletteShown = true } label: {
-                        Label("Commands", systemImage: "command")
-                    }
-                    .help("Command Palette (⌘K)")
-                }
-                .sharedBackgroundVisibility(.hidden)
-
+                // The sidebar toggle is the system's, glass and all. It was replaced once
+                // with a bare item of our own in the same slot, and put back: the one
+                // glass control on the bar, where navigation starts, is the right one.
+                //
                 // An empty centre, standing where the system title used to. The title item
                 // is what split the toolbar into a leading and a trailing group; with it
                 // removed (the name is drawn in the middle of the header by
@@ -832,68 +831,111 @@ struct RootView: View {
                 // icon. What remains here acts on the canvas as a whole: adding to it, and
                 // the layout verbs behind the ellipsis.
                 //
-                // Two items with a fixed spacer between, not one group: a group packs its
-                // glyphs together, which made each narrower than the standalone sidebar
-                // and palette buttons on the left.
+                // ONE item, three controls, no spacers: as three toolbar items the glyphs
+                // sat a toolbar's own gap apart, which with the glass gone — no capsule
+                // for a group to share — left three bare glyphs strung out across the
+                // corner. In one item, in a stack of our own, the gap is ours to set, and
+                // packed they read as one cluster of controls, the way a pane header's do.
+                // Every glyph is `WindowBarGlyph` — one size, one weight — so none reads
+                // as lesser.
+                //
+                // The palette leads the row. It sat on the LEADING side beside the sidebar
+                // toggle, as the way into everything, next to where navigation starts; it
+                // was moved here so the left holds the sidebar's toggle alone and every
+                // control that acts on the window is in one place on the right.
                 ToolbarItem(placement: .primaryAction) {
-                    // Every pane kind, one click from the window itself. Buried in a menu
-                    // bar submenu they may as well not exist — this is where someone looks
-                    // for "another pane", and it is the only place the full list is
-                    // discoverable.
-                    Menu {
-                        Section("New Pane") {
-                            Button("Shell") {
-                                if let store { ShellWorkspace.openShell(in: store) }
-                            }
-                            ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
-                                Button(entry.title) {
-                                    if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                    HStack(spacing: 2) {
+                        Button { ui.isPaletteShown = true } label: {
+                            // The ⌘ is a big symbol — a closed loop with four lobes — and
+                            // at the row's size it dwarfed the plus and the ellipsis. The
+                            // small scale brings it down to their optical weight.
+                            WindowBarGlyph("Commands", symbol: "command", scale: .small)
+                        }
+                        .help("Command Palette (⌘K)")
+
+                        // Every pane kind, one click from the window itself. Buried in a
+                        // menu bar submenu they may as well not exist — this is where
+                        // someone looks for "another pane", and it is the only place the
+                        // full list is discoverable.
+                        Menu {
+                            Section("New Pane") {
+                                Button("Shell") {
+                                    if let store { ShellWorkspace.openShell(in: store) }
+                                }
+                                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
+                                    Button(entry.title) {
+                                        if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                                    }
                                 }
                             }
-                        }
-                        // Each agent by name, the way the File menu has them: "Agent" on
-                        // its own would open the default and leave the rest undiscoverable
-                        // from the one place a new user looks.
-                        Section("New Agent Pane") {
-                            ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
-                                Button(agent.name) {
-                                    if let store { ShellWorkspace.openShell(agent: agent, in: store) }
+                            // Each agent by name, the way the File menu has them: "Agent"
+                            // on its own would open the default and leave the rest
+                            // undiscoverable from the one place a new user looks.
+                            Section("New Agent Pane") {
+                                ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
+                                    Button(agent.name) {
+                                        if let store { ShellWorkspace.openShell(agent: agent, in: store) }
+                                    }
                                 }
                             }
+                            // Dimmed rather than silent: with the canvas full, every one
+                            // of these can only beep.
+                            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
+                        } label: {
+                            WindowBarGlyph("Add Pane", symbol: "plus")
                         }
-                        // Dimmed rather than silent: with the canvas full, every one of
-                        // these can only beep.
-                        .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
-                    } label: {
-                        Label("Add Pane", systemImage: "plus")
-                    }
-                    // A plus already says "this adds something"; the chevron beside it
-                    // said "and it is a menu", which a click answers just as well.
-                    .menuIndicator(.hidden)
-                    .help("New pane")
-                }
-                .sharedBackgroundVisibility(.hidden)
+                        // A plus already says "this adds something"; the chevron beside
+                        // it said "and it is a menu", which a click answers just as well.
+                        .menuIndicator(.hidden)
+                        .help("New pane")
 
-                ToolbarSpacer(.fixed, placement: .primaryAction)
-
-                ToolbarItem(placement: .primaryAction) {
-                    // The window's own verbs, the few that are neither a pane's nor worth
-                    // a button each. A VIEW of the registry: every item here is an
-                    // `AppCommand`, so it is on the Pane menu and in the palette too.
-                    Menu {
-                        ForEach(PaneCommands.layouts) { command in
-                            Button(command.title) { if let store { command.run(store) } }
-                                .disabled(store.map { !command.isEnabled($0) } ?? true)
+                        // The window's own verbs, the few that are neither a pane's nor
+                        // worth a button each. A VIEW of the registry: every item here is
+                        // an `AppCommand`, so it is on the Pane menu and in the palette too.
+                        Menu {
+                            ForEach(PaneCommands.layouts) { command in
+                                Button(command.title) { if let store { command.run(store) } }
+                                    .disabled(store.map { !command.isEnabled($0) } ?? true)
+                            }
+                        } label: {
+                            WindowBarGlyph("More", symbol: "ellipsis")
                         }
-                    } label: {
-                        Label("More", systemImage: "ellipsis")
+                        // The glyph IS the disclosure; a chevron beside it said "menu" twice.
+                        .menuIndicator(.hidden)
+                        .help("More")
                     }
-                    // The glyph IS the disclosure; a chevron beside it said "menu" twice.
-                    .menuIndicator(.hidden)
-                    .help("More")
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
+    }
+}
+
+/// A glyph in the window bar's trailing row: the same size, weight and width for every one.
+///
+/// The plus and the ellipsis are SMALL symbols — two strokes, three dots — and at the
+/// toolbar's own size they read as lighter, lesser controls beside the command glyph. A
+/// size up from a pane header's 15pt, semibold like every chrome glyph, in a fixed box so
+/// the three are evenly spaced whatever each symbol's own width is. `scale` is for the one
+/// symbol that is big at any size: the ⌘, drawn at the small scale so it weighs the same
+/// as its neighbours rather than looming over them.
+struct WindowBarGlyph: View {
+    let title: String
+    let symbol: String
+    var scale: Image.Scale = .medium
+
+    init(_ title: String, symbol: String, scale: Image.Scale = .medium) {
+        self.title = title
+        self.symbol = symbol
+        self.scale = scale
+    }
+
+    var body: some View {
+        Label(title, systemImage: symbol)
+            .font(.system(size: 17, weight: .semibold))
+            .imageScale(scale)
+            .labelStyle(.iconOnly)
+            .frame(width: 26, height: 26)
+            .contentShape(.rect)
     }
 }
 
