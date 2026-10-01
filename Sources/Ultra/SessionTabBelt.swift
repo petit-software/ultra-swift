@@ -24,10 +24,10 @@ struct SessionTabBelt: View {
     /// The folder picker, which lives in the app's command layer — the sidebar's Open asks
     /// for it the same way.
     let openFolder: () -> Void
-    /// What the selected tab's capsule is matched through, so selecting another tab MOVES
-    /// the capsule to it — one wash sliding along the belt — instead of one fading out
-    /// while another fades in.
-    @Namespace private var selection
+    /// What the selected tab's glass is matched through, so selecting another tab MOVES the
+    /// capsule to it — one piece of glass sliding along the belt — instead of one fading
+    /// out while another fades in.
+    @Namespace private var glass
 
     // MARK: Dragging
     //
@@ -88,13 +88,17 @@ struct SessionTabBelt: View {
         // sidebar was chosen for; here the tabs keep their names and the belt slides.
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
-                HStack(spacing: Self.spacing) {
-                    ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
-                        index, store in
-                        tab(store, at: index)
+                // The container is what lets the glass morph between tabs rather than being
+                // torn down on one and built again on the next.
+                GlassEffectContainer {
+                    HStack(spacing: Self.spacing) {
+                        ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
+                            index, store in
+                            tab(store, at: index)
+                        }
                     }
+                    .padding(.horizontal, Self.inset)
                 }
-                .padding(.horizontal, Self.inset)
                 .animation(Token.Motion.structuralRespectingPreferences, value: sessions.selectedID)
                 .frame(maxHeight: .infinity)
             }
@@ -127,7 +131,7 @@ struct SessionTabBelt: View {
                           ui: ui,
                           isSelected: sessions.selectedID == id,
                           canClose: sessions.canCloseSelected,
-                          selection: selection,
+                          glass: glass,
                           mode: mode(of: index, id: id),
                           select: { sessions.select(id) },
                           rename: { sessions.rename(id, to: $0) },
@@ -281,7 +285,7 @@ private struct SessionTab: View {
     @Bindable var ui: UIState
     let isSelected: Bool
     let canClose: Bool
-    let selection: Namespace.ID
+    let glass: Namespace.ID
     let mode: DragMode
     let select: () -> Void
     let rename: (String) -> Void
@@ -302,13 +306,13 @@ private struct SessionTab: View {
     @State private var appearance: SessionAppearance
 
     init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
-         selection: Namespace.ID, mode: DragMode, select: @escaping () -> Void,
+         glass: Namespace.ID, mode: DragMode, select: @escaping () -> Void,
          rename: @escaping (String) -> Void, close: @escaping () -> Void) {
         self.store = store
         self.ui = ui
         self.isSelected = isSelected
         self.canClose = canClose
-        self.selection = selection
+        self.glass = glass
         self.mode = mode
         self.select = select
         self.rename = rename
@@ -352,13 +356,9 @@ private struct SessionTab: View {
             // The dragged tab's place: the same size, nothing in it. The icon and name are
             // under the pointer; showing them here as well said the tab was in two places.
             .opacity(isPlaceholder ? 0 : 1)
-            // The selected tab sits in a capsule of the neutral selection wash — the one
-            // `PillTabs` and the sidebar use — and the rest sit bare on the window's
-            // material, with half that wash under the pointer. The capsule WAS glass: the
-            // belt is chrome, and glass is the chrome material. But the window bar it sits
-            // in is glass already, and the tab became a lens over a lens — a brighter blob
-            // in the header rather than a selected tab. Glass on glass, which docs/02 rules
-            // out; the wash says "selected" the way every other selection here does.
+            // The selected tab sits in a glass capsule; the rest sit on the window's
+            // material, with a faint wash under the pointer. The belt is chrome — the
+            // navigation layer — which is the one place glass belongs in this app.
             .background {
                 if isPlaceholder {
                     Capsule().fill(Token.Colour.label.opacity(0.1))
@@ -366,7 +366,7 @@ private struct SessionTab: View {
                     Capsule().fill(Token.Colour.selectionWash.opacity(0.5))
                 }
             }
-            .modifier(SelectedCapsule(isSelected: isSelected && !isPlaceholder, selection: selection))
+            .modifier(SelectedGlass(isSelected: isSelected && !isPlaceholder, glass: glass))
             .offset(x: baseOffset)
             .animation(Token.Motion.structuralRespectingPreferences, value: baseOffset)
             // The tab itself, following the pointer. After the animation, so it tracks the
@@ -436,7 +436,7 @@ private struct SessionTab: View {
             // session symbols, change the tab's height — and the belt shifted on hover.
             .frame(width: 16, height: 16)
 
-            // Semibold in BOTH states. Selection is carried by the capsule and the label
+            // Semibold in BOTH states. Selection is carried by the glass capsule and the label
             // colour; a weight change as well made the selected tab wider than it was a
             // moment ago, and every tab after it slid along the belt on each switch.
             Text(store.workspaceTitle)
@@ -453,21 +453,22 @@ private struct SessionTab: View {
     }
 }
 
-/// The selected tab's capsule: the neutral wash `PillTabs` uses, matched by id so it
-/// slides from tab to tab when the selection moves rather than one capsule fading out
-/// while another fades in. The same under Reduce Transparency — a wash is not a material,
-/// so there is nothing to fall back from.
-private struct SelectedCapsule: ViewModifier {
+/// The selected tab's capsule. Glass with an id, so it morphs from tab to tab inside the
+/// belt's `GlassEffectContainer`; under Reduce Transparency, the neutral wash `PillTabs`
+/// uses, which says "selected" without a material.
+private struct SelectedGlass: ViewModifier {
     let isSelected: Bool
-    let selection: Namespace.ID
+    let glass: Namespace.ID
 
     func body(content: Content) -> some View {
-        content.background {
-            if isSelected {
-                Capsule()
-                    .fill(Token.Colour.selectionWash)
-                    .matchedGeometryEffect(id: "selected", in: selection)
-            }
+        if !isSelected {
+            content
+        } else if Token.Environment_.reduceTransparency {
+            content.background(Token.Colour.selectionWash, in: .capsule)
+        } else {
+            content
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .glassEffectID("selected", in: glass)
         }
     }
 }

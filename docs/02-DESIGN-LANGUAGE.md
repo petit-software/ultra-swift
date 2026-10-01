@@ -19,6 +19,7 @@ The whole window is one material. There is no opaque layer anywhere in it.
 | Tile headers | **No fill.** A label floating on the pane's own glass |
 | Gutters between panes | Clear — you see through the window between the tiles |
 | Window bar, palette, drop indicator | Glass |
+| Window bar buttons | **No capsule.** macOS 26 wraps each toolbar item in glass; every item here hides it (`sharedBackgroundVisibility(.hidden)`), so the glyph sits on the bar's own glass — a capsule on it was glass on glass |
 
 **Why there is no window-level material.** A `NSVisualEffectView` behind the panes seems
 harmless and is not: the panes' glass then samples *it* instead of the desktop, and the

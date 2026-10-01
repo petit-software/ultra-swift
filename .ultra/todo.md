@@ -25,19 +25,18 @@
 - [x] opening new projects keeps pane from previous project open
   - [x] Storage: one document per project — `load(directory:)` takes the newest, `retireDuplicates` parks the rest in `workspaces/stale/`
   - [x] New window: opens the first start project that is not open already, restored; a twin of an open project is not saved
-- [x] context I want cotext to show added files nicer, i wand to see file name extension size a preview if possible, encapsulated.
-  - [x] Context: `Item` carries bytes and, for a folder, its file count, measured in the one walk the token estimate already makes
-  - [x] Context: one rounded, bordered card per item — a QuickLook thumbnail (the file's icon until it arrives), the name, and a caption with the extension badge, size and ~tokens
-  - [x] Context: tests for the measurements and captions; docs
-- [x] can you remove glass from button in the top header.
-  - [x] Belt: the selected session tab is a capsule of the selection wash, sliding between tabs, rather than glass on the window bar's glass
-
 - [x] clicking on the file from file tree, double click should open finder, single clikc should open editor.
   - [x] File tree: a click on a file opens it in the editor; the second click of a double reveals it in Finder; send-to-shell stays on the hover pill and the context menu; docs
 - [x] inside chat pane when zsh returns a result to copy and type to prompt symbols should be show inside the glass capsue as when hovering on files make sure capsule is centered. Also chat make sure returned output is without a bold when it's not needed. lists are always styled when returns multiple things as bullet points.
   - [x] Chat: a code block's Copy and Type-at-the-prompt float over its header on the glass hover pill, centred on the row
   - [x] Chat: `MarkdownBlocks` cuts out headings and lists as well as fences; a list is drawn with bullets or numbers in a column, nesting stepped in; tests
   - [x] Chat: the prompt asks for plain prose — no headings, nothing bold — and a bulleted list for several things; docs
+- [x] context I want cotext to show added files nicer, i wand to see file name extension size a preview if possible, encapsulated.
+  - [x] Context: `Item` carries bytes and, for a folder, its file count, measured in the one walk the token estimate already makes
+  - [x] Context: one rounded, bordered card per item — a QuickLook thumbnail (the file's icon until it arrives), the name, and a caption with the extension badge, size and ~tokens
+  - [x] Context: tests for the measurements and captions; docs
+- [x] can you remove glass from button in the top header.
+  - [x] Window bar: the palette, Add Pane and More toolbar items hide macOS 26's shared glass background, so they are glyphs on the bar rather than capsules on its glass; the belt's selected tab keeps its glass, which was the wrong control to change
 
 ## Simulator previews in Pane
 - [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls

@@ -785,9 +785,17 @@ struct RootView: View {
             } message: {
                 Text("Its shells and agents stop. The project folder is not touched.")
             }
-            // In the real toolbar rather than drawn into the titlebar ourselves: on macOS 26
-            // a toolbar item gets the standard Liquid Glass treatment automatically, which
-            // is the same glass Finder's toolbar buttons wear. Nothing to style by hand.
+            // In the real toolbar rather than drawn into the titlebar ourselves: the
+            // sidebar toggle, the layout of the strip and its behaviour in full screen are
+            // all things macOS already does.
+            //
+            // WITHOUT the glass capsule macOS 26 puts round each item, though. The window
+            // bar is glass already — the whole window is one surface of it — and a glass
+            // button on it was a lens over a lens: a brighter blob at each end of the
+            // header rather than a glyph on the bar, and glass on glass is the one thing
+            // docs/02 rules out. Each item hides the shared background, so what is left is
+            // the glyph on the window's own material, the way a pane header's controls sit
+            // on the pane's.
             .toolbar {
                 // The palette on the LEADING side, beside the sidebar toggle. It is the way
                 // into everything, so it sits where navigation starts — with the sidebar,
@@ -798,6 +806,7 @@ struct RootView: View {
                     }
                     .help("Command Palette (⌘K)")
                 }
+                .sharedBackgroundVisibility(.hidden)
 
                 // An empty centre, standing where the system title used to. The title item
                 // is what split the toolbar into a leading and a trailing group; with it
@@ -823,9 +832,9 @@ struct RootView: View {
                 // icon. What remains here acts on the canvas as a whole: adding to it, and
                 // the layout verbs behind the ellipsis.
                 //
-                // Two items with a fixed spacer between, not one group: a group shares one
-                // glass capsule, which made each glyph narrower than the standalone
-                // sidebar and palette buttons on the left.
+                // Two items with a fixed spacer between, not one group: a group packs its
+                // glyphs together, which made each narrower than the standalone sidebar
+                // and palette buttons on the left.
                 ToolbarItem(placement: .primaryAction) {
                     // Every pane kind, one click from the window itself. Buried in a menu
                     // bar submenu they may as well not exist — this is where someone looks
@@ -863,6 +872,7 @@ struct RootView: View {
                     .menuIndicator(.hidden)
                     .help("New pane")
                 }
+                .sharedBackgroundVisibility(.hidden)
 
                 ToolbarSpacer(.fixed, placement: .primaryAction)
 
@@ -882,6 +892,7 @@ struct RootView: View {
                     .menuIndicator(.hidden)
                     .help("More")
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
     }
 }
