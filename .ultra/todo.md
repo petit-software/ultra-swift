@@ -29,6 +29,9 @@
   - [x] Context: `Item` carries bytes and, for a folder, its file count, measured in the one walk the token estimate already makes
   - [x] Context: one rounded, bordered card per item — a QuickLook thumbnail (the file's icon until it arrives), the name, and a caption with the extension badge, size and ~tokens
   - [x] Context: tests for the measurements and captions; docs
+- [x] can you remove glass from button in the top header.
+  - [x] Belt: the selected session tab is a capsule of the selection wash, sliding between tabs, rather than glass on the window bar's glass
+
 - [x] clicking on the file from file tree, double click should open finder, single clikc should open editor.
   - [x] File tree: a click on a file opens it in the editor; the second click of a double reveals it in Finder; send-to-shell stays on the hover pill and the context menu; docs
 
