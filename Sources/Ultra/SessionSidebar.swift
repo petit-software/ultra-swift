@@ -227,10 +227,13 @@ enum ProjectControlSize {
     /// touching, beside a row of things each twice their height.
     case belt
 
+    /// The belt's is 17: two points over a header's, and two under the 19 it was, which
+    /// had the pair outweighing the tabs' own icons. The box is unchanged, so the press
+    /// area is as easy to hit as it was.
     var glyph: CGFloat {
         switch self {
         case .bar: ChromeIconLabel.size
-        case .belt: 19
+        case .belt: 17
         }
     }
 
