@@ -8,7 +8,8 @@ import Foundation
 /// later one resumes it, so the history is never sent twice. It has its own tools and may
 /// change the project with them: edits are accepted without asking, since nobody is at
 /// the prompt to ask; a command is allowed by the user's own Claude Code rules or not at
-/// all. The pane shows each edit and command as a row above the answer.
+/// all. Searching the web and reading a page are allowed outright (`webTools`). The pane
+/// shows each edit and command as a row above the answer.
 public struct ClaudeCodeProvider: ChatProvider {
     public let id = ChatProviderID.claudeCode
     let executable: URL?
@@ -16,6 +17,12 @@ public struct ClaudeCodeProvider: ChatProvider {
     public init(executable: URL? = ChatEngine.claudeCode.executable) {
         self.executable = executable
     }
+
+    /// The web tools, allowed by name. `acceptEdits` covers edits and nothing else, so both
+    /// asked for a permission nobody was at a prompt to give and were refused — a chat
+    /// that could change the project's files and could not look up a function's
+    /// documentation. They read; what a chat may RUN is still the user's own rules.
+    public static let webTools = ["WebSearch", "WebFetch"]
 
     /// The command line, in the shape the headless mode documents. Public so a test can
     /// read it. The prompt goes on stdin, so no flag can swallow it.
@@ -29,6 +36,9 @@ public struct ClaudeCodeProvider: ChatProvider {
             // for the same reason; a command follows the user's own permission rules.
             "--strict-mcp-config", "--no-chrome",
             "--permission-mode", "acceptEdits",
+            // One argument, comma-separated: the flag takes a list, and a list left open
+            // would take whatever came after it.
+            "--allowedTools", webTools.joined(separator: ","),
         ]
         if model != ChatEngine.defaultModel { arguments += ["--model", model] }
         if let system, !system.isEmpty { arguments += ["--append-system-prompt", system] }

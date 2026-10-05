@@ -156,6 +156,10 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
             return "Find \(call.string("pattern") ?? "")"
         case "Grep":
             return "Search for “\(call.string("pattern") ?? "")”"
+        case "WebSearch":
+            return "Search the web for “\(call.string("query") ?? "")”"
+        case "WebFetch":
+            return "Fetch \(call.string("url") ?? "")"
         case "command", "Bash":
             return "Run \(call.string("command") ?? "")"
         case "Edit", "MultiEdit", "NotebookEdit":

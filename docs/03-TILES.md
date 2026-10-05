@@ -385,7 +385,9 @@ APIs. Every provider is tested against a recorded transcript.
   holds a token, and sign-in is the engine's own; Xcode and Notepad.exe reach the plans the
   same way. `ClaudeCodeProvider` runs one `claude -p` per turn, speaking stream-json, with
   its own tools and edits accepted without a prompt (`acceptEdits`: nobody is at a prompt
-  to answer one; a command follows the user's own Claude Code rules); `CodexProvider`
+  to answer one; a command follows the user's own Claude Code rules), and with WebSearch
+  and WebFetch allowed by name (`--allowedTools`), since `acceptEdits` covers edits only
+  and both were otherwise refused for want of a permission nobody could give; `CodexProvider`
   talks JSON-RPC to one `codex app-server` kept for the whole app (`CodexEngine`), sandbox
   `workspace-write`, approvals off. So, unlike the API providers with our read-only tools,
   a chat on an engine CAN change the project — it is the agent the user would run in the

@@ -25,6 +25,10 @@ struct EngineTests {
         let mode = fresh.firstIndex(of: "--permission-mode")!
         #expect(fresh[mode + 1] == "acceptEdits")
         #expect(!fresh.contains("--dangerously-skip-permissions"))
+        // The web is allowed by name, as ONE argument, so the list cannot swallow a flag.
+        let allowed = fresh.firstIndex(of: "--allowedTools")!
+        #expect(fresh[allowed + 1] == "WebSearch,WebFetch")
+        #expect(fresh[allowed + 2].hasPrefix("--"))
         #expect(fresh.contains("--strict-mcp-config"))
         // The engine's default model is not named; a chosen one is.
         #expect(!fresh.contains("--model"))
@@ -312,6 +316,10 @@ struct EngineTests {
                 == "Edit Sources/A.swift")
         #expect(ChatEngine.summary(of: ChatToolCall(id: "4", name: "Bash", arguments: #"{"command":"swift build"}"#))
                 == "Run swift build")
+        #expect(ChatEngine.summary(of: ChatToolCall(id: "6", name: "WebSearch", arguments: #"{"query":"Swift 6.2 release"}"#))
+                == "Search the web for “Swift 6.2 release”")
+        #expect(ChatEngine.summary(of: ChatToolCall(id: "7", name: "WebFetch", arguments: #"{"url":"https://swift.org/blog","prompt":"What changed?"}"#))
+                == "Fetch https://swift.org/blog")
         #expect(ChatEngine.summary(of: ChatToolCall(id: "5", name: "something_else", arguments: "{}")) == nil)
     }
 
