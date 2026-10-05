@@ -153,6 +153,7 @@ A `DividerRef` is `(containerID, index)` — the boundary between children `inde
 ```swift
 mutating func equalize(container: NodeID)      // ⌘= or double-click a divider
 mutating func equalizeAll()
+mutating func equalize(axis: Axis)             // .horizontal is "equal column widths"; rows keep their heights
 mutating func toggleZoom(_ paneID: PaneID)     // sets tree.zoomed; the tree is untouched
 mutating func swap(_ a: PaneID, _ b: PaneID)
 mutating func move(_ paneID: PaneID, toEdgeOf target: PaneID, edge: Edge)  // close + split, atomically
@@ -455,6 +456,7 @@ discoverable, remappable by the system, and reachable from the Help menu search.
 | `⌃⌘ ← → ↑ ↓` | Resize focused pane's nearest divider by 16pt (`⇧` → 1pt) |
 | `⇧⌘↩` | Toggle zoom on the focused pane |
 | `⌘=` | Equalize the focused pane's container (`⌥⌘=` equalizes everything) |
+| — | Equalize Column Widths: every row of side-by-side panes shared out evenly, heights untouched. No chord: the Pane menu, the window bar's ellipsis (first item) and the palette |
 | `⌘1`…`⌘9` | Focus pane N in visual order |
 | `⌃⇧` + drag | Rearrange without grabbing the header |
 

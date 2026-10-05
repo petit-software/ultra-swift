@@ -281,6 +281,59 @@ struct StructuralTests {
         let after = tree.root.asContainer!.children[1].asContainer!
         #expect(after.fractions.allSatisfy { abs($0 - 0.5) < 1e-9 })
     }
+
+    @Test("equal column widths: three across a third each, four a quarter")
+    func equalizeColumns() {
+        var tree = LayoutTree.fixture(.threeAcross)
+        var row = tree.root.asContainer!
+        row.fractions = [0.6, 0.3, 0.1]
+        tree.root = .container(row)
+        let did = tree.equalize(axis: .horizontal)
+        #expect(did)
+        #expect(tree.root.asContainer!.fractions.allSatisfy { abs($0 - 1.0 / 3) < 1e-9 })
+
+        tree.split(pane(3), edge: .right, newPane: pane(4))
+        let didAgain = tree.equalize(axis: .horizontal)
+        #expect(didAgain)
+        #expect(tree.root.asContainer!.fractions.allSatisfy { abs($0 - 0.25) < 1e-9 })
+        #expect(tree.validate().isEmpty)
+    }
+
+    @Test("equal column widths leaves the heights of stacked panes as they were")
+    func equalizeColumnsKeepsRows() {
+        var tree = LayoutTree.fixture(.sidebarMain)   // row [0.25, 0.75], column [0.7, 0.3]
+        let did = tree.equalize(axis: .horizontal)
+        #expect(did)
+        #expect(tree.root.asContainer!.fractions == [0.5, 0.5])
+        #expect(tree.root.asContainer!.children[1].asContainer!.fractions == [0.7, 0.3])
+    }
+
+    @Test("equal column widths reaches the rows nested inside a column")
+    func equalizeColumnsNested() {
+        var tree = LayoutTree.fixture(.deepNest)   // row [0.3, 0.7] ▸ column ▸ row [0.4, 0.6]
+        let did = tree.equalize(axis: .horizontal)
+        #expect(did)
+        let outer = tree.root.asContainer!
+        let stack = outer.children[1].asContainer!
+        #expect(outer.fractions == [0.5, 0.5])
+        #expect(stack.fractions == [0.35, 0.65])
+        #expect(stack.children[1].asContainer!.fractions == [0.5, 0.5])
+    }
+
+    @Test("a canvas with no side-by-side panes has no columns to equalize")
+    func equalizeColumnsNothingToDo() {
+        var single = LayoutTree.fixture(.single)
+        #expect(!single.hasContainer(along: .horizontal))
+        let didSingle = single.equalize(axis: .horizontal)
+        #expect(!didSingle)
+
+        var stacked = LayoutTree(single: pane(1))
+        stacked.split(pane(1), edge: .bottom, newPane: pane(2))
+        #expect(!stacked.hasContainer(along: .horizontal))
+        let didStacked = stacked.equalize(axis: .horizontal)
+        #expect(!didStacked)
+        #expect(LayoutTree.fixture(.grid2x2).hasContainer(along: .horizontal))
+    }
 }
 
 @Suite("Codable")

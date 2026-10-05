@@ -216,6 +216,41 @@ extension LayoutTree {
         root = walk(root)
     }
 
+    /// Give the children of every container along `axis` the same fraction, and leave the
+    /// containers across it alone.
+    ///
+    /// `.horizontal` is "equal column widths": three panes side by side come out a third
+    /// each and four a quarter, while the heights of anything stacked inside a column stay
+    /// as they were set. `equalizeAll` cannot do that — it resets both directions, so
+    /// evening out the columns cost a carefully sized row.
+    ///
+    /// False when the tree has no container along that axis, which is what a command dims on.
+    @discardableResult
+    public mutating func equalize(axis: Axis) -> Bool {
+        var found = false
+        func walk(_ node: LayoutNode) -> LayoutNode {
+            guard var c = node.asContainer else { return node }
+            c.children = c.children.map(walk)
+            if c.axis == axis {
+                found = true
+                c.fractions = Array(repeating: 1.0 / Double(c.children.count),
+                                    count: c.children.count)
+            }
+            return .container(c)
+        }
+        root = walk(root)
+        return found
+    }
+
+    /// Whether any container arranges its children along `axis`.
+    public func hasContainer(along axis: Axis) -> Bool {
+        func walk(_ node: LayoutNode) -> Bool {
+            guard let c = node.asContainer else { return false }
+            return c.axis == axis || c.children.contains(where: walk)
+        }
+        return walk(root)
+    }
+
     /// Non-destructive maximize: sets a field the layout function reads. Un-zooming
     /// restores the exact previous geometry because that geometry was never modified.
     public mutating func toggleZoom(_ paneID: PaneID) {

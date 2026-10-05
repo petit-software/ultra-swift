@@ -892,11 +892,14 @@ struct RootView: View {
                         // The window's own verbs, the few that are neither a pane's nor
                         // worth a button each. A VIEW of the registry: every item here is
                         // an `AppCommand`, so it is on the Pane menu and in the palette too.
+                        //
+                        // Equal column widths leads, set apart from the rest: it is the
+                        // one here that only moves dividers, and the three under it save
+                        // or replace the whole arrangement.
                         Menu {
-                            ForEach(PaneCommands.layouts) { command in
-                                Button(command.title) { if let store { command.run(store) } }
-                                    .disabled(store.map { !command.isEnabled($0) } ?? true)
-                            }
+                            windowBarItem(PaneCommands.equalizeColumns)
+                            Divider()
+                            ForEach(PaneCommands.layouts) { windowBarItem($0) }
                         } label: {
                             WindowBarGlyph("More", symbol: "ellipsis")
                         }
@@ -940,6 +943,12 @@ struct WindowBarGlyph: View {
 }
 
 extension RootView {
+    /// One registry command as a row of a window bar menu: dimmed when it cannot run.
+    private func windowBarItem(_ command: AppCommand) -> some View {
+        Button(command.title) { if let store { command.run(store) } }
+            .disabled(store.map { !command.isEnabled($0) } ?? true)
+    }
+
     /// Whether the close question is up. Setting it false — Escape, or either button —
     /// forgets the session it was about.
     private var isConfirmingClose: Binding<Bool> {

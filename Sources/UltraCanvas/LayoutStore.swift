@@ -341,6 +341,12 @@ public final class LayoutStore {
         apply("Equalize All Panes") { $0.equalizeAll(); return true }
     }
 
+    /// Every row of side-by-side panes shared out evenly — three columns a third each —
+    /// with the heights of stacked panes left as they are. See `LayoutTree.equalize(axis:)`.
+    public func equalizeColumns() {
+        apply("Equalize Column Widths") { $0.equalize(axis: .horizontal) }
+    }
+
     public func move(_ paneID: PaneID, toEdgeOf target: PaneID, edge: Edge) {
         apply("Move Pane") { $0.move(paneID, toEdgeOf: target, edge: edge) }
     }

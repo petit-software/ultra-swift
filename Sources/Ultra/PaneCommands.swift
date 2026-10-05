@@ -358,6 +358,17 @@ enum PaneCommands {
         }
     }
 
+    /// Side-by-side panes shared out evenly: three columns a third each, four a quarter.
+    ///
+    /// Named, not just a row in `others`, because the window bar's ellipsis menu leads with
+    /// it. Widths only — the heights of panes stacked inside a column are left alone, which
+    /// is what tells it apart from Equalize All Panes. No chord: ⌘= and ⌥⌘= are its two
+    /// siblings, and ⇧⌘= is ⌘+, which a terminal user reads as "bigger text".
+    static let equalizeColumns = AppCommand(
+        id: "pane.equalizeColumns", title: "Equalize Column Widths",
+        symbol: "rectangle.split.3x1", menuPath: ["Pane"],
+        isEnabled: { $0.tree.hasContainer(along: .horizontal) }) { $0.equalizeColumns() }
+
     static let others: [AppCommand] = [
         // Enabled even on the LAST pane, where it closes the window instead.
         //
@@ -394,6 +405,7 @@ enum PaneCommands {
                    menuPath: ["Pane"],
                    binding: KeyBinding("=", [.command, .option]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeAll() },
+        equalizeColumns,
     ]
 
     /// No default binding may shadow a key the shell owns. Checked at launch in debug
