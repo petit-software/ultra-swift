@@ -21,6 +21,9 @@ public enum Token {
         /// Now a setting — see `Appearance.paneGutter`. The default is 8.
         public static var gutter: CGFloat { Appearance.paneGutter }
         public static let dividerLine: CGFloat = 1
+        /// A line that only has to be there: one device pixel on a Retina display. For
+        /// where content meets a tile's own chrome and a full point would be a border.
+        public static let hairline: CGFloat = 0.5
         public static let dividerHit: CGFloat = 16
         public static let tileHeaderHeight: CGFloat = 36
         public static var focusRingWidth: CGFloat { Appearance.focusRingWidth }

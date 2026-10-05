@@ -455,6 +455,33 @@ enum ShellWorkspace {
         return Registry.tiles[store.workspaceID]?.browserSession(for: target)
     }
 
+    /// The tabs a Browser command should act on: those of the pane a URL would open in.
+    static func browserTabs(in store: LayoutStore) -> BrowserTabs? {
+        guard let target = Registry.browserTarget(in: store.workspaceID) else { return nil }
+        return Registry.tiles[store.workspaceID]?.browserTabs(for: target)
+    }
+
+    /// Do something to that pane's tabs, and go there: a tab that changes in a pane you
+    /// are not in is a change you have to go and find. False when there is no browser.
+    @discardableResult
+    static func withBrowserTabs(in store: LayoutStore, _ change: (BrowserTabs) -> Void) -> Bool {
+        guard let target = Registry.browserTarget(in: store.workspaceID),
+              let tabs = Registry.tiles[store.workspaceID]?.browserTabs(for: target) else {
+            return false
+        }
+        store.focus(target)
+        change(tabs)
+        return true
+    }
+
+    /// New Browser Tab: an empty tab in the browser that is already open, with the caret
+    /// in its address field — and, like Open Location, a new browser pane when there is
+    /// none, which starts as one empty tab anyway.
+    static func newBrowserTab(in store: LayoutStore) {
+        if withBrowserTabs(in: store, { $0.newTab() }) { return }
+        openTile(.browser, in: store)
+    }
+
     /// Open Location: the caret in a browser pane's address field. The browser that is
     /// already open when there is one — focused, so the typing lands where it is seen —
     /// and a new, empty one otherwise, which starts with its caret in the field anyway.

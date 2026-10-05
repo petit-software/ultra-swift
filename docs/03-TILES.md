@@ -440,27 +440,39 @@ APIs. Every provider is tested against a recorded transcript.
 
 ## 8. Browser
 
-One web page in a pane, for what a developer keeps beside a shell: the dev server, the docs,
-the PR. Not a browser app. There is no search, no tabs and no bookmarks, and a second page
-goes in a second pane.
+Web pages in a pane, for what a developer keeps beside a shell: the dev server, the docs,
+the PR. Not a browser app: there is no search and there are no bookmarks. There are tabs —
+a pane was one page for a while, and reading documentation that way meant a pane for every
+link worth keeping open.
 
 - The address field takes a URL or something close to one (`BrowserAddress`, pure and
   tested). A local address gets HTTP (`localhost:3000`, `127.0.0.1`, `*.local`, the private
   LAN ranges) because a dev server rarely speaks TLS. Anything else that looks like a host
   gets HTTPS, and a path is a file. Text that is not an address is refused, not searched
   for: in a terminal app it is as likely to be a path or a secret as a query.
-- The page lives in a `BrowserSession`, owned by the tile factory like an editor's tabs.
-  A rebuilt pane gets the same `WKWebView` back, scrolled where it was, instead of a reload.
-  The web view is made the first time the pane is shown, not when a workspace is restored.
-- The record keeps the URL in `command`, the page title as the pane's title and the host
-  as its subtitle, so a restored workspace reopens the page.
+- A page lives in a `BrowserSession`, and a pane's row of them in `BrowserTabs`, owned by
+  the tile factory like an editor's tabs. A rebuilt pane gets the same `WKWebView`s back,
+  scrolled where they were, instead of a reload. A web view is made the first time its tab
+  is shown, not when a workspace is restored, so a restored tab nobody looks at costs nothing.
+- Tabs: the plus in the footer, or Pane ▸ Browser ▸ New Browser Tab (⌃⌘T), opens an empty
+  one with the caret in its address field. The strip (`TileTabStrip`, the editor's) appears
+  above the address field with the second tab and goes with it. Next and Previous Browser
+  Tab are ⌃⌘] and ⌃⌘[; Close Browser Tab is the tab's X, its context menu and the palette,
+  with no chord of its own — ⌘W closes the pane. The last tab cannot be closed.
+  `target="_blank"` and `window.open` open a tab.
+- The record keeps the showing tab's URL in `command`, its page title as the pane's title
+  and its host as the subtitle, so a restored workspace reopens the page. The other tabs,
+  their order and which was showing ride in `tileState` (`BrowserPaneState`), and only when
+  there is more than one: a pane that never had a second tab saves what it always did.
+- A hairline (`Token.Space.hairline`, half a point) runs under the address field and
+  another over the footer, so a white page in a dark pane has edges of its own.
 - Everything goes in the shared, persistent website data store, so a dev server login
   survives a relaunch. Right-click ▸ Inspect Element works (`isInspectable`), and so does
   the wrench in the footer (⌥⌘I), through WebKit's private `_inspector` since there is no
   public call. Empty Caches (the circular arrows) removes the disk, memory and fetch caches
   and reloads from the network. Cookies, local storage and IndexedDB stay, so logins survive.
-- Each pane can show its page light or dark: the moon in the footer, or Pane ▸ Browser ▸
-  Toggle Dark Page (⌃⌘L). The mode is the PANE's, not only the page's: it is saved as
+- Each pane can show its pages light or dark: the moon in the footer, or Pane ▸ Browser ▸
+  Toggle Dark Page (⌃⌘L). The mode is the PANE's — every tab's — not only the page's: it is saved as
   `PaneRecord.appearance`, which the canvas reads to paint the pane's surface, header and
   glass light or dark, so a white page does not sit in a dark pane like a hole. A light pane
   is solid white rather than light glass, which a dark window tints grey. Any pane can
@@ -468,14 +480,15 @@ goes in a second pane.
   the web view's appearance dark, so a page with its own dark theme (`prefers-color-scheme`)
   uses it. A page without one, which is most dev servers, is inverted by an injected style,
   with its images and video inverted back. Light pins the page light, whatever the app is.
-- `target="_blank"` and `window.open` load in the same pane: a pane has no second window.
 - A failed load shows in the pane's toast, with the dev-server case put in words: "Nothing is
   answering at localhost:5173 — is the server running?" and a Retry.
 - `NSAllowsArbitraryLoadsInWebContent` is set, so plain-HTTP servers on the LAN load. No
   entitlement is needed: WebContent runs in WebKit's own processes.
-- Commands: Pane ▸ Browser ▸ Open Location (⌘L), Reload Page (⌘R), Back (⌘[), Forward (⌘]),
-  Show Web Inspector (⌥⌘I), Empty Caches, Open in Default Browser. They act on the focused browser pane, or the first one in the
-  layout. Open Location opens a browser pane when there is none. File ▸ New Tile Pane ▸
+- Commands: Pane ▸ Browser ▸ Open Location (⌘L), New Browser Tab (⌃⌘T), Next and Previous
+  Browser Tab (⌃⌘] and ⌃⌘[), Close Browser Tab, Reload Page (⌘R), Back (⌘[), Forward (⌘]),
+  Show Web Inspector (⌥⌘I), Empty Caches, Open in Default Browser. They act on the focused
+  browser pane, or the first one in the layout, and on the tab it is showing. Open Location
+  and New Browser Tab open a browser pane when there is none. File ▸ New Tile Pane ▸
   Browser is ⌥⌘B. In the address field, Return loads the page and gives it the keyboard,
   and Escape puts the address back.
 - The agent's `browse` verb — `{"verb":"browse","url":"localhost:3000"}` on the control

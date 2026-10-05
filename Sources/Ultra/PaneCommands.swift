@@ -46,9 +46,10 @@ enum PaneCommands {
     /// A browser pane's verbs, with the keys every browser on the Mac uses for them.
     ///
     /// All on ⌘, which a terminal never sees — so they are safe beside a shell — and each
-    /// acts on the browser a URL would open in (the focused one, else the first), dimming
-    /// when there is none. Except Open Location, which opens a browser when there is none:
-    /// ⌘L is how a page is asked for, and asking should not need a pane made first.
+    /// acts on the browser a URL would open in (the focused one, else the first) and on the
+    /// tab that pane is showing, dimming when there is none. Except Open Location and New
+    /// Browser Tab, which open a browser when there is none: ⌘L is how a page is asked for,
+    /// and asking should not need a pane made first.
     static let browser: [AppCommand] = [
         AppCommand(id: "browser.openLocation", title: "Open Location", symbol: "globe",
                    menuPath: ["Pane", "Browser"],
@@ -56,6 +57,37 @@ enum PaneCommands {
                    isEnabled: { ShellWorkspace.browserSession(in: $0) != nil
                                 || ShellWorkspace.canOpen(.browser, in: $0) }) { store in
             ShellWorkspace.openLocation(in: store)
+        },
+        // ⌃⌘T. ⌘T is New Session and ⌥⌘T a shell pane, so the browser's own "another
+        // one of these" takes the third T — beside ⌃⌘N, the editor's new file.
+        AppCommand(id: "browser.newTab", title: "New Browser Tab", symbol: "plus.square.on.square",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("t", [.command, .control]),
+                   isEnabled: { ShellWorkspace.browserTabs(in: $0) != nil
+                                || ShellWorkspace.canOpen(.browser, in: $0) }) { store in
+            ShellWorkspace.newBrowserTab(in: store)
+        },
+        // ⌃⌘] and ⌃⌘[: the brackets are how every row in this app is walked — ⌘ for a
+        // page's history, ⇧⌘ for the editor's tabs, ⌥⌘ for sessions — and ⌃⌘ was free.
+        AppCommand(id: "browser.nextTab", title: "Next Browser Tab", symbol: "arrow.right.square",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("]", [.command, .control]),
+                   isEnabled: { ShellWorkspace.browserTabs(in: $0)?.canClose ?? false }) { store in
+            ShellWorkspace.withBrowserTabs(in: store) { $0.selectNext() }
+        },
+        AppCommand(id: "browser.previousTab", title: "Previous Browser Tab", symbol: "arrow.left.square",
+                   menuPath: ["Pane", "Browser"],
+                   binding: KeyBinding("[", [.command, .control]),
+                   isEnabled: { ShellWorkspace.browserTabs(in: $0)?.canClose ?? false }) { store in
+            ShellWorkspace.withBrowserTabs(in: store) { $0.selectPrevious() }
+        },
+        // No chord. ⌘W closes the PANE and must go on meaning that; ⌃⌘W is the editor's
+        // Close and ⇧⌃⌘W closes a session. The tab's own X, its context menu and the
+        // palette are where this is. Dimmed on the last tab, which cannot be closed.
+        AppCommand(id: "browser.closeTab", title: "Close Browser Tab", symbol: "xmark.square",
+                   menuPath: ["Pane", "Browser"],
+                   isEnabled: { ShellWorkspace.browserTabs(in: $0)?.canClose ?? false }) { store in
+            ShellWorkspace.withBrowserTabs(in: store) { $0.closeSelected() }
         },
         AppCommand(id: "browser.reload", title: "Reload Page", symbol: "arrow.clockwise",
                    menuPath: ["Pane", "Browser"],

@@ -74,12 +74,16 @@ public final class TileFactory {
     /// Which panes are todo lists, so the app can find one for a command.
     public func todoPanes() -> Set<PaneID> { Set(todos.keys) }
 
-    /// Each browser pane's page, held here for the same reason: a pane rebuilt for any
+    /// Each browser pane's pages, held here for the same reason: a pane rebuilt for any
     /// reason must not reload what it was showing.
-    private var browsers: [PaneID: BrowserSession] = [:]
+    private var browsers: [PaneID: BrowserTabs] = [:]
 
-    /// This pane's page, or nil for a pane that is not a browser.
-    public func browserSession(for paneID: PaneID) -> BrowserSession? { browsers[paneID] }
+    /// This pane's tabs, or nil for a pane that is not a browser.
+    public func browserTabs(for paneID: PaneID) -> BrowserTabs? { browsers[paneID] }
+
+    /// The page this pane is SHOWING — its selected tab — or nil for a pane that is not a
+    /// browser. What a browser command acts on.
+    public func browserSession(for paneID: PaneID) -> BrowserSession? { browsers[paneID]?.selected }
 
     /// Which panes are browsers, so the app can find one to send a URL to.
     public func browserPanes() -> Set<PaneID> { Set(browsers.keys) }
@@ -192,22 +196,17 @@ public final class TileFactory {
             records[paneID] = record
             return (view, record)
         case .browser:
-            // A staged URL wins; a restored pane reopens the page it was on.
-            let restored = records[paneID]?.command.flatMap(URL.init(string:))
-            let session = browsers[paneID] ?? BrowserSession(
-                url: pendingBrowse ?? restored,
-                isDark: records[paneID]?.appearance == .dark)
+            // A staged URL wins; a restored pane reopens the pages it was on.
+            let tabs = browsers[paneID] ?? Self.browserTabs(restoring: records[paneID],
+                                                            staged: pendingBrowse)
             pendingBrowse = nil
-            browsers[paneID] = session
-            session.onChange = { [weak self] url, title in
-                self?.noteBrowser(paneID, url: url, title: title, root: root)
-            }
-            view = BrowserHostingView(tile: BrowserTile(context: paneContext, session: session),
-                                      session: session)
+            browsers[paneID] = tabs
+            tabs.onChange = { [weak self] in self?.noteBrowser(paneID, root: root) }
+            view = BrowserHostingView(tile: BrowserTile(context: paneContext, tabs: tabs),
+                                      tabs: tabs)
             view.setAccessibilityLabel("Browser")
             hosts[paneID] = view
-            let record = Self.browserRecord(url: session.requestedURL, title: session.title,
-                                            isDark: session.isDark, root: root)
+            let record = Self.browserRecord(for: tabs, root: root)
             records[paneID] = record
             return (view, record)
         case .simulator:
@@ -248,7 +247,7 @@ public final class TileFactory {
         hosts.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
-        browsers.removeValue(forKey: paneID)?.close()
+        browsers.removeValue(forKey: paneID)?.closeAll()
         simulators.removeValue(forKey: paneID)?.close()
         todos.removeValue(forKey: paneID)
     }
@@ -275,29 +274,52 @@ public final class TileFactory {
                    tileState: SimulatorPaneState(zoom: zoom).encoded)
     }
 
-    /// Keep a browser pane's header on the page's title and host, and its record on the
-    /// page, so a restored workspace reopens where it was.
-    private func noteBrowser(_ paneID: PaneID, url: URL?, title: String?, root: URL) {
-        let record = Self.browserRecord(url: url, title: title,
-                                        isDark: browsers[paneID]?.isDark ?? false, root: root)
+    /// Keep a browser pane's header on the showing page's title and host, and its record
+    /// on its pages, so a restored workspace reopens where it was.
+    private func noteBrowser(_ paneID: PaneID, root: URL) {
+        guard let tabs = browsers[paneID] else { return }
+        let record = Self.browserRecord(for: tabs, root: root)
         guard records[paneID] != record else { return }
         records[paneID] = record
         onRecordChange?(paneID, record)
     }
 
+    /// A browser pane's record: the page it is showing, and its other tabs.
+    static func browserRecord(for tabs: BrowserTabs, root: URL) -> PaneRecord {
+        browserRecord(url: tabs.selected.requestedURL, title: tabs.selected.title,
+                      isDark: tabs.isDark, tabs: tabs.state, root: root)
+    }
+
+    /// The tabs a browser pane opens with. A staged URL is a new pane on that one page; a
+    /// saved pane comes back with every tab it had, on the one that was showing; a record
+    /// from before panes had tabs, or of a pane that never had a second, is the one page
+    /// its `command` names.
+    static func browserTabs(restoring record: PaneRecord?, staged: URL?) -> BrowserTabs {
+        let isDark = record?.appearance == .dark
+        if let staged { return BrowserTabs(urls: [staged], isDark: isDark) }
+        if let state = BrowserPaneState.decode(record?.tileState) {
+            return BrowserTabs(urls: state.tabs.map { $0.flatMap(URL.init(string:)) },
+                               selected: state.selected, isDark: isDark)
+        }
+        return BrowserTabs(urls: [record?.command.flatMap(URL.init(string:))], isDark: isDark)
+    }
+
     /// `command` carries the page's URL, the way it carries an editor's open file. The
     /// title is the page's own, falling back to "Browser"; the subtitle is where it is.
+    /// Both are the SHOWING tab's; the rest of the pane's tabs ride in `tileState`, and
+    /// only when there is more than one.
     ///
     /// The page's light or dark mode is the PANE's appearance: the canvas paints the whole
     /// pane — surface, header, glass — to match the page inside it, and the setting is saved
     /// with the pane like its URL.
     public static func browserRecord(url: URL?, title: String?, isDark: Bool = false,
-                                     root: URL) -> PaneRecord {
+                                     tabs: BrowserPaneState? = nil, root: URL) -> PaneRecord {
         PaneRecord(kind: .browser,
                    title: title ?? "Browser",
                    subtitle: url.map(BrowserSession.place(of:)).flatMap { $0.isEmpty ? nil : $0 },
                    icon: icon(for: .browser), cwd: root.path,
                    command: url?.absoluteString,
+                   tileState: tabs?.encoded,
                    appearance: isDark ? .dark : .light)
     }
 
@@ -386,7 +408,7 @@ public final class TileFactory {
         records.removeValue(forKey: paneID)
         sessions.removeValue(forKey: paneID)
         chats.removeValue(forKey: paneID)?.stop()
-        browsers.removeValue(forKey: paneID)?.close()
+        browsers.removeValue(forKey: paneID)?.closeAll()
         simulators.removeValue(forKey: paneID)?.close()
         todos.removeValue(forKey: paneID)
     }

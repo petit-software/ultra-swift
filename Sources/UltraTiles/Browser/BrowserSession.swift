@@ -2,7 +2,8 @@ import AppKit
 import Foundation
 import WebKit
 
-/// One browser pane's page: the web view, and what the pane's chrome needs to know about it.
+/// One page in a browser pane — one of its tabs: the web view, and what the pane's chrome
+/// needs to know about it. `BrowserTabs` holds a pane's row of them.
 ///
 /// Owned by `TileFactory`, not by the view, for the reason a shell's PTY and a chat's
 /// conversation are: a pane is rebuilt whenever it is restored, converted or retargeted, and
@@ -10,11 +11,13 @@ import WebKit
 /// form state and its history — every time the layout so much as hiccuped.
 ///
 /// The `WKWebView` is made on first use rather than in `init`. A session exists for every
-/// browser pane in a restored workspace, including the ones in sessions nobody has switched
-/// to yet, and each web view is a WebContent process of its own.
+/// tab of every browser pane in a restored workspace, including the tabs nobody has
+/// switched to yet, and each web view is a WebContent process of its own.
 @MainActor
 @Observable
-public final class BrowserSession {
+public final class BrowserSession: Identifiable {
+    /// Which tab this is. Not saved: a restored tab is a new session on the same page.
+    public let id = UUID()
     /// The page this pane is on — or will be, once its web view exists. What the pane's
     /// record persists, so a restored workspace reopens it.
     public private(set) var requestedURL: URL?
@@ -31,6 +34,7 @@ public final class BrowserSession {
     public private(set) var addressFocusRequest = 0
     /// Whether the page is shown dark. Per pane, and saved with it: the dev server in one
     /// pane and the docs in the next are different pages with different ideas of a theme.
+    /// A pane's tabs share it — `BrowserTabs` carries a change to the rest.
     ///
     /// Dark does two things. The web view's appearance is set dark, so a page with a dark
     /// theme of its own — `prefers-color-scheme` — uses it, which is always the better
@@ -41,6 +45,9 @@ public final class BrowserSession {
 
     /// The page or its title changed: the pane's header and its saved record follow.
     @ObservationIgnored public var onChange: ((URL?, String?) -> Void)?
+    /// A link asked for a window of its own — `target="_blank"`, `window.open`. Set by
+    /// whoever holds the pane's tabs; without it the page loads here instead.
+    @ObservationIgnored public var openInNewTab: ((URL) -> Void)?
 
     @ObservationIgnored private var madeWebView: WKWebView?
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
@@ -170,6 +177,27 @@ public final class BrowserSession {
     public func focusPage() {
         guard let madeWebView else { return }
         madeWebView.window?.makeFirstResponder(madeWebView)
+    }
+
+    /// Give the keyboard to the page unless another pane is using it.
+    ///
+    /// For a tab coming forward. The tab that was showing took its web view out of the
+    /// window with it, so a keyboard that was on that page is now on nothing — the window
+    /// itself — and belongs on this one. But a tab can also come forward on its own: a page
+    /// calls `window.open` while the user is typing in a shell two panes away, and taking
+    /// the keyboard then would be the browser typing over their command.
+    public func focusPageIfUnclaimed() {
+        guard let madeWebView, let window = madeWebView.window else { return }
+        var pane: NSView = madeWebView
+        while let parent = pane.superview, !(pane is BrowserHostingView) { pane = parent }
+        var responder = window.firstResponder as? NSView
+        // A field editor answers for the field it is editing, which is what is in the tree.
+        if let editor = responder as? NSTextView, editor.isFieldEditor {
+            responder = editor.delegate as? NSView ?? responder
+        }
+        let isOurs = responder?.isDescendant(of: pane) ?? false
+        guard window.firstResponder === window || isOurs else { return }
+        window.makeFirstResponder(madeWebView)
     }
 
     /// For previews: show a page without a network.
@@ -362,13 +390,17 @@ public final class BrowserSession {
         }
 
         /// `target="_blank"` and `window.open`. A pane has no second window to put the page
-        /// in, so it opens here instead of nowhere — WebKit's default when this returns nil
-        /// without loading anything.
+        /// in, so it goes in a new tab — or, for a session nobody gave tabs to, here instead
+        /// of nowhere, which is WebKit's default when this returns nil without loading
+        /// anything.
         func webView(_ webView: WKWebView,
                      createWebViewWith configuration: WKWebViewConfiguration,
                      for navigationAction: WKNavigationAction,
                      windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if navigationAction.targetFrame == nil {
+            guard navigationAction.targetFrame == nil else { return nil }
+            if let url = navigationAction.request.url, let openInNewTab = session?.openInNewTab {
+                openInNewTab(url)
+            } else {
                 webView.load(navigationAction.request)
             }
             return nil

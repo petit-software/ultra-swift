@@ -120,122 +120,30 @@ public struct EditorTile: View {
 
 // MARK: - Tabs
 
-/// What is open, as a row of tabs along the top of the pane.
-///
-/// A row rather than a source list: a sidebar took a column off a pane that is already as
-/// narrow as the user made it, and hid itself below 400pt — which is where most editor panes
-/// live, beside a shell. A strip costs one line of height whatever the width, and scrolls
-/// sideways when there is more open than fits, with the selected tab kept in view.
+/// What is open, as the tile's row of tabs — `TileTabStrip`, which the browser shares.
 ///
 /// Files and diffs share the row in the order they were opened, told apart by icon. Two
 /// sections made sense in a list with headers; in a strip they would be two strips.
+///
+/// A view of its own rather than a few lines in the tile's body, so a title or an unsaved
+/// dot changing redraws the strip and not the editor under it.
 private struct EditorTabStrip: View {
     let sessions: EditorSessions
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
-                    ForEach(sessions.sessions) { session in
-                        EditorTab(session: session,
-                                  isSelected: session.id == sessions.selectedID,
-                                  select: { sessions.select(session.id) },
-                                  close: { sessions.close(session.id) })
-                            .id(session.id)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-            }
-            .onChange(of: sessions.selectedID, initial: true) { _, selected in
-                // Selected from the keyboard (⇧⌘]) or by another pane opening a file here,
-                // the tab may be off the end of the row. Bring it in.
-                guard let selected else { return }
-                withAnimation(Token.Motion.structuralRespectingPreferences) {
-                    proxy.scrollTo(selected)
-                }
-            }
-        }
-        .overlay(alignment: .bottom) { Divider().overlay(Token.Colour.divider) }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Open files and changes")
-    }
-}
-
-/// One tab: the file's icon, its name, and its unsaved dot — or, under the pointer, the
-/// close control in the icon's place.
-///
-/// Same arrangement as the session belt's tabs, one size down: ONE slot for icon and X, so
-/// the name never moves as the pointer crosses the tab, and the selection carried by a
-/// neutral wash and the label colour rather than a weight change that would make the tab
-/// wider and slide every tab after it along the row.
-private struct EditorTab: View {
-    let session: EditorSession
-    let isSelected: Bool
-    let select: () -> Void
-    let close: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        HStack(spacing: 5) {
-            ZStack {
-                if isHovering {
-                    Button(action: close) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .frame(width: 14, height: 14)
-                            .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Token.Colour.label)
-                    .help("Close")
-                } else {
-                    Image(systemName: session.symbol)
-                        .font(.system(size: 10))
-                        .foregroundStyle(isSelected ? Token.Colour.accent : Token.Colour.secondaryLabel)
-                }
-            }
-            .frame(width: 14, height: 14)
-
-            Text(session.title)
-                .font(Token.Type_.monoSmall)
-                .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 180)
-
-            if session.isDirty {
-                Circle()
-                    .fill(Token.Colour.accent)
-                    .frame(width: 5, height: 5)
-                    .help("Unsaved changes")
-            }
-        }
-        .padding(.leading, 6)
-        .padding(.trailing, 9)
-        .padding(.vertical, 3)
-        .background {
-            if isSelected {
-                Capsule().fill(Token.Colour.selectionWash)
-            } else if isHovering {
-                Capsule().fill(Token.Colour.selectionWash.opacity(0.5))
-            }
-        }
-        .contentShape(.capsule)
-        .onHover { isHovering = $0 }
-        // A tap rather than a `Button`, so the close button inside keeps its own click. The
-        // keyboard path is ⇧⌘] / ⇧⌘[ (Pane ▸ Editor ▸ Next / Previous), which is what makes
-        // a strip of tap targets an acceptable control in this app.
-        .onTapGesture(perform: select)
-        .help(session.isUntitled ? "Not saved yet" : session.path)
-        .contextMenu {
-            Button("Close", action: close)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel("\(session.isDiff ? "Change" : "File"), \(session.title)")
-        .accessibilityAction(named: "Close", close)
-        .accessibilityAction { select() }
+        // The keyboard path along the row is ⇧⌘] / ⇧⌘[ (Pane ▸ Editor ▸ Next / Previous).
+        TileTabStrip(tabs: sessions.sessions.map { session in
+                         TileTab(id: session.id,
+                                 title: session.title,
+                                 symbol: session.symbol,
+                                 help: session.isUntitled ? "Not saved yet" : session.path,
+                                 isDirty: session.isDirty,
+                                 accessibilityLabel: "\(session.isDiff ? "Change" : "File"), \(session.title)")
+                     },
+                     selectedID: sessions.selectedID,
+                     label: "Open files and changes",
+                     select: { sessions.select($0) },
+                     close: { sessions.close($0) })
     }
 }
 
