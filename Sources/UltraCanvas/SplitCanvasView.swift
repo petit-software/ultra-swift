@@ -469,6 +469,32 @@ public final class SplitCanvasView: NSView {
         NSAccessibility.post(element: self, notification: .layoutChanged)
     }
 
+    /// Let go of the panes: this canvas is being taken down, its session's turn on screen over.
+    ///
+    /// The panes are the store's, not this view's, and survive it — that is the whole
+    /// arrangement. But they were left parented HERE, so whether another session's panes
+    /// could still be seen came down to how promptly this view left the window, which is
+    /// SwiftUI's business and not something to rest a canvas on. Detached, they are out of
+    /// the window the moment the session changes, whatever becomes of the view; the next
+    /// canvas for their store adopts them in `reconcile()` exactly as it did before.
+    ///
+    /// Only the panes still parented here: a canvas already built for the same store has
+    /// taken them, and they are not this one's to remove. Removed from the view tree, never
+    /// released — releasing is what stops a shell.
+    ///
+    /// Also stops what would otherwise keep running on a view nobody can see: the inset's
+    /// display link, which retains its target, and the pending write of settled bounds.
+    func retire() {
+        stopInsetTween()
+        settleWork?.cancel()
+        settleWork = nil
+        for paneID in store.surfaces.activePanes {
+            guard let surface = store.surfaces.existingSurface(for: paneID),
+                  surface.isDescendant(of: self) else { continue }
+            surface.removeFromSuperview()
+        }
+    }
+
     /// Install or remove the glass container, and keep its merge distance current.
     ///
     /// Switching it re-parents every pane, which `reconcile()` does on the next `sync()`.

@@ -71,6 +71,21 @@ struct TabStripReorderTests {
         #expect(tabs == ["c", "a", "b"])
     }
 
+    @Test("a tab let go where it started was a click; anywhere else on the strip, a move")
+    func release() {
+        // A hurried click: the pointer travelled a few points with the button down.
+        #expect(strip.release(dragging: 1, minX: strip.minX(of: 1) + 6, onStrip: true) == .select)
+        #expect(strip.release(dragging: 0, minX: 85, onStrip: true) == .select)
+        #expect(strip.release(dragging: 0, minX: 87, onStrip: true) == .move(to: 1))
+        #expect(strip.release(dragging: 2, minX: 4, onStrip: true) == .move(to: 0))
+    }
+
+    @Test("a tab let go away from the strip goes back, and selects nothing")
+    func releaseOffStrip() {
+        #expect(strip.release(dragging: 0, minX: 159, onStrip: false) == .cancel)
+        #expect(strip.release(dragging: 1, minX: strip.minX(of: 1), onStrip: false) == .cancel)
+    }
+
     @Test("the strip scrolls only near an edge")
     func autoscroll() {
         #expect(TabStripReorder.autoscrollDirection(pointerX: 10, viewportWidth: 300, edge: 24) == -1)

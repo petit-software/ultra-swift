@@ -48,6 +48,29 @@ public struct TabStripReorder: Equatable, Sendable {
         }
     }
 
+    /// What letting go of a dragged tab means.
+    public enum Release: Equatable, Sendable {
+        /// It lands at this index, which is not where it started.
+        case move(to: Int)
+        /// It is back where it started, so nothing was reordered: the press was a click.
+        case select
+        /// Let go away from the strip: the tab goes back and nothing else happens.
+        case cancel
+    }
+
+    /// What a drag that ends with the tab's leading edge at `x` amounts to.
+    ///
+    /// `select` is the case that matters. A press becomes a drag after a few points of
+    /// travel, which a hurried click covers between button down and button up — and from
+    /// then on it is a drag's release, not a click, that the strip hears. A drag that moved
+    /// nothing has to count as the click it was, or a tab pressed in passing does nothing
+    /// at all: no reorder, and no selection either.
+    public func release(dragging from: Int, minX x: CGFloat, onStrip: Bool) -> Release {
+        guard onStrip else { return .cancel }
+        let to = destination(dragging: from, minX: x)
+        return to == from ? .select : .move(to: to)
+    }
+
     /// How far tab `index` — not the dragged one — slides to open the gap at `to`.
     public func shift(of index: Int, dragging from: Int, to: Int) -> CGFloat {
         let room = widths[from] + spacing

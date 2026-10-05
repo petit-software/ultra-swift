@@ -73,6 +73,50 @@ struct SessionCanvasTests {
         _ = window
     }
 
+    /// What SwiftUI's dismantle does on a session switch. The panes leave the outgoing
+    /// canvas at once — so nothing of the old session can stay in the window with it — and
+    /// are the same panes when their session comes back.
+    @Test("a retired canvas lets go of its panes without releasing one")
+    func retiredCanvasLetsGoOfItsPanes() {
+        let (store, factory) = store(.grid2x2)
+        let (canvas, window) = mount(store)
+        var released: [PaneID] = []
+        store.surfaces.onRelease = { released.append($0) }
+
+        let panes = store.tree.paneIDs
+        let surfaces = panes.compactMap { store.surfaces.existingSurface(for: $0) }
+        #expect(surfaces.allSatisfy { $0.isDescendant(of: canvas) })
+
+        canvas.retire()
+
+        #expect(surfaces.allSatisfy { $0.superview == nil })
+        #expect(released.isEmpty, "a pane was released — its process would be gone")
+        #expect(store.surfaces.activePanes == Set(panes))
+
+        // Back to the session: a new canvas, the same four views, nothing rebuilt.
+        let (next, nextWindow) = mount(store)
+        for (index, paneID) in panes.enumerated() {
+            #expect(store.surfaces.existingSurface(for: paneID) === surfaces[index])
+            #expect(surfaces[index].isDescendant(of: next))
+            #expect(factory.builds[paneID] == 1)
+        }
+        _ = (window, nextWindow)
+    }
+
+    @Test("a canvas retired after its store moved on takes nothing from the canvas that has it")
+    func retiringLateTakesNothing() {
+        let (store, _) = store(.twoAcross)
+        let (old, oldWindow) = mount(store)
+        let (current, currentWindow) = mount(store)
+        let surfaces = store.tree.paneIDs.compactMap { store.surfaces.existingSurface(for: $0) }
+
+        old.retire()
+
+        #expect(surfaces.count == 2)
+        #expect(surfaces.allSatisfy { $0.isDescendant(of: current) })
+        _ = (oldWindow, currentWindow)
+    }
+
     @Test("a session that is not on screen keeps its panes alive")
     func hiddenSessionKeepsItsPanes() {
         let (visible, _) = store(.twoAcross)

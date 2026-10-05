@@ -32,6 +32,11 @@ public struct SplitCanvas: NSViewRepresentable {
         // `LayoutStore.reclaimKeyboardFocus`.
         view.reclaimKeyboardFocus(revision: store.focusRevision)
     }
+
+    /// The session changed and this canvas is on its way out: see `SplitCanvasView.retire`.
+    public static func dismantleNSView(_ view: SplitCanvasView, coordinator: Coordinator) {
+        view.retire()
+    }
 }
 
 /// The canvas, its backdrop, and the window bar.

@@ -144,7 +144,7 @@ struct SessionTabBelt: View {
             // Four points before it is a drag, so a click is still a click.
             .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named(Self.viewport))
                 .onChanged { value in dragChanged(id, value) }
-                .onEnded { value in dragEnded(value) })
+                .onEnded { value in dragEnded(id, value) })
     }
 
     // MARK: - Drag state
@@ -209,27 +209,41 @@ struct SessionTabBelt: View {
 
     /// Let go on the belt, or near it: the tab lands. Well above or below it: it goes back,
     /// the way a tab dragged off Safari's bar and dropped nowhere does.
-    private func dragEnded(_ value: DragGesture.Value) {
+    private func dragEnded(_ id: UUID, _ value: DragGesture.Value) {
         defer { dragCancelled = false }
-        guard !dragCancelled, drag != nil else { return }
+        guard !dragCancelled else { return }
         let y = value.location.y
         let onBelt = y > -Self.releaseMargin && y < Self.height + Self.releaseMargin
+        guard drag != nil else {
+            // The press travelled far enough to stop being a tap, and no drag ever began —
+            // the tabs had not all been measured. Still a press on this tab.
+            if onBelt { sessions.select(id) }
+            return
+        }
         finishDrag(commit: onBelt)
     }
 
+    /// A tab let go somewhere else on the belt moves there. One let go where it started is
+    /// SELECTED: a click made while the pointer was moving covers the four points that turn
+    /// a press into a drag, the tap is called off, and a drag that reordered nothing used
+    /// to end without doing anything — the click was lost, and the session it was on never
+    /// came up. See `TabStripReorder.release`.
     private func finishDrag(commit: Bool) {
         endEscapeMonitor()
         guard let drag else { return }
+        let release = strip.map {
+            $0.release(dragging: drag.from, minX: draggedMinX(drag, in: $0), onStrip: commit)
+        } ?? .cancel
         withAnimation(Token.Motion.structuralRespectingPreferences) {
-            if commit, let strip {
-                let to = strip.destination(dragging: drag.from, minX: draggedMinX(drag, in: strip))
-                if to != drag.from {
-                    sessions.move(fromOffsets: [drag.from],
-                                  toOffset: TabStripReorder.moveOffset(from: drag.from, to: to))
-                }
+            if case .move(let to) = release {
+                sessions.move(fromOffsets: [drag.from],
+                              toOffset: TabStripReorder.moveOffset(from: drag.from, to: to))
             }
             self.drag = nil
         }
+        // Outside the animation. Selecting swaps the whole canvas, and inside it the swap
+        // would be a cross-fade with both sessions' panes in the window at once.
+        if release == .select { sessions.select(drag.id) }
     }
 
     /// Escape puts the tab back. A local monitor rather than a key handler, because the
