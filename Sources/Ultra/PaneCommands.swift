@@ -15,6 +15,25 @@ enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
                                  + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
+                                 + [closeSession]
+
+    /// Close the session on screen — the project, its shells and its agents.
+    ///
+    /// In the registry so the palette has it; File ▸ Session draws its item from this
+    /// too, so the two cannot come to say different things. It asks first, through the
+    /// one question every way of closing a session asks (`UIState.closingSessionID`).
+    /// Found by "close project" as well: a session is a project, and that is the word
+    /// people reach for.
+    ///
+    /// ⇧⌃⌘W, beside ⌘W for a pane and ⇧⌘W for the window.
+    static let closeSession = AppCommand(
+        id: "session.close", title: "Close Session…", symbol: "xmark.rectangle",
+        menuPath: ["File", "Session"],
+        binding: KeyBinding("w", [.command, .control, .shift]),
+        keywords: ["Close Project"],
+        isEnabled: { SessionList.holding($0)?.canCloseSelected ?? false }) { store in
+            SessionList.holding(store)?.askToClose(store.workspaceID)
+        }
 
     /// A chat pane's verbs that a keystroke should reach: another thread, stop, and its
     /// look. All act on the focused pane and dim when it is not a chat.
@@ -402,17 +421,27 @@ enum PaneCommands {
         isEnabled: { $0.tree.hasContainer(along: .horizontal) }) { $0.equalizeColumns() }
 
     static let others: [AppCommand] = [
-        // Enabled even on the LAST pane, where it closes the window instead.
+        // Enabled even on the LAST pane, where it closes the project instead.
         //
         // The alternative was to dim it there, and that makes ⌘W a dead key on exactly the
         // window a new user starts with — the one-pane one. Closing the smallest thing you
-        // are inside is what ⌘W means everywhere else, and when the pane IS the window, the
-        // window is the smallest thing. `performClose` rather than a direct close, so the
-        // window still runs its own teardown: scrollback saved, layout persisted.
+        // are inside is what ⌘W means everywhere else, and when the pane IS the project,
+        // the project is the smallest thing: its session closes, and the window goes on
+        // to the next one. No question asked, unlike Close Session: what stops is this one
+        // pane, which is what ⌘W stops every other time.
+        //
+        // The last session cannot close (`SessionList.canCloseSelected`), so there the
+        // pane is the window too, and the window closes. `performClose` rather than a
+        // direct close, so the window still runs its own teardown: scrollback saved,
+        // layout persisted.
         AppCommand(id: "pane.close", title: "Close Pane", symbol: "xmark", menuPath: ["Pane"],
                    binding: KeyBinding("w", [.command])) { store in
             guard store.tree.paneCount > 1 else {
-                ShellWorkspace.Registry.windows[store.workspaceID]?.performClose(nil)
+                if let sessions = SessionList.holding(store), sessions.canCloseSelected {
+                    sessions.close(store.workspaceID)
+                } else {
+                    ShellWorkspace.Registry.windows[store.workspaceID]?.performClose(nil)
+                }
                 return
             }
             store.closeFocused()

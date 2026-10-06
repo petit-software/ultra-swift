@@ -43,4 +43,44 @@ public enum WorkspaceLaunch {
         if let recent = recents.first(where: free) { return recent }
         return home
     }
+
+    /// What opening a project in a window amounts to.
+    public enum Opening: Equatable, Sendable {
+        /// This window already has it: show it.
+        case select
+        /// Another window has it on screen: go there.
+        case raise
+        /// It is still running, and no window has it — the window it was in has closed.
+        /// The window asking takes it as it is, shells and all.
+        case adopt
+        /// It is not running anywhere: build it, from its saved layout if it has one.
+        case make
+    }
+
+    /// Where a project being opened already is, which decides what opening it does.
+    ///
+    /// - `here`: the projects the window asking already holds.
+    /// - `elsewhere`: the projects other windows hold.
+    /// - `running`: every project with a live workspace, held or not.
+    ///
+    /// A project is open in ONE place: two workspaces on one folder restore the same
+    /// document and both persist to it, so the last one touched overwrites the other's
+    /// layout. Hence `select` and `raise` rather than a second copy.
+    ///
+    /// `adopt` is the case that was missing. Closing a window does not stop its shells —
+    /// a pane's process outlives its window — so its workspaces go on running with
+    /// nothing showing them. "Running" was being read as "on screen": opening such a
+    /// project found it, looked for the window it was in, and with that gone did nothing
+    /// at all, leaving the window on whichever project it had been showing.
+    public static func opening(_ directory: String, here: [String], elsewhere: [String],
+                               running: [String]) -> Opening {
+        let wanted = WorkspaceDocument.canonical(directory)
+        let has = { (paths: [String]) in
+            paths.contains { WorkspaceDocument.canonical($0) == wanted }
+        }
+        if has(here) { return .select }
+        if has(elsewhere) { return .raise }
+        if has(running) { return .adopt }
+        return .make
+    }
 }

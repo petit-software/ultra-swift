@@ -92,6 +92,8 @@ struct WorkspaceWindow: View {
 
     var body: some View {
         RootView(sessions: model.sessions, ui: model.ui)
+            // The window itself, from a view that is in it: see `WorkspaceModel.attach`.
+            .background(WindowReader { model.attach(to: $0) })
             .task {
                 // BEFORE `adoptWindow`, which places the window using the selected session's
                 // saved frame — there is no selected session until this has run.
@@ -178,6 +180,7 @@ final class WorkspaceModel {
     /// observable (the sidebar's agent status) turned it into a workspace a second.
     init() {
         sessions = SessionList(storage: WorkspaceStorage())
+        sessions.ui = ui
     }
 
     /// Open what this window starts with. Called from `.task`, which runs on the model that
@@ -196,6 +199,9 @@ final class WorkspaceModel {
 
         if !requested.isEmpty {
             for directory in requested { sessions.open(directory: directory, restore: true) }
+            // Whatever a closed window left running comes along, behind what was asked
+            // for: a session no window shows is a session nobody can reach.
+            sessions.adoptRunning(selecting: false)
             // The first one chosen is the one on screen; the rest sit in the sidebar.
             if let first = sessions.sessions.first { sessions.select(first.workspaceID) }
             return
@@ -203,6 +209,11 @@ final class WorkspaceModel {
         // The first window of a launch reopens every session the last run had, which is what
         // makes a window of sessions worth arranging: it is still there tomorrow.
         if isFirst, sessions.restoreSaved() { return }
+        // A window that replaces a closed one takes that window's sessions back, still
+        // running. They used to be left where they were: this window skipped their
+        // projects as "open" and came up on something else, and opening one of them from
+        // the File menu found it running, found no window to raise, and did nothing.
+        if sessions.adoptRunning() { return }
         // A new window opens on the first start project that is not open already, and
         // RESTORES it like any other open: a project open in one place has one layout and
         // nothing on screen to clone. It used to open the start project unrestored even
@@ -221,7 +232,9 @@ final class WorkspaceModel {
     /// window has a saved frame; a new one takes AppKit's cascade.
     func adoptWindow() {
         NSApplication.shared.activate()
-        let window = NSApp.windows.first { $0.isKeyWindow } ?? NSApp.windows.first
+        // The window `attach` was handed, which is this one for certain; the guess is for
+        // the instant before a view of ours is in a window at all.
+        let window = sessions.window ?? NSApp.windows.first { $0.isKeyWindow } ?? NSApp.windows.first
         // Every session in this window lives in this window — the map is what lets "open a
         // project already open" raise the right one rather than opening it twice.
         if let window {
@@ -231,6 +244,51 @@ final class WorkspaceModel {
         }
         guard let frame = sessions.selected?.windowFrame else { return }
         window?.setFrame(frame, display: false)
+    }
+
+    private var closeObserver: (any NSObjectProtocol)?
+
+    /// This window, from a view inside it (`WindowReader`), and what happens when it closes.
+    ///
+    /// Closing a window stops nothing — a pane's process outlives its window — so its
+    /// sessions have to be let go of, or they run on where nothing can show them. See
+    /// `SessionList.relinquish`. `willClose` on this exact window, not the root view's
+    /// `onDisappear`: letting go of the sessions of a window that had not in fact closed
+    /// would empty it, and only AppKit says for certain that it has.
+    func attach(to window: NSWindow) {
+        guard sessions.window !== window else { return }
+        sessions.window = window
+        if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
+        closeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.sessions.relinquish() }
+            }
+    }
+}
+
+/// Reports the window a view is in, as soon as it is in one. `NSApp.keyWindow` is a guess
+/// — Settings can be key while a workspace window opens — and this is not.
+private struct WindowReader: NSViewRepresentable {
+    let found: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView { Probe(found: found) }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    private final class Probe: NSView {
+        let found: (NSWindow) -> Void
+
+        init(found: @escaping (NSWindow) -> Void) {
+            self.found = found
+            super.init(frame: .zero)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { found(window) }
+        }
     }
 }
 
@@ -271,22 +329,23 @@ struct WorkspaceCommands: Commands {
     /// restore the same document id and both would persist to it, so whichever was touched
     /// last would silently overwrite the other's layout.
     private func open(directory: String) {
-        // Already open SOMEWHERE: raise it. Two sessions on one project would both restore
-        // the same document and both persist to it, so the last one touched would silently
-        // overwrite the other's layout — the rule that made two windows on one project a bug
-        // applies just as much to two sessions.
-        if let existing = ShellWorkspace.Registry.store(forDirectory: directory) {
-            if let window = ShellWorkspace.Registry.windows[existing.workspaceID] {
-                window.makeKeyAndOrderFront(nil)
-                NSApplication.shared.activate()
-            }
-            sessions?.select(existing.workspaceID)
-            return
-        }
         // A SESSION in this window rather than another window. That is what the sidebar is
         // for: projects side by side in one place, not a window each.
+        //
+        // `SessionList.open` knows the places a project can already be — this window,
+        // another one, or still running from a window that has closed — and does the right
+        // thing for each. This used to answer the question itself, from the Registry, and
+        // took "running" to mean "on screen": a project left running by a closed window was
+        // found, had no window to raise and was not in this one to select, so the command
+        // returned having done nothing and the window stayed on the project it was showing.
         if let sessions {
             sessions.open(directory: directory)
+            return
+        }
+        // No window has the keyboard. One that holds the project comes forward; otherwise
+        // the next window opens on it, taking it back if it is still running.
+        if SessionList.raise(directory: directory) {
+            NSApplication.shared.activate()
             return
         }
         openInNewWindow(directories: [directory])
@@ -397,9 +456,12 @@ struct WorkspaceCommands: Commands {
 
                 Divider()
 
-                Button("Close Session…") { ui?.closingSessionID = sessions?.selectedID }
+                // From the registry, which is what puts it in the palette as well.
+                Button(PaneCommands.closeSession.title) {
+                    if let store { PaneCommands.closeSession.run(store) }
+                }
                 .keyboardShortcut("w", modifiers: [.command, .control, .shift])
-                .disabled(!(sessions?.canCloseSelected ?? false))
+                .disabled(store.map { !PaneCommands.closeSession.isEnabled($0) } ?? true)
             }
             .disabled(sessions == nil)
 

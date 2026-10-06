@@ -55,7 +55,9 @@ struct CommandPalette: View {
     /// field and nothing else, and the list grows under it as the query narrows.
     private var matches: [AppCommand] {
         guard !query.isEmpty else { return [] }
-        return PaneCommands.all.filter { fuzzyMatch(query, $0.title) }
+        return PaneCommands.all.filter { command in
+            fuzzyMatch(query, command.title) || command.keywords.contains { fuzzyMatch(query, $0) }
+        }
     }
 
     /// The palette's outline. Continuous, and generous: it floats free of every edge now

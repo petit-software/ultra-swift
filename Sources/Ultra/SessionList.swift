@@ -24,8 +24,31 @@ final class SessionList {
 
     @ObservationIgnored private let storage: WorkspaceStorage
 
+    /// The window this list is shown in, once it is known (`WorkspaceModel.attach`).
+    ///
+    /// Every session held is mapped to it in the Registry, including the ones opened
+    /// AFTER the window arrived. They used not to be — the map was written once, when the
+    /// window was adopted — so ⌘W on the last pane of a project opened later had no window
+    /// to close, and the menu bar item had none to bring forward.
+    @ObservationIgnored weak var window: NSWindow? {
+        didSet {
+            guard let window else { return }
+            for store in sessions { ShellWorkspace.Registry.windows[store.workspaceID] = window }
+        }
+    }
+
+    /// The window's UI state, for the one thing a command needs of it from here: the
+    /// question asked before a session closes. See `askToClose`.
+    @ObservationIgnored weak var ui: UIState?
+
+    /// Every list there is, so a session can be asked "which window has you?". Weak: a
+    /// list belongs to its window's model, and SwiftUI builds and discards models freely
+    /// (see `WorkspaceModel.init`). A discarded one holds no sessions and answers nothing.
+    @ObservationIgnored private static let lists = NSHashTable<SessionList>.weakObjects()
+
     init(storage: WorkspaceStorage) {
         self.storage = storage
+        Self.lists.add(self)
     }
 
     /// A list built from stores that already exist.
@@ -36,6 +59,7 @@ final class SessionList {
         self.storage = storage
         self.sessions = stores
         self.selectedID = stores.first?.workspaceID
+        Self.lists.add(self)
     }
 
     var selected: LayoutStore? {
@@ -55,24 +79,141 @@ final class SessionList {
     /// the same document id and both would persist to it, so whichever was touched last would
     /// silently overwrite the other's layout — the same last-writer-wins collision that made
     /// two WINDOWS on one project a bug.
+    ///
+    /// The same rule reaches past this window, for the same reason: a project another
+    /// window is showing is raised there, and one still running from a window that has
+    /// closed is taken back as it is — see `WorkspaceLaunch.opening`. Only `restore: false`
+    /// skips that: it is how a window is given a deliberate, unsaved twin.
     @discardableResult
     func open(directory: String, restore: Bool = true) -> LayoutStore {
         let wanted = WorkspaceDocument.canonical(directory)
-        if let existing = sessions.first(where: {
-            $0.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
-        }) {
+        let matches = { (store: LayoutStore) in
+            store.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
+        }
+        if let existing = sessions.first(where: matches) {
             select(existing.workspaceID)
             return existing
+        }
+        if restore, let running = ShellWorkspace.Registry.store(forDirectory: wanted) {
+            let others = Self.others(than: self)
+            switch WorkspaceLaunch.opening(
+                wanted, here: [],
+                elsewhere: others.flatMap(\.sessions).compactMap(\.workspaceDirectory),
+                running: [wanted]) {
+            case .raise:
+                if let holder = others.first(where: { $0.sessions.contains(where: matches) }),
+                   let held = holder.sessions.first(where: matches) {
+                    holder.select(held.workspaceID)
+                    holder.window?.makeKeyAndOrderFront(nil)
+                    return held
+                }
+            case .adopt:
+                hold(running)
+                select(running.workspaceID)
+                RecentProjects.remember(directory)
+                persist()
+                return running
+            case .select, .make:
+                break
+            }
         }
         // A project that carries Ultra's `AGENTS.md` section keeps it current with this
         // build's text. One that does not is not written into — opening is not opting in.
         ProjectInstructions.refresh(in: directory)
         let store = ShellWorkspace.make(storage: storage, directory: directory, restore: restore)
-        sessions.append(store)
+        hold(store)
         select(store.workspaceID)
         RecentProjects.remember(directory)
         persist()
         return store
+    }
+
+    /// Add a session to this window, and say which window that is.
+    private func hold(_ store: LayoutStore) {
+        sessions.append(store)
+        if let window { ShellWorkspace.Registry.windows[store.workspaceID] = window }
+    }
+
+    // MARK: - Windows closing, and coming back
+
+    /// The list whose window is showing this session, if one is. How a registry command,
+    /// which is handed a `LayoutStore` and nothing else, reaches the session's list.
+    static func holding(_ store: LayoutStore) -> SessionList? {
+        lists.allObjects.first { $0.sessions.contains { $0 === store } }
+    }
+
+    private static func others(than list: SessionList?) -> [SessionList] {
+        lists.allObjects.filter { $0 !== list }
+    }
+
+    /// The sessions still running that no window is showing: their window has closed.
+    private static var unheld: [LayoutStore] {
+        let held = Set(lists.allObjects.flatMap(\.sessions).map(\.workspaceID))
+        return ShellWorkspace.Registry.stores.values.filter { !held.contains($0.workspaceID) }
+    }
+
+    /// The window has closed. Let go of its sessions without stopping one of them.
+    ///
+    /// A pane's process outlives its window, so the shells go on running and the agents in
+    /// them go on working; what ends here is this list's claim on them. Without that the
+    /// sessions were running and unreachable: no window showed them, and every way of
+    /// opening their projects found them "open" and stopped. Let go of, the next window
+    /// takes them back (`adoptRunning`), and so does opening any one of them.
+    ///
+    /// Saved first, as the window's teardown always did. NOT `persist()`: the stored list
+    /// is what this window held, and it is what the next launch should reopen.
+    func relinquish() {
+        for store in sessions {
+            store.persistNow()
+            ShellWorkspace.Registry.factories[store.workspaceID]?.saveScrollback()
+            ShellWorkspace.Registry.windows[store.workspaceID] = nil
+        }
+        sessions = []
+        selectedID = nil
+        window = nil
+    }
+
+    /// Take back the sessions a closed window left running. False when there are none.
+    ///
+    /// In the order that window had them, which is the stored order, and — unless the
+    /// caller has already put something on screen — on the one it had selected: a window
+    /// closed and reopened comes back as it was, with nothing restarted.
+    @discardableResult
+    func adoptRunning(selecting: Bool = true) -> Bool {
+        let saved = Self.saved
+        let order = (saved?.directories ?? []).map(WorkspaceDocument.canonical)
+        let rank = { (store: LayoutStore) in
+            store.workspaceDirectory.map(WorkspaceDocument.canonical)
+                .flatMap(order.firstIndex(of:)) ?? order.count
+        }
+        let running = Self.unheld.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+        guard !running.isEmpty else { return false }
+        for store in running { hold(store) }
+        if selecting {
+            let wanted = saved?.selected.map(WorkspaceDocument.canonical)
+            let match = running.first {
+                $0.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
+            }
+            select((match ?? running[0]).workspaceID)
+        }
+        persist()
+        return true
+    }
+
+    /// Bring forward the window that has this project, if one does.
+    static func raise(directory: String) -> Bool {
+        let wanted = WorkspaceDocument.canonical(directory)
+        for list in lists.allObjects {
+            guard let store = list.sessions.first(where: {
+                $0.workspaceDirectory.map(WorkspaceDocument.canonical) == wanted
+            }) else { continue }
+            list.select(store.workspaceID)
+            list.window?.makeKeyAndOrderFront(nil)
+            return true
+        }
+        return false
     }
 
     /// Rename a session.
@@ -179,6 +320,12 @@ final class SessionList {
     /// is a window with nothing in it. ⌘⇧W still closes the window.
     var canCloseSelected: Bool { sessions.count > 1 }
 
+    /// Ask before closing: the window puts up its "Close this session?" for this one.
+    func askToClose(_ id: UUID) {
+        guard canCloseSelected else { NSSound.beep(); return }
+        ui?.closingSessionID = id
+    }
+
     func close(_ id: UUID) {
         guard sessions.count > 1,
               let index = sessions.firstIndex(where: { $0.workspaceID == id }) else {
@@ -192,6 +339,9 @@ final class SessionList {
         ShellWorkspace.tearDown(store)
         if selectedID == id {
             selectedID = sessions[max(0, index - 1)].workspaceID
+            // ⌘W on a project's last pane closes it from the keyboard, and the keyboard
+            // has to land somewhere: in the session that takes its place.
+            selected?.reclaimKeyboardFocus()
         }
         persist()
     }

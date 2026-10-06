@@ -18,6 +18,10 @@ struct AppCommand: Identifiable {
     let symbol: String
     let menuPath: [String]
     let defaultBinding: KeyBinding?
+    /// Other things someone would type into the palette for this command — "Close
+    /// Project" for Close Session. Searched like the title and never shown: the row and
+    /// the menu say the one title, so the palette still teaches the name the menu uses.
+    let keywords: [String]
     let isEnabled: @MainActor (LayoutStore) -> Bool
     let run: @MainActor (LayoutStore) -> Void
 
@@ -26,6 +30,7 @@ struct AppCommand: Identifiable {
          symbol: String,
          menuPath: [String],
          binding: KeyBinding? = nil,
+         keywords: [String] = [],
          isEnabled: @escaping @MainActor (LayoutStore) -> Bool = { _ in true },
          run: @escaping @MainActor (LayoutStore) -> Void) {
         self.id = id
@@ -33,6 +38,7 @@ struct AppCommand: Identifiable {
         self.symbol = symbol
         self.menuPath = menuPath
         self.defaultBinding = binding
+        self.keywords = keywords
         self.isEnabled = isEnabled
         self.run = run
     }

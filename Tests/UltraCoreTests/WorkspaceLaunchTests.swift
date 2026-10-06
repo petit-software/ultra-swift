@@ -127,3 +127,43 @@ struct WorkspaceLaunchExclusionTests {
         #expect(directory == home)
     }
 }
+
+/// What opening a project does depends on where it already is. The case these exist for is
+/// the last but one: a project still running from a window that has closed used to be
+/// found, looked for on screen, and — with no window to raise — left alone, so opening it
+/// did nothing and the window stayed on the project it had been showing.
+@Suite("Opening a project")
+struct WorkspaceOpeningTests {
+
+    @Test("a project this window holds is shown, not opened twice")
+    func selectsHere() {
+        #expect(WorkspaceLaunch.opening("/p/alpha", here: ["/p/alpha"], elsewhere: [],
+                                        running: ["/p/alpha"]) == .select)
+    }
+
+    @Test("a project another window holds is raised there")
+    func raisesElsewhere() {
+        #expect(WorkspaceLaunch.opening("/p/alpha", here: ["/p/beta"], elsewhere: ["/p/alpha"],
+                                        running: ["/p/alpha", "/p/beta"]) == .raise)
+    }
+
+    @Test("a project running in no window is taken by the window that asks")
+    func adoptsRunning() {
+        #expect(WorkspaceLaunch.opening("/p/alpha", here: ["/p/beta"], elsewhere: ["/p/gamma"],
+                                        running: ["/p/alpha", "/p/beta", "/p/gamma"]) == .adopt)
+    }
+
+    @Test("a project that is not running is built")
+    func makesNew() {
+        #expect(WorkspaceLaunch.opening("/p/alpha", here: ["/p/beta"], elsewhere: [],
+                                        running: ["/p/beta"]) == .make)
+    }
+
+    @Test("this window wins over another, and spelling does not matter")
+    func hereWinsCanonically() {
+        #expect(WorkspaceLaunch.opening("/p/alpha/", here: ["/p/alpha"], elsewhere: ["/p/alpha"],
+                                        running: ["/p/alpha"]) == .select)
+        #expect(WorkspaceLaunch.opening("/p/alpha/", here: [], elsewhere: [],
+                                        running: ["/p/alpha"]) == .adopt)
+    }
+}
