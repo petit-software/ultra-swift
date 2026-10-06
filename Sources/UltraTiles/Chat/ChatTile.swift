@@ -43,7 +43,17 @@ public struct ChatTile: View {
 
     private var transcript: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
+            // NOT a LazyVStack. A lazy stack guesses the height of the rows it has not
+            // built, and here the rows are a one-line question beside a sixty-paragraph
+            // answer: the guess is far off, the scroll view pins itself to the bottom of
+            // the guess, and that can be a stretch no row has been built for. It showed as
+            // a transcript gone blank on a send — and on opening a long thread — until the
+            // first piece of the answer forced another layout, seconds later. A plain
+            // stack knows its height, so its bottom is the bottom.
+            //
+            // What laziness bought is kept another way: a row is `Equatable`, so a piece
+            // of the answer arriving redraws the one message it belongs to.
+            VStack(alignment: .leading, spacing: 10) {
                 let messages = store.current.messages
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     ChatMessageView(message: message,
@@ -52,6 +62,7 @@ public struct ChatTile: View {
                                     root: context.projectRoot,
                                     sendToShell: { context.injectIntoShell($0) },
                                     openFile: { context.openInEditor(.file($0)) })
+                        .equatable()
                 }
             }
             .padding(.horizontal, 12)
@@ -113,7 +124,9 @@ public struct ChatTile: View {
                 } else {
                     Button(action: send) { Image(systemName: "arrow.up.circle.fill") }
                         .buttonStyle(.plain)
-                        .foregroundStyle(Token.Colour.accent)
+                        // The ink, not the accent itself: the default accent is white,
+                        // and a white arrow in a chat shown light is no arrow.
+                        .foregroundStyle(Token.Colour.accentInk)
                         .help("Send (Return; ⌥Return for a new line)")
                         .opacity(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 1)
                         .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !store.canSend)
@@ -263,7 +276,11 @@ public struct ChatTile: View {
 
 /// One turn. The user's on the right in a wash; the model's on the left, full width, with
 /// its code blocks cut out so they can be sent to the shell.
-private struct ChatMessageView: View {
+///
+/// Equal when what it draws is equal, so the transcript — which builds every row, see
+/// `ChatTile.transcript` — redraws only the message a piece of the answer landed in. The
+/// two closures take no part: they are the pane's, and the same for every row.
+private struct ChatMessageView: View, Equatable {
     let message: ChatMessage
     let isArriving: Bool
     /// The files the answer this message ends changed; empty for any other message.
@@ -271,6 +288,11 @@ private struct ChatMessageView: View {
     let root: URL
     let sendToShell: (String) -> Void
     let openFile: (URL) -> Void
+
+    nonisolated static func == (lhs: ChatMessageView, rhs: ChatMessageView) -> Bool {
+        lhs.message == rhs.message && lhs.isArriving == rhs.isArriving
+            && lhs.changedFiles == rhs.changedFiles && lhs.root == rhs.root
+    }
 
     var body: some View {
         switch message.role {
@@ -350,22 +372,30 @@ private struct ChatMessageView: View {
 /// is something to stop. The whole thing is the button: a click on the star stops too,
 /// and Escape stops without touching it.
 ///
-/// The star does not spin at one speed. It turns half a revolution, slowing to a near
-/// stop, rests a beat, and goes again — the rhythm of something working in strokes, not a
-/// loading wheel. Half a turn on a four-pointed star lands on the same picture, so the
-/// repeat has no seam. It arrives by zooming in from small and leaves by shrinking away;
-/// the composer animates the swap (`thinkingTransition`). Someone who asked for less
-/// motion gets a slow breath of opacity instead: it still says "working", without
-/// anything going round.
+/// The star does not spin at one speed. It makes one quick run — a whole turn, thrown by
+/// a spring, so it leaves fast and lands soft — then stands still for about as long, and
+/// goes again: the rhythm of something working in strokes, not a loading wheel. A whole
+/// turn lands on the same picture, so the repeat has no seam. It arrives by zooming in
+/// from small and leaves by shrinking away; the composer animates the swap
+/// (`thinkingTransition`). Someone who asked for less motion gets a slow breath of
+/// opacity instead: it still says "working", without anything going round.
 struct ThinkingStopButton: View {
     let stop: () -> Void
     @State private var isHovering = false
 
-    /// Half a turn, then a rest. The turn eases in and out so it reads as a stroke; the
-    /// rest is long enough to be a rest and short enough that the star is never mistaken
-    /// for stopped.
-    private static let turn: TimeInterval = 0.9
-    private static let rest: TimeInterval = 0.4
+    /// One run, then a rest. The run was half a turn eased over 0.9s with a 0.4s rest,
+    /// and that read as a wheel going round slowly: too gentle to be a stroke, and the
+    /// rest too short to be seen as one. So the run is a whole turn in less time, and the
+    /// rest is nearly as long as the run — still short enough that the star is never
+    /// mistaken for stopped.
+    private static let run: TimeInterval = 0.75
+    private static let rest: TimeInterval = 0.65
+    /// What throws the star round. It settles inside `run`, with a little overshoot so
+    /// the landing reads as a landing.
+    private static let throwSpring = Spring(duration: 0.6, bounce: 0.2)
+    /// How far the star draws in as it is thrown, and for how long before it is let go.
+    private static let windUp: TimeInterval = 0.12
+    private static let windUpScale: CGFloat = 0.84
 
     /// How the star comes and goes in the composer's slot. Asymmetric on purpose: in with
     /// a spring, out with a plain ease — see `Token.Motion.thinkingArrive`.
@@ -382,6 +412,7 @@ struct ThinkingStopButton: View {
 
     private struct Pose {
         var angle: Angle = .zero
+        var scale: CGFloat = 1
         var opacity: Double = 1
     }
 
@@ -412,18 +443,29 @@ struct ThinkingStopButton: View {
             ThinkingStar()
                 .fill(.foreground)
                 .frame(width: 17, height: 17)
+                .scaleEffect(pose.scale)
                 .rotationEffect(pose.angle)
                 .opacity(pose.opacity)
         } keyframes: { _ in
             KeyframeTrack(\.angle) {
                 if reduceMotion {
-                    LinearKeyframe(.zero, duration: Self.turn + Self.rest)
+                    LinearKeyframe(.zero, duration: Self.run + Self.rest)
                 } else {
-                    // Zero velocity at both ends: the turn starts from rest and comes to
-                    // rest, and the hold that follows is the pause between strokes.
-                    CubicKeyframe(.degrees(180), duration: Self.turn,
-                                  startVelocity: .zero, endVelocity: .zero)
-                    LinearKeyframe(.degrees(180), duration: Self.rest)
+                    // Each repeat starts from rest, so the spring launches itself: quick
+                    // away, slowing into the landing. The hold is the pause between runs.
+                    SpringKeyframe(.degrees(360), duration: Self.run, spring: Self.throwSpring)
+                    LinearKeyframe(.degrees(360), duration: Self.rest)
+                }
+            }
+            KeyframeTrack(\.scale) {
+                if reduceMotion {
+                    LinearKeyframe(1, duration: Self.run + Self.rest)
+                } else {
+                    // Drawn in a touch as it is thrown and let go as it comes round, so
+                    // the turn has a squeeze and a release rather than only an angle.
+                    CubicKeyframe(Self.windUpScale, duration: Self.windUp)
+                    SpringKeyframe(1, duration: Self.run - Self.windUp, spring: .bouncy)
+                    LinearKeyframe(1, duration: Self.rest)
                 }
             }
             KeyframeTrack(\.opacity) {
@@ -431,7 +473,7 @@ struct ThinkingStopButton: View {
                     CubicKeyframe(0.45, duration: 0.8)
                     CubicKeyframe(1, duration: 0.8)
                 } else {
-                    LinearKeyframe(1, duration: Self.turn + Self.rest)
+                    LinearKeyframe(1, duration: Self.run + Self.rest)
                 }
             }
         }

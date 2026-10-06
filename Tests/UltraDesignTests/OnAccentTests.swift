@@ -95,3 +95,35 @@ struct AccentWashTests {
         #expect(blue.blueComponent > blue.redComponent, "blue accent: still blue")
     }
 }
+
+/// The accent drawn as a glyph on the pane — the chat's send arrow. The default accent is
+/// white, and white on a pane shown light is nothing, so that one accent's ink turns over.
+@Suite("Accent ink in both appearances")
+struct AccentInkTests {
+
+    private func resolved(_ colour: NSColor, in appearance: NSAppearance.Name) -> NSColor {
+        var out = NSColor.clear
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            out = colour.usingColorSpace(.sRGB)!
+        }
+        return out
+    }
+
+    @Test("the white accent's ink is white on dark and black on light")
+    func whiteTurnsOver() {
+        let dark = resolved(NSColor(Token.Colour.ink(accent: .white)), in: .darkAqua)
+        #expect(dark.redComponent > 0.99 && dark.alphaComponent == 1)
+        let light = resolved(NSColor(Token.Colour.ink(accent: .white)), in: .aqua)
+        #expect(light.redComponent < 0.01 && light.alphaComponent == 1,
+                "a white glyph on a light pane cannot be seen")
+    }
+
+    @Test("a coloured accent is its own ink on both appearances")
+    func colouredIsLeftAlone() {
+        for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+            let ink = resolved(NSColor(Token.Colour.ink(accent: .red)), in: appearance)
+            let accent = resolved(NSColor(Preferences.AccentColour.red.color), in: appearance)
+            #expect(ink == accent)
+        }
+    }
+}

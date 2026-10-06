@@ -106,6 +106,28 @@ public enum Token {
             }
         }
 
+        /// The accent as INK: a glyph or a word drawn straight on the pane in the accent,
+        /// with nothing behind it — the chat's send arrow.
+        ///
+        /// The same trouble as `wash`, at full strength: the default accent is white, and a
+        /// white arrow on a pane shown light is not there. So the white accent's ink turns
+        /// over with the appearance — white on dark, black on light — which is what "the
+        /// app's one colour" means when that colour is no colour. A coloured accent is its
+        /// own ink on both.
+        public static var accentInk: Color { ink() }
+
+        static func ink(accent: Preferences.AccentColour = Preferences.accentColour) -> Color {
+            accent == .white ? Color(nsColor: whiteInkColour()) : accent.color
+        }
+
+        /// DYNAMIC, like `whiteWashColour`, so a chat pinned light inside a dark window
+        /// takes the dark ink.
+        static func whiteInkColour() -> NSColor {
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .white : .black
+            }
+        }
+
         /// The window's own surface: a tint laid over the backdrop material so the glass
         /// reads as smoked rather than as clear frost.
         ///
