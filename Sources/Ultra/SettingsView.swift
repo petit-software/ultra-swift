@@ -97,7 +97,7 @@ private struct GeneralSettings: View {
                 Text("Appearance")
             } footer: {
                 SettingNote("On, every pane is Liquid Glass over the desktop. Off, each pane "
-                            + "is a solid sheet of its theme's background instead — flat, "
+                            + "is a solid, flat sheet instead — neutral, "
                             + "opaque and lighter on the GPU. The window bar and the "
                             + "palette keep their glass either way.")
             }

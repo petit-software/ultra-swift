@@ -94,8 +94,8 @@ public enum Appearance {
 
     // MARK: - Glass
 
-    /// Whether a pane is Liquid Glass at all. Off, every pane is a solid sheet of its
-    /// theme's background — flat, opaque, and lighter on the GPU. The ONE look switch in
+    /// Whether a pane is Liquid Glass at all. Off, every pane is a solid sheet of the
+    /// system's control background — flat, opaque, and lighter on the GPU. The ONE look switch in
     /// Settings (General ▸ Appearance): the material is the product, but it is also the
     /// one thing about the look a user may want none of, on a busy desktop or an old Mac.
     public static var paneGlass: Bool {

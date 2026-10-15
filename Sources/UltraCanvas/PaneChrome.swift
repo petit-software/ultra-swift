@@ -390,15 +390,25 @@ public final class PaneContainerView: NSView {
     /// opaque sheet of paper, whatever the opacity setting says. A pane pinned dark keeps
     /// the window's own glass, which is already dark.
     ///
-    /// With the glass turned off (`Appearance.paneGlass`) the sheet is OPAQUE whatever the
-    /// opacity setting says: that setting tints the glass, and with no material under it
-    /// a translucent sheet would show the bare desktop through the pane.
+    /// With the glass turned off (`Appearance.paneGlass`) the sheet is the system's control
+    /// background, opaque, resolved in the pane's own appearance: a dark pane is the neutral
+    /// grey of a dark window, a light one is white. NOT the theme's background: that colour
+    /// is a cold navy chosen to sit under glass at opacity zero, where it is never seen, and
+    /// painted solid it put a blue cast on every pane. Opaque whatever the opacity setting
+    /// says — that setting tints glass, and with no material under it a translucent sheet
+    /// would show the bare desktop through the pane.
     private func applyBackdrop() {
-        let opacity = Appearance.paneGlass ? theme.backgroundOpacity : 1
+        guard Appearance.paneGlass else {
+            effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+                clip.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            }
+            return
+        }
         let colour: NSColor = switch paneAppearance {
         case .light: .white
-        case .dark: NSColor(TerminalTheme.dark.background).withAlphaComponent(opacity)
-        case nil: NSColor(theme.background).withAlphaComponent(opacity)
+        case .dark: NSColor(TerminalTheme.dark.background)
+            .withAlphaComponent(theme.backgroundOpacity)
+        case nil: NSColor(theme.background).withAlphaComponent(theme.backgroundOpacity)
         }
         clip.layer?.backgroundColor = colour.cgColor
     }
@@ -674,6 +684,8 @@ public final class PaneContainerView: NSView {
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyLayerState()
+        // The glass-off sheet is a system colour resolved once; it does not re-resolve.
+        applyBackdrop()
     }
 
     /// A shell renames its own pane as it runs — a new cwd, a new foreground process.

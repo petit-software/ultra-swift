@@ -1,6 +1,6 @@
 
 ## New shit
-- [x] Add option to settings apperance to turn off glass from panes. — Settings ▸ General ▸ Appearance ▸ Glass panes; off, a pane is a solid sheet of its theme's background. Not yet confirmed in the running app
+- [x] Add option to settings apperance to turn off glass from panes. — Settings ▸ General ▸ Appearance ▸ Glass panes; off, a pane is a solid sheet of the system's control background (the theme's navy painted solid came out blue). Not yet confirmed in the running app
 - [ ] Build and issue a GH release
 - [x] add option to ultra to always display whats new dialog when new version of ultra is downloaded this should be a super short list of things we added - this should be coming from a release of gh page from ultra but this must be added to the release cycle so it always creates a super short list of things based on original release description. — shown once on the first launch after an update (Settings ▸ Updates, on by default) and on Ultra ▸ What's New in Ultra… any time. The list is `whats-new.md` beside the DMG on the release: `scripts/release.sh` now takes the notes file, makes the list from each paragraph's bold lead, refuses notes with none, and publishes the release with gh. Not yet confirmed in the running app; the first release through the new script will confirm the cycle
 - [x] Add editor a light mode like in browser — the footer's sun and moon, Pane ▸ Editor ▸ Toggle Light Editor (⌃⌘L, the browser's and the chat's key), saved with the pane. Not yet confirmed in the running app

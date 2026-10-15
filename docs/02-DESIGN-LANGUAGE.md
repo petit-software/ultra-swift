@@ -22,8 +22,9 @@ The whole window is one material. There is no opaque layer anywhere in it.
 | Window bar buttons | **No capsule.** macOS 26 wraps each toolbar item in glass; every item here hides it (`sharedBackgroundVisibility(.hidden)`), so the glyph sits on the bar's own glass — a capsule on it was glass on glass |
 
 **The one switch.** Settings ▸ General ▸ Appearance ▸ Glass panes (`Appearance.paneGlass`)
-takes the panes' glass away: each pane becomes a solid, opaque sheet of its theme's
-background in the glass's place, and nothing else changes — the window bar, the palette and
+takes the panes' glass away: each pane becomes a solid, opaque sheet of the system's control
+background in the glass's place — not the theme's background, which is a navy tuned to sit
+unseen under glass and painted solid put a blue cast on everything — and nothing else changes — the window bar, the palette and
 the toasts keep theirs. For a busy desktop or an old Mac; the default is glass.
 
 **Why there is no window-level material.** A `NSVisualEffectView` behind the panes seems
