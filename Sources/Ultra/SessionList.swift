@@ -4,6 +4,7 @@ import Observation
 import UltraCanvas
 import UltraCore
 import UltraDesign
+import UltraTerminal
 
 /// The sessions one window is holding, and which of them is on screen.
 ///
@@ -125,6 +126,40 @@ final class SessionList {
         select(store.workspaceID)
         RecentProjects.remember(directory)
         persist()
+        return store
+    }
+
+    /// A session on no project: one shell, in the home folder, called "New shell" until
+    /// the user renames it from Customize. The belt's `+` after the last tab, and File ▸
+    /// New Shell Session (⇧⌘T).
+    ///
+    /// Never deduplicated — every press is another shell, which is what a plus means — and
+    /// never saved: there is no folder to list it under, so `persist` leaves it out and
+    /// the next launch does not reopen it. See `ShellWorkspace.make`.
+    @discardableResult
+    func openShell() -> LayoutStore {
+        let store = ShellWorkspace.make(storage: storage, directory: nil)
+        hold(store)
+        select(store.workspaceID)
+        return store
+    }
+
+    /// A session for files handed to the app — Finder's Open With, a drop on the Dock
+    /// icon — one editor pane holding them and nothing else, on no project. Named for the
+    /// first file and placed by its folder, so the tab says what it is. Like `openShell`,
+    /// never saved: a session on no folder has nothing to be found by again, and the file
+    /// is a double-click away in Finder.
+    @discardableResult
+    func openEditor(on files: [URL]) -> LayoutStore {
+        let store = ShellWorkspace.make(storage: storage, directory: nil)
+        ShellWorkspace.stageEditor(opening: files, in: store)
+        if let first = files.first {
+            store.workspaceTitle = first.lastPathComponent
+            store.workspaceSubtitle = ShellPaneFactory.abbreviate(
+                first.deletingLastPathComponent().path)
+        }
+        hold(store)
+        select(store.workspaceID)
         return store
     }
 

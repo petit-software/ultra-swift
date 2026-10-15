@@ -27,6 +27,10 @@ struct SessionCustomizer: View {
     /// What an empty field falls back to — the project folder's own name. A session with a
     /// blank title is a row you cannot tell from any other blank row.
     let defaultName: String
+    /// Off for a session with no project: there is no `.ultra/agents.json` for the rows to
+    /// be written to, and a list that takes edits and keeps none of them is worse than no
+    /// list. The name and the look are still the sheet's.
+    var showsAgents = true
     let reset: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -62,12 +66,14 @@ struct SessionCustomizer: View {
                     }
                 }
 
-                Section {
-                    agentRows
-                } header: {
-                    Text("Agents")
-                } footer: {
-                    Text("Each agent here becomes a shortcut in the pane types, so a pane can be opened running it straight away.")
+                if showsAgents {
+                    Section {
+                        agentRows
+                    } header: {
+                        Text("Agents")
+                    } footer: {
+                        Text("Each agent here becomes a shortcut in the pane types, so a pane can be opened running it straight away.")
+                    }
                 }
             }
             .formStyle(.grouped)

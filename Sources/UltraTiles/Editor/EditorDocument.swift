@@ -23,6 +23,12 @@ public final class EditorDocument {
     public private(set) var isDirty = false
     /// True when the file cannot be shown as text at all.
     public private(set) var isBinary = false
+    /// What the file is when it is shown rather than edited — a picture, a film, a sound,
+    /// a PDF. Always binary as well: nothing typed here can be saved over one.
+    public private(set) var media: EditorMedia?
+    /// Counts the times a media file changed on disk, so the view showing it knows to
+    /// load it again: a screenshot taken over the last, an image an agent regenerated.
+    public private(set) var mediaRevision = 0
 
     public var text: String = "" {
         didSet {
@@ -36,6 +42,10 @@ public final class EditorDocument {
     /// `text`, so undoing back to the saved state correctly clears it.
     private var savedText = ""
     private var watchers = WatchBox()
+    /// When a media file was last written and how big it was. Its folder is watched as
+    /// well as the file, so a sibling being written fires the watch too; this is how a
+    /// change to the file is told from a change next to it.
+    private var mediaStamp: MediaStamp?
 
     /// What this is called until it has a file. Numbered by `EditorSessions`, so two new
     /// files in one pane can be told apart.
@@ -66,13 +76,26 @@ public final class EditorDocument {
         self.url = url
         notice = nil
         isBinary = false
+        media = nil
+        mediaStamp = nil
+        // A picture, a film, a sound or a PDF is shown, and its bytes are left to the
+        // view that shows it: none of them is read here to find out it is not text.
+        // Binary from the start, missing or not, so nothing typed can be saved over it.
+        if let kind = EditorMedia.kind(of: url) {
+            media = kind
+            isBinary = true
+            savedText = ""; text = ""; isDirty = false
+            guard let stamp = MediaStamp(url) else {
+                failToRead(url)
+                return
+            }
+            mediaStamp = stamp
+            beginWatching()
+            return
+        }
         guard let data = try? Data(contentsOf: url) else {
             savedText = ""; text = ""; isDirty = false
-            notice = .failed("Could not read \(url.lastPathComponent)")
-            // Watched all the same. A file opened from a chat's list of changes can be
-            // clicked before the engine has written it; the folder watch sees it arrive,
-            // and `externalChange` turns this failure into the file.
-            beginWatching()
+            failToRead(url)
             return
         }
         // A NUL byte is the practical test for "this is not text". Opening a binary in a
@@ -131,6 +154,14 @@ public final class EditorDocument {
         notice = nil
     }
 
+    private func failToRead(_ url: URL) {
+        notice = .failed("Could not read \(url.lastPathComponent)")
+        // Watched all the same. A file opened from a chat's list of changes can be clicked
+        // before the engine has written it; the folder watch sees it arrive, and
+        // `externalChange` turns this failure into the file.
+        beginWatching()
+    }
+
     // MARK: External changes
 
     /// Watch the file and its directory — editors save by writing a temp file and renaming
@@ -156,6 +187,10 @@ public final class EditorDocument {
 
     /// Test seam, and the body of the watch handler.
     public func externalChange() {
+        if media != nil {
+            mediaChange()
+            return
+        }
         guard let url, !isBinary,
               let data = try? Data(contentsOf: url),
               let contents = String(data: data, encoding: .utf8) else { return }
@@ -187,6 +222,37 @@ public final class EditorDocument {
     }
 
     public func dismissNotice() { notice = nil }
+
+    /// A media file is not compared or merged — it cannot be edited here — only noticed:
+    /// when it is written, the view loads it again. No toast: the picture changing is the
+    /// news. A file that could not be read and now can becomes the file, as text does.
+    private func mediaChange() {
+        guard let url, let stamp = MediaStamp(url), stamp != mediaStamp else { return }
+        let wasMissing = mediaStamp == nil
+        mediaStamp = stamp
+        mediaRevision += 1
+        if case .failed = notice { notice = nil }
+        // The file-level watch could not be taken while the file was missing.
+        if wasMissing { beginWatching() }
+    }
+}
+
+/// When a file was last written and how big it is: enough to tell it changed without
+/// reading it. Nil for a file that is not there.
+private struct MediaStamp: Equatable {
+    let modified: Date?
+    let size: Int?
+
+    /// From the file system every time, not `URL.resourceValues`: those are cached on the
+    /// URL value, and the document asks through the same one, so a picture written again
+    /// kept answering with the date it had when it was opened and was never shown again.
+    init?(_ url: URL) {
+        guard FileManager.default.isReadableFile(atPath: url.path),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+        else { return nil }
+        modified = attributes[.modificationDate] as? Date
+        size = (attributes[.size] as? NSNumber)?.intValue
+    }
 }
 
 // MARK: - Where a new file goes

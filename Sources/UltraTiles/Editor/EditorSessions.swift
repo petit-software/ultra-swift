@@ -94,7 +94,12 @@ public final class EditorSession: Identifiable {
         return false
     }
 
-    public var symbol: String { isDiff ? "plusminus" : "doc.text" }
+    public var symbol: String {
+        switch content {
+        case .diff: "plusminus"
+        case .file(let document): document.media?.symbol ?? "doc.text"
+        }
+    }
 }
 
 /// The sessions one editor pane is holding.
@@ -114,7 +119,27 @@ public final class EditorSessions {
     /// it is showing rather than the word "Editor" over four different documents.
     @ObservationIgnored public var onSelectionChange: ((String?) -> Void)?
 
-    public init() {}
+    /// Whether the pane is pinned light. The browser's and the chat's flag, for the editor:
+    /// a page of prose reads better light to some eyes whatever the terminal beside it is
+    /// wearing. The PANE's look, saved with the pane (`PaneRecord.appearance`) and never
+    /// with a file — the same file opened in another editor keeps that pane's look.
+    public private(set) var isLight: Bool
+    /// The look changed: the pane's record should follow, so a restored pane comes back
+    /// as it was left.
+    @ObservationIgnored public var onLightChange: (() -> Void)?
+
+    public init(isLight: Bool = false) {
+        self.isLight = isLight
+    }
+
+    /// Pin the pane light, or let it follow the app again.
+    public func setLight(_ light: Bool) {
+        guard light != isLight else { return }
+        isLight = light
+        onLightChange?()
+    }
+
+    public func toggleLight() { setLight(!isLight) }
 
     public var selected: EditorSession? {
         sessions.first { $0.id == selectedID }

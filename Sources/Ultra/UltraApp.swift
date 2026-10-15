@@ -35,6 +35,8 @@ extension FocusedValues {
 @main
 struct UltraApp: App {
     static let workspaceWindowID = "ultra.workspace"
+    /// Finder's Open With ▸ Ultra, a drop on the Dock icon, `open -a Ultra notes.md`.
+    @NSApplicationDelegateAdaptor(FileOpening.self) private var fileOpening
 
     init() {
         #if DEBUG
@@ -113,7 +115,14 @@ struct WorkspaceWindow: View {
                 // `openWindow` only exists in a SwiftUI environment; the menu bar item
                 // needs it to recreate a window every user has closed.
                 MenuBarItem.shared.openWorkspace = { openWindow(id: UltraApp.workspaceWindowID) }
+                WorkspaceModel.openNewWindow = { openWindow(id: UltraApp.workspaceWindowID) }
                 Updater.shared.startIfUpdatable()
+                // After the window is up and its sessions are open, so the dialog arrives
+                // over a working window rather than ahead of it. Once per launch; the
+                // checker says no to every window but the first to ask.
+                await WhatsNewChecker.shared.checkAfterUpdate { [ui = model.ui] content in
+                    ui.whatsNew = content
+                }
             }
             .onDisappear {
                 // EVERY session, not just the one on screen. A window holds several now, and
@@ -165,6 +174,15 @@ final class WorkspaceModel {
     /// pending folder" would have meant the last one chosen wins and the rest are lost.
     @MainActor static var pendingDirectories: [String] = []
 
+    /// Files the NEXT window should open, in one editor pane and nothing else. Consumed
+    /// once, like the directories above. Set by `FileOpening`.
+    @MainActor static var pendingFiles: [URL] = []
+
+    /// Opens another workspace window. `openWindow` is an environment action, so this is
+    /// set by the first window to come up and is nil before that — which is how
+    /// `FileOpening` tells "open another window" from "the first window is on its way".
+    @MainActor static var openNewWindow: (() -> Void)?
+
     /// Allocates, and does NOTHING ELSE. Every side effect lives in `openInitialSessions`.
     ///
     /// `@State private var model = WorkspaceModel()` evaluates its initial value every time
@@ -189,6 +207,20 @@ final class WorkspaceModel {
         guard sessions.isEmpty else { return }
         let requested = WorkspaceModel.pendingDirectories
         WorkspaceModel.pendingDirectories = []
+        let files = WorkspaceModel.pendingFiles
+        WorkspaceModel.pendingFiles = []
+
+        // Files from Finder: one editor pane on them, and nothing else — the window is
+        // for reading a file, not for the project it happens to sit in. Nothing of the
+        // last run is restored into it, and nothing is used up either: this is not the
+        // launch's first window for the purposes of restoring, so a ⌘N after it still
+        // brings the saved sessions back. Running sessions a closed window left come
+        // along behind, as with every window — a session no window shows is unreachable.
+        if !files.isEmpty {
+            sessions.openEditor(on: files)
+            sessions.adoptRunning(selecting: false)
+            return
+        }
 
         // A window opened ON a project restores that project's layout even though it is not
         // the first window of the launch. The "new window is new work" rule exists to stop a
@@ -263,6 +295,28 @@ final class WorkspaceModel {
             forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.sessions.relinquish() }
             }
+    }
+}
+
+/// Files handed to the app by the system: Finder's Open With ▸ Ultra, a drop on the Dock
+/// icon, `open -a Ultra notes.md`. Ultra claims Markdown in `Info.plist`
+/// (`CFBundleDocumentTypes`), as an ALTERNATE handler — it is in the Open With list and is
+/// never made the default for `.md` by being installed.
+///
+/// Each delivery opens a new window holding one editor pane with the files in it, on no
+/// project (`SessionList.openEditor`): the file is what was asked for, and a window full
+/// of the project's shells around it would be answering a different request. The files go
+/// through `WorkspaceModel.pendingFiles`, the same road a chosen folder takes into a new
+/// window, because `openWindow` cannot carry a value. When the app is launched BY the
+/// file, the first window is already on its way when the files arrive and takes them
+/// itself; with the app running, a window is opened for them.
+@MainActor
+final class FileOpening: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        WorkspaceModel.pendingFiles += files
+        WorkspaceModel.openNewWindow?()
     }
 }
 
@@ -358,6 +412,12 @@ struct WorkspaceCommands: Commands {
             if Updater.shared.canCheck {
                 Button("Check for Updates…") { Updater.shared.checkForUpdates() }
             }
+            // From the registry, which is what puts it in the palette as well. Needs a
+            // window to show the sheet in, so it dims without one.
+            Button(PaneCommands.whatsNew.title) {
+                if let store { PaneCommands.whatsNew.run(store) }
+            }
+            .disabled(store.map { !PaneCommands.whatsNew.isEnabled($0) } ?? true)
         }
 
         CommandGroup(after: .newItem) {
@@ -398,6 +458,12 @@ struct WorkspaceCommands: Commands {
             Button("New Session…") { chooseFolder() }
                 .keyboardShortcut("t", modifiers: .command)
 
+            // From the registry, which is what puts it in the palette as well. A session
+            // on no project — see `SessionList.openShell`.
+            Button(PaneCommands.newShell.title) { sessions?.openShell() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+                .disabled(sessions == nil)
+
             // No "New Window" here: a `WindowGroup` already puts one at the top of File on
             // ⌘N, and this group is appended AFTER it. Two identical items sat in one menu,
             // and the duplicate ⌘N meant SwiftUI dropped the shortcut from one of them —
@@ -428,12 +494,11 @@ struct WorkspaceCommands: Commands {
                 // ⌃⌘ because it is the safest of the four app-command modifier sets: ⌃I
                 // alone is Tab to readline, and ⌘I is Get Info in half the apps on the
                 // machine. Nothing in the reserved terminal table uses ⌃⌘I.
+                // Live on a scratch session too: Customize is how a session is RENAMED,
+                // and "New shell" is a name made to be replaced. See `SessionLook`.
                 Button("Customize Session…") { ui?.customizingSessionID = sessions?.selectedID }
                     .keyboardShortcut("i", modifiers: [.control, .command])
-                    // Dims rather than vanishing: a command that disappears is a command
-                    // nobody learns. A session with no project folder has nowhere to file
-                    // an icon, so there is nothing for the sheet to save.
-                    .disabled(store?.workspaceDirectory == nil)
+                    .disabled(store == nil)
 
                 // The keyboard path to what a new project gets for free: the AGENTS.md
                 // section, the ignore lines, the CLAUDE.md link — for a project that was
@@ -841,6 +906,12 @@ struct RootView: View {
                 NewProjectSheet(open: { sessions.open(directory: $0) },
                                 isPresented: $ui.isCreatingProject)
             }
+            // What the update that just installed changed. Dismissed, it hands the
+            // keyboard back like the other sheets.
+            .sheet(item: $ui.whatsNew) { content in
+                WhatsNewSheet(content: content)
+                    .onDisappear { store?.reclaimKeyboardFocus() }
+            }
             // Here, like the sheet above, so it answers the sidebar, the belt and the File
             // menu alike. Escape cancels. The Close button is destructive and nothing more:
             // made the default action as well, it came out blue with red text.
@@ -955,11 +1026,12 @@ struct RootView: View {
                         // worth a button each. A VIEW of the registry: every item here is
                         // an `AppCommand`, so it is on the Pane menu and in the palette too.
                         //
-                        // Equal column widths leads, set apart from the rest: it is the
-                        // one here that only moves dividers, and the three under it save
-                        // or replace the whole arrangement.
+                        // Equal column widths and row heights lead, set apart from the
+                        // rest: they are the ones here that only move dividers, and the
+                        // three under them save or replace the whole arrangement.
                         Menu {
                             windowBarItem(PaneCommands.equalizeColumns)
+                            windowBarItem(PaneCommands.equalizeRows)
                             Divider()
                             ForEach(PaneCommands.layouts) { windowBarItem($0) }
                         } label: {

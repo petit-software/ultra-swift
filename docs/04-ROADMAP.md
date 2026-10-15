@@ -370,6 +370,16 @@ would be pretending three of these are settled.
 - **A build from source never updates — DONE.** `build-app.sh` deletes any feed URL and
   `Updater` additionally refuses when the bundle sits beside a `Package.swift`. Verified both
   ways: the menu item is absent from a checkout build and present on a copy outside it.
+- **What's new, once, after an update — DONE.** The first launch on a new version shows a
+  short list of what the release changed (`WhatsNewChecker`, `WhatsNewSheet`), off a setting
+  that is on by default. The list is the release's own: `scripts/release.sh` takes the bold
+  lead of each paragraph of the release description, refuses a description with none, and
+  publishes them as `whats-new.md` beside the DMG — and as the appcast's release notes, so
+  Sparkle's own prompt says the same thing. The app fetches that asset for its version and
+  shows its lines; it parses no prose and ships no changelog. A fresh install records its
+  version and shows nothing; an offline launch shows nothing and tries again next time.
+  Ultra ▸ What's New in Ultra… shows the running version's list at any time, including on a
+  build from source, where the automatic dialog never appears.
 - **Rate limits.** Unauthenticated GitHub API is 60 requests an hour per IP. A check on
   launch and a daily one after is nowhere near it; anything that polls is.
 - **Channels.** GitHub marks prereleases, so stable-versus-early is a flag rather than a

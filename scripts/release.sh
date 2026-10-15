@@ -24,8 +24,29 @@
 #   FEED_URL       where the appcast will live. Defaults to this repository's own
 #                  releases/latest/download/appcast.xml, which works because the repo
 #                  is public.
+#
+# The one argument is the release's description, as a Markdown file kept OUTSIDE the
+# checkout (or in dist/, which is ignored): a tracked file would dirty the tree, and the
+# tree must be clean. Each change in it is a paragraph that opens with a bold lead —
+#
+#   **A window that closes keeps its sessions.** Closing a window has never stopped…
+#
+# — and those leads are the release's "what's new": published beside the DMG as
+# whats-new.md, which the app fetches and shows once on its first launch after updating
+# (see WhatsNewChecker), and as the appcast's release notes, so Sparkle's own prompt says
+# the same thing. A description with no leads is refused here, before anything is built:
+# the app never parses the prose, so a release with no list would show an empty dialog.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+NOTES="${1:-${NOTES:-}}"
+if [ -z "$NOTES" ] || [ ! -f "$NOTES" ]; then
+  echo "usage: scripts/release.sh <release-notes.md>" >&2
+  echo "       The release's description, as Markdown, kept outside the checkout or in dist/." >&2
+  echo "       Each change is a paragraph opening with a bold lead — **Like this.** — and" >&2
+  echo "       the leads become the What's New list the app shows after updating." >&2
+  exit 1
+fi
 
 # Credentials are looked up rather than demanded. Every one of these was already set up on
 # the machine that will run this, and a script that stops to ask for something it could have
@@ -63,6 +84,32 @@ if [ -n "$(git status --porcelain)" ]; then
   echo "error: working tree is dirty — commit or stash before releasing" >&2
   exit 1
 fi
+# And refuse a commit GitHub has not got: the release's tag is made there, at this commit,
+# and a tag on a commit nobody else can see is a release nobody can check out either.
+git fetch -q origin
+if ! git branch -r --contains HEAD | grep -q .; then
+  echo "error: HEAD is not pushed — the release tag must point at a commit on GitHub" >&2
+  exit 1
+fi
+
+echo "==> What's new"
+mkdir -p "$OUT"
+WHATS_NEW="$OUT/whats-new.md"
+# The bold lead that opens each paragraph, its full stop taken off. One line each: the
+# app shows the lines as they are and parses nothing else.
+grep -oE '^\*\*[^*]+\*\*' "$NOTES" | sed -E 's/^\*\*//; s/\*\*$//; s/[.:]$//' > "$WHATS_NEW"
+if [ ! -s "$WHATS_NEW" ]; then
+  echo "error: $NOTES has no paragraph opening with a bold lead (**Like this.**)" >&2
+  echo "       Those leads are the What's New list; a release needs at least one." >&2
+  exit 1
+fi
+sed 's/^/    • /' "$WHATS_NEW"
+# Sparkle's release notes: generate_appcast embeds an HTML file named like the archive.
+{
+  echo "<ul>"
+  sed -E 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/^(.*)$/  <li>\1<\/li>/' "$WHATS_NEW"
+  echo "</ul>"
+} > "$OUT/Ultra-$VERSION.html"
 
 echo "==> Building Ultra $VERSION ($BUILD_NUMBER)"
 scripts/build-app.sh
@@ -176,5 +223,29 @@ else
 fi
 echo
 echo "Built $DMG"
-echo "Upload $DMG and $OUT/appcast.xml to the GitHub release for v$VERSION."
-echo "The feed must stay at: $FEED_URL"
+
+# The release itself, when gh is signed in: the DMG, the appcast (which must stay at
+# $FEED_URL — "latest" is this release once it is published), the deltas generate_appcast
+# made, and the what's-new list the app will fetch. The description is the notes as
+# written. A release already there — a rerun after a failed upload — has its assets
+# replaced rather than duplicated.
+echo "==> Publishing the GitHub release"
+ASSETS=("$DMG" "$OUT/appcast.xml" "$WHATS_NEW")
+for delta in "$OUT"/*.delta; do
+  [ -e "$delta" ] && ASSETS+=("$delta")
+done
+if gh auth status >/dev/null 2>&1; then
+  if gh release view "v$VERSION" >/dev/null 2>&1; then
+    gh release upload "v$VERSION" "${ASSETS[@]}" --clobber
+    gh release edit "v$VERSION" --title "Ultra $VERSION" --notes-file "$NOTES"
+  else
+    gh release create "v$VERSION" "${ASSETS[@]}" --title "Ultra $VERSION" \
+      --notes-file "$NOTES" --target "$(git rev-parse HEAD)"
+  fi
+  gh release view "v$VERSION" --json url --jq .url
+else
+  echo "gh is not signed in. Upload these to the GitHub release for v$VERSION, with $NOTES as"
+  echo "its description:"
+  printf '  %s\n' "${ASSETS[@]}"
+  echo "The feed must stay at: $FEED_URL"
+fi

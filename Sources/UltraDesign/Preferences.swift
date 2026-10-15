@@ -196,6 +196,21 @@ public enum Preferences {
         set { setFlag("writesAgentInstructions", newValue, current: writesAgentInstructions) }
     }
 
+    /// Whether the first launch after an update shows what the release changed. On by
+    /// default: an update that arrives overnight through Sparkle is otherwise invisible.
+    public static var showsWhatsNew: Bool {
+        get { flag("showsWhatsNew", default: true) }
+        set { setFlag("showsWhatsNew", newValue, current: showsWhatsNew) }
+    }
+
+    /// The version whose list has been shown — or, on a fresh install, the version that was
+    /// installed, so the first update after it is the first one shown. Empty until the app
+    /// has run once.
+    public static var whatsNewSeenVersion: String {
+        get { string("whatsNewSeenVersion", default: "") }
+        set { setString("whatsNewSeenVersion", newValue, current: whatsNewSeenVersion) }
+    }
+
     /// Seconds between refreshes. Each tile shells out to a real command, so these are the
     /// difference between a live readout and a laptop that never idles.
     public static var portsInterval: CGFloat {
@@ -322,7 +337,7 @@ public enum Preferences {
                     "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
-                    "defaultProjectFolder"] {
+                    "defaultProjectFolder", "showsWhatsNew", "whatsNewSeenVersion"] {
             store.removeObject(forKey: prefix + key)
         }
         // The look is a preference too. Resetting everything except the thing the user was

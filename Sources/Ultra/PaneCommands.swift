@@ -15,7 +15,35 @@ enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
                                  + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
-                                 + [closeSession]
+                                 + [newShell, closeSession, whatsNew]
+
+    /// The running version's release list, on request. The same dialog the first launch
+    /// after an update shows on its own (`WhatsNewChecker`); here for the user who
+    /// dismissed it, turned it off, or runs a build from source where it never appears.
+    static let whatsNew = AppCommand(
+        id: "app.whatsNew", title: "What's New in Ultra…", symbol: "sparkles",
+        menuPath: ["Ultra"],
+        keywords: ["Release Notes", "Changelog"],
+        isEnabled: { SessionList.holding($0)?.ui != nil }) { store in
+            guard let ui = SessionList.holding(store)?.ui else { return }
+            Task { await WhatsNewChecker.shared.show { ui.whatsNew = $0 } }
+        }
+
+    /// A session on no project — one shell, in the home folder, called "New shell". The
+    /// belt's `+` after its last tab is this; so is File ▸ New Shell Session, drawn from
+    /// here so the two cannot come to say different things.
+    ///
+    /// ⇧⌘T: ⌘T opens a session on a folder, and ⇧ is "the same, without the question" —
+    /// there is no folder to ask for. ⌥⌘T is a shell PANE and ⌃⌘T a browser tab. Not in
+    /// the reserved terminal table: ⇧⌘ never reaches a shell.
+    static let newShell = AppCommand(
+        id: "session.newShell", title: "New Shell Session", symbol: "plus",
+        menuPath: ["File"],
+        binding: KeyBinding("t", [.command, .shift]),
+        keywords: ["New Shell", "Scratch Shell"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            SessionList.holding(store)?.openShell()
+        }
 
     /// Close the session on screen — the project, its shells and its agents.
     ///
@@ -265,6 +293,15 @@ enum PaneCommands {
                                 || ShellWorkspace.canOpen(.editor, in: $0) }) { store in
             ShellWorkspace.showInEditor(.newFile, in: store)
         },
+        // ⌃⌘L, the browser's and the chat's key for the same thing, shared on purpose: one
+        // key for "this pane, light or not". Like the chat's, this one is enabled only
+        // with an editor FOCUSED, so the menu fires the one for the pane in hand.
+        AppCommand(id: "editor.toggleLight", title: "Toggle Light Editor", symbol: "sun.max",
+                   menuPath: ["Pane", "Editor"],
+                   binding: KeyBinding("l", [.command, .control]),
+                   isEnabled: { ShellWorkspace.focusedEditorSessions(in: $0) != nil }) { store in
+            ShellWorkspace.focusedEditorSessions(in: store)?.toggleLight()
+        },
     ]
 
     /// Verbs about the arrangement as a whole. Palette and menu only: a command that
@@ -420,6 +457,15 @@ enum PaneCommands {
         symbol: "rectangle.split.3x1", menuPath: ["Pane"],
         isEnabled: { $0.tree.hasContainer(along: .horizontal) }) { $0.equalizeColumns() }
 
+    /// The same for stacked panes: two in a column come out half each, three a third, and
+    /// nothing side by side moves. Named for the same reason as its partner, and found by
+    /// "column heights" as well, since the panes it evens out are the ones IN a column.
+    static let equalizeRows = AppCommand(
+        id: "pane.equalizeRows", title: "Equalize Row Heights",
+        symbol: "rectangle.split.1x2", menuPath: ["Pane"],
+        keywords: ["Equalize Column Heights", "Equal Heights"],
+        isEnabled: { $0.tree.hasContainer(along: .vertical) }) { $0.equalizeRows() }
+
     static let others: [AppCommand] = [
         // Enabled even on the LAST pane, where it closes the project instead.
         //
@@ -467,6 +513,7 @@ enum PaneCommands {
                    binding: KeyBinding("=", [.command, .option]),
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.equalizeAll() },
         equalizeColumns,
+        equalizeRows,
     ]
 
     /// No default binding may shadow a key the shell owns. Checked at launch in debug

@@ -96,6 +96,11 @@ struct SessionTabBelt: View {
                             index, store in
                             tab(store, at: index)
                         }
+                        // After the last tab, where a browser puts "another one of these":
+                        // a shell on no project, called "New shell". The pair at the belt's
+                        // end make a PROJECT — a folder, or a clone — which is a different
+                        // question, asked in a sheet. The `+` here asks nothing.
+                        NewShellTab { sessions.openShell() }
                     }
                     .padding(.horizontal, Self.inset)
                 }
@@ -331,13 +336,12 @@ private struct SessionTab: View {
         self.select = select
         self.rename = rename
         self.close = close
-        _appearance = State(initialValue: SessionAppearanceStore.appearance(
-            forDirectory: store.workspaceDirectory))
+        _appearance = State(initialValue: SessionLook.appearance(for: store))
     }
 
     private var defaultName: String {
         store.workspaceDirectory.map { URL(fileURLWithPath: $0).lastPathComponent }
-            ?? store.workspaceTitle
+            ?? ShellWorkspace.scratchTitle
     }
 
     /// The window-level flag, answered by the tab it NAMES and only while the belt is the
@@ -409,7 +413,6 @@ private struct SessionTab: View {
                     select()
                     ui.customizingSessionID = store.workspaceID
                 }
-                .disabled(store.workspaceDirectory == nil)
                 if canClose {
                     Divider()
                     Button("Close Session", action: close)
@@ -464,6 +467,38 @@ private struct SessionTab: View {
         // an easy thing to hit.
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+/// The `+` after the belt's last tab: a session on no project (`SessionList.openShell`).
+///
+/// A tab's height and a tab's glyph, so it reads as the next slot on the belt rather than
+/// a control beside it; narrower than a tab, since it is a glyph with no name. The same
+/// hover wash as an unselected tab. The keyboard path is File ▸ New Shell Session (⇧⌘T),
+/// which is also where the palette finds it.
+private struct NewShellTab: View {
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(Token.Type_.body.weight(.semibold))
+                .foregroundStyle(Token.Colour.secondaryLabel)
+                .frame(width: 16, height: 16)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .background {
+            if isHovering {
+                Capsule().fill(Token.Colour.selectionWash.opacity(0.5))
+            }
+        }
+        .onHover { isHovering = $0 }
+        .help("New shell — a session on no project (⇧⌘T)")
+        .accessibilityLabel("New shell")
     }
 }
 

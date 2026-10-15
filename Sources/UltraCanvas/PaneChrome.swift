@@ -389,14 +389,38 @@ public final class PaneContainerView: NSView {
     /// grey chrome, which is not what "light" was asked to mean. So a light pane paints an
     /// opaque sheet of paper, whatever the opacity setting says. A pane pinned dark keeps
     /// the window's own glass, which is already dark.
+    ///
+    /// With the glass turned off (`Appearance.paneGlass`) the sheet is OPAQUE whatever the
+    /// opacity setting says: that setting tints the glass, and with no material under it
+    /// a translucent sheet would show the bare desktop through the pane.
     private func applyBackdrop() {
+        let opacity = Appearance.paneGlass ? theme.backgroundOpacity : 1
         let colour: NSColor = switch paneAppearance {
         case .light: .white
-        case .dark: NSColor(TerminalTheme.dark.background)
-            .withAlphaComponent(theme.backgroundOpacity)
-        case nil: NSColor(theme.background).withAlphaComponent(theme.backgroundOpacity)
+        case .dark: NSColor(TerminalTheme.dark.background).withAlphaComponent(opacity)
+        case nil: NSColor(theme.background).withAlphaComponent(opacity)
         }
         clip.layer?.backgroundColor = colour.cgColor
+    }
+
+    /// The pane's surface: the clip inside the glass, or — glass off — the clip on its own,
+    /// a solid sheet in the glass's place. Re-mounted only when the setting has changed
+    /// since the last look, since moving a view with a live terminal in it is not free.
+    private func mountSurface() {
+        let wantsGlass = Appearance.paneGlass
+        guard wantsGlass != (glass.contentView === clip) else { return }
+        if wantsGlass {
+            clip.removeFromSuperview()
+            glass.contentView = clip
+            glass.isHidden = false
+        } else {
+            glass.contentView = nil
+            clip.removeFromSuperview()
+            glass.isHidden = true
+            // Under the ring, which stays the topmost view whatever the surface is.
+            addSubview(clip, positioned: .below, relativeTo: ring)
+        }
+        applyBackdrop()
     }
 
     /// Every look setting a pane draws with, in one re-runnable place.
@@ -408,6 +432,7 @@ public final class PaneContainerView: NSView {
     /// The three glass properties are assigned unconditionally but read cheaply; the
     /// shadow's opacity is left to `applyLayerState`, which also knows about focus.
     private func applyAppearance() {
+        mountSurface()
         let radius = Token.Space.paneRadius
         clip.layer?.cornerRadius = radius
         glass.cornerRadius = radius

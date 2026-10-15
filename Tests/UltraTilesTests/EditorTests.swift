@@ -214,3 +214,110 @@ struct EditorTests {
         #expect(EditorDocument(url: url).claimInitialFocus() == false)
     }
 }
+
+/// Pictures, films, sounds and PDFs open in the editor to be LOOKED at. What matters is
+/// that they are told by type without being read as text, that nothing typed can be saved
+/// over one, and that a file written again on disk is shown again — and only then.
+@Suite("Editor media")
+@MainActor
+struct EditorMediaTests {
+
+    private func scratch(_ name: String) -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-media-\(UUID().uuidString)-\(name)")
+    }
+
+    /// Not a real PNG, on purpose: the type comes from the name, and the bytes are the
+    /// view's business. That a NUL-free file still opens as a picture is the point.
+    private func writeFile(_ name: String, _ bytes: String = "not really an image") throws -> URL {
+        let url = scratch(name)
+        try bytes.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @Test("pictures, PDFs, films and sounds are media; text is not, and SVG is text", arguments: [
+        ("shot.png", EditorMedia.image), ("photo.HEIC", .image), ("icon.icns", .image),
+        ("paper.pdf", .pdf), ("clip.mov", .movie), ("clip.mp4", .movie),
+        ("ding.aiff", .audio), ("song.mp3", .audio),
+    ])
+    func classifies(name: String, kind: EditorMedia) {
+        #expect(EditorMedia.kind(of: URL(fileURLWithPath: "/p/\(name)")) == kind)
+    }
+
+    @Test("text, SVG and a file with no extension are not media", arguments: [
+        "drawing.svg", "Package.swift", "notes.md", "data.json", "Makefile", "archive.zip",
+    ])
+    func notMedia(name: String) {
+        #expect(EditorMedia.kind(of: URL(fileURLWithPath: "/p/\(name)")) == nil)
+    }
+
+    @Test("a picture opens as media, with no text, and cannot be saved over")
+    func opensAsMedia() throws {
+        let url = try writeFile("shot.png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = EditorDocument(url: url)
+        #expect(document.media == .image)
+        #expect(document.isBinary)
+        #expect(document.text.isEmpty, "a picture is not read as text")
+        #expect(document.notice == nil)
+        document.text = "typed"
+        #expect(document.save() == false, "nothing typed may be written over a picture")
+        #expect(try String(contentsOf: url, encoding: .utf8) == "not really an image")
+    }
+
+    @Test("an SVG opens as text, to be edited")
+    func svgIsText() throws {
+        let url = try writeFile("drawing.svg", "<svg/>")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = EditorDocument(url: url)
+        #expect(document.media == nil)
+        #expect(document.text == "<svg/>")
+    }
+
+    @Test("a picture written again is shown again; a file beside it changing is not")
+    func reloadsOnlyOnItsOwnChange() throws {
+        let url = try writeFile("shot.png", "one")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = EditorDocument(url: url)
+        #expect(document.mediaRevision == 0)
+
+        // The folder watch fires for a sibling too: nothing about this file moved.
+        document.externalChange()
+        #expect(document.mediaRevision == 0)
+
+        try "a longer two".write(to: url, atomically: true, encoding: .utf8)
+        document.externalChange()
+        #expect(document.mediaRevision == 1)
+        #expect(document.notice == nil, "a picture changing needs no toast; the picture is the news")
+    }
+
+    @Test("a picture opened before it exists becomes the picture when it appears")
+    func appears() throws {
+        let url = scratch("later.png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = EditorDocument(url: url)
+        #expect(document.media == .image)
+        #expect(document.isBinary, "binary even while missing, so nothing can be saved in its place")
+        guard case .failed = document.notice else {
+            Issue.record("a missing picture should say it could not be read")
+            return
+        }
+        try "arrived".write(to: url, atomically: true, encoding: .utf8)
+        document.externalChange()
+        #expect(document.notice == nil)
+        #expect(document.mediaRevision == 1)
+    }
+
+    @Test("a media tab wears its kind's icon")
+    func tabSymbol() throws {
+        let picture = try writeFile("shot.png")
+        let text = try writeFile("notes.txt")
+        defer {
+            try? FileManager.default.removeItem(at: picture)
+            try? FileManager.default.removeItem(at: text)
+        }
+        let sessions = EditorSessions()
+        #expect(sessions.open(.file(picture)).symbol == "photo")
+        #expect(sessions.open(.file(text)).symbol == "doc.text")
+    }
+}

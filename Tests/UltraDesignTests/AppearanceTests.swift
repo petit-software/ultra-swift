@@ -108,6 +108,7 @@ struct AppearanceTests {
         clean {
             // Every value here is NOT the default — the setter skips a write that would not
             // change anything, so a default would leave its key empty and fail the guard.
+            Appearance.paneGlass = false
             Appearance.glassStyle = .regular
             Appearance.glassTint = .accent
             Appearance.glassTintStrength = 0.5

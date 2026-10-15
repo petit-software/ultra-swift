@@ -40,9 +40,12 @@ public final class TileFactory {
         self.records.merge(records) { _, new in new }
     }
 
-    /// What the next editor pane should open on. Consumed once, like the kind.
-    private var pendingRequest: EditorRequest?
-    public func stage(open request: EditorRequest?) { pendingRequest = request }
+    /// What the next editor pane should open on. Consumed once, like the kind. A list,
+    /// because a window opened from Finder on several Markdown files puts them all in
+    /// the one editor it opens with; everything else stages one.
+    private var pendingRequests: [EditorRequest] = []
+    public func stage(open request: EditorRequest?) { pendingRequests = request.map { [$0] } ?? [] }
+    public func stage(opening requests: [EditorRequest]) { pendingRequests = requests }
 
     /// The open tabs of each editor pane.
     ///
@@ -137,7 +140,7 @@ public final class TileFactory {
             view = NSHostingView(rootView: FileTreeTile(context: paneContext))
         case .editor:
             // The sessions outlive the view: a pane rebuilt for any reason keeps what is open.
-            let open = sessions[paneID] ?? EditorSessions()
+            let open = sessions[paneID] ?? EditorSessions(isLight: records[paneID]?.appearance == .light)
             sessions[paneID] = open
             // Deaf while the pane is being built. The record this returns already says what
             // is selected, and announcing it now would persist the layout from INSIDE the
@@ -146,25 +149,36 @@ public final class TileFactory {
             // until the stack runs out.
             open.onSelectionChange = nil
             // A staged request wins; a restored pane reopens whatever it had.
-            if let pendingRequest {
-                open.open(pendingRequest)
+            if !pendingRequests.isEmpty {
+                for request in pendingRequests { open.open(request) }
             } else if open.isEmpty,
                       let file = records[paneID]?.command.map({ URL(fileURLWithPath: $0) }) {
                 open.open(.file(file))
             }
-            pendingRequest = nil
+            pendingRequests = []
             open.onSelectionChange = { [weak self] path in
                 self?.noteEditorSelection(paneID, path: path, root: root)
             }
-            view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
-            // A new file has no path to record: nothing of it exists to reopen.
-            if let path = open.selected?.path, !path.isEmpty {
-                let record = Self.record(for: kind, root: root,
-                                         file: URL(fileURLWithPath: path))
-                records[paneID] = record
-                hosts[paneID] = view
-                return (view, record)
+            // Weak on both sides: the closure is held by `open`, and a strong `open` in it
+            // would hold the sessions alive past the pane.
+            open.onLightChange = { [weak self, weak open] in
+                self?.noteEditorSelection(paneID, path: open?.selected?.path, root: root)
             }
+            view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
+            // A new file has no path to record: nothing of it exists to reopen. The look
+            // is recorded either way — a pane pinned light with nothing in it comes back
+            // light.
+            var record: PaneRecord
+            if let path = open.selected?.path, !path.isEmpty {
+                record = Self.record(for: kind, root: root, file: URL(fileURLWithPath: path))
+            } else {
+                view.setAccessibilityLabel(Self.title(for: kind, root: root))
+                record = Self.record(for: kind, root: root)
+            }
+            record.appearance = open.isLight ? .light : nil
+            records[paneID] = record
+            hosts[paneID] = view
+            return (view, record)
         case .todo:
             let store = todos[paneID] ?? TodoStore(root: root)
             todos[paneID] = store
@@ -362,6 +376,9 @@ public final class TileFactory {
             record.title = file.lastPathComponent
             record.subtitle = "diff"
         }
+        // The pane's look rides with every record it writes, the way the chat's does:
+        // switching tabs must not drop a pane back to following the app.
+        record.appearance = sessions[paneID]?.isLight == true ? .light : nil
         records[paneID] = record
         onRecordChange?(paneID, record)
     }

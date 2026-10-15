@@ -167,7 +167,16 @@ something another editor does better.
 - **External changes**: reloaded when there are no local edits, and when there ARE, neither
   side is touched and the user is told. Nothing here overwrites work without being asked.
 - **The open file is persisted** in the pane record, so a restored workspace reopens it.
+- **Light, like the browser and the chat.** The footer's sun pins the pane light whatever
+  the app wears; the moon lets it follow the app again. Pane ▸ Editor ▸ Toggle Light Editor
+  (⌃⌘L, the key the browser and the chat use for the same thing; it acts on the focused
+  editor). The pane's look, saved with the pane and never with a file.
 - Reachable from a File Tree pane's context menu — "Open in Editor".
+- **Markdown from Finder.** Ultra is in Open With for `.md` (an alternate handler, never
+  made the default by being installed), and takes a drop on its Dock icon and `open -a
+  Ultra notes.md`. The files open in a NEW window holding one editor pane and nothing
+  else, on no project — named for the first file — and the window the app would otherwise
+  have restored still comes back on ⌘N. See `FileOpening`.
 
 Deliberately absent: per-language grammars, find and replace, multiple cursors,
 autocomplete, and split views. Each is a reason to use the editor the user already has.

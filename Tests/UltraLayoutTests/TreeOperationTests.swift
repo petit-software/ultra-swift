@@ -320,6 +320,31 @@ struct StructuralTests {
         #expect(stack.children[1].asContainer!.fractions == [0.5, 0.5])
     }
 
+    @Test("equal row heights: a stack of three a third each, the row across it untouched")
+    func equalizeRows() {
+        var tree = LayoutTree.fixture(.sidebarMain)   // row [0.25, 0.75], column [0.7, 0.3]
+        let did = tree.equalize(axis: .vertical)
+        #expect(did)
+        #expect(tree.root.asContainer!.fractions == [0.25, 0.75])
+        #expect(tree.root.asContainer!.children[1].asContainer!.fractions == [0.5, 0.5])
+
+        var stacked = LayoutTree(single: pane(1))
+        stacked.split(pane(1), edge: .bottom, newPane: pane(2))
+        stacked.split(pane(2), edge: .bottom, newPane: pane(3))
+        var column = stacked.root.asContainer!
+        column.fractions = [0.6, 0.3, 0.1]
+        stacked.root = .container(column)
+        let didStacked = stacked.equalize(axis: .vertical)
+        #expect(didStacked)
+        #expect(stacked.root.asContainer!.fractions.allSatisfy { abs($0 - 1.0 / 3) < 1e-9 })
+        #expect(stacked.validate().isEmpty)
+
+        var across = LayoutTree.fixture(.threeAcross)
+        #expect(!across.hasContainer(along: .vertical))
+        let didAcross = across.equalize(axis: .vertical)
+        #expect(!didAcross)
+    }
+
     @Test("a canvas with no side-by-side panes has no columns to equalize")
     func equalizeColumnsNothingToDo() {
         var single = LayoutTree.fixture(.single)

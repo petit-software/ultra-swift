@@ -69,6 +69,9 @@ public struct FileTreeTile: View {
                 model.showsHidden.toggle()
             }
             TileFooterButton(symbol: "arrow.clockwise", help: "Reload") { model.reload() }
+            TileFooterButton(symbol: "square.fill.on.square.fill", help: "Open this folder in Finder") {
+                context.revealInFinder(model.root)
+            }
         }
     }
 

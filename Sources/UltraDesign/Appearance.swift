@@ -94,6 +94,15 @@ public enum Appearance {
 
     // MARK: - Glass
 
+    /// Whether a pane is Liquid Glass at all. Off, every pane is a solid sheet of its
+    /// theme's background — flat, opaque, and lighter on the GPU. The ONE look switch in
+    /// Settings (General ▸ Appearance): the material is the product, but it is also the
+    /// one thing about the look a user may want none of, on a busy desktop or an old Mac.
+    public static var paneGlass: Bool {
+        get { PreferenceStore.flag(key("paneGlass"), default: true) }
+        set { PreferenceStore.setFlag(key("paneGlass"), newValue, current: paneGlass) }
+    }
+
     public static var glassStyle: GlassStyle {
         get { choice("glassStyle", default: .clear) }
         set { setChoice("glassStyle", newValue, current: glassStyle) }
@@ -280,7 +289,8 @@ public enum Appearance {
     /// new setting being added without one — a knob that `reset()` cannot reach is a knob
     /// that "Reset to Defaults" quietly lies about.
     public static let keys = [
-        "glassStyle", "glassTint", "glassTintStrength", "mergesPaneGlass", "glassMergeSpacing",
+        "paneGlass", "glassStyle", "glassTint", "glassTintStrength", "mergesPaneGlass",
+        "glassMergeSpacing",
         "paneRadius", "paneShadowRadius", "paneShadowOpacity", "paneGutter",
         "focusRingWidth", "focusRingStrength",
         "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",

@@ -457,6 +457,7 @@ discoverable, remappable by the system, and reachable from the Help menu search.
 | `⇧⌘↩` | Toggle zoom on the focused pane |
 | `⌘=` | Equalize the focused pane's container (`⌥⌘=` equalizes everything) |
 | — | Equalize Column Widths: every row of side-by-side panes shared out evenly, heights untouched. No chord: the Pane menu, the window bar's ellipsis (first item) and the palette |
+| — | Equalize Row Heights: every stack of panes shared out evenly, widths untouched. Beside Equalize Column Widths in all three places |
 | `⌘1`…`⌘9` | Focus pane N in visual order |
 | `⌃⇧` + drag | Rearrange without grabbing the header |
 

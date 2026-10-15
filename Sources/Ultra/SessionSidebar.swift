@@ -126,6 +126,35 @@ private struct SessionSidebarBar: View {
     }
 }
 
+/// What a session's row and tab wear, found by the session.
+///
+/// A project's look is filed under its folder (`SessionAppearanceStore`), so it is the same
+/// in every window and every launch. A scratch session — `SessionList.openShell` — has no
+/// folder, and used to have no look either: Customize was dimmed on it, since a choice
+/// with nowhere to be saved would be forgotten the moment the sheet closed. Now the choice
+/// is kept HERE, by workspace id, for as long as the session runs. That is as long as the
+/// session itself lasts, so nothing is lost that the session would not have lost anyway,
+/// and Customize can stay live for the thing a scratch session most needs it for: a name.
+@MainActor
+enum SessionLook {
+    private static var transient: [UUID: SessionAppearance] = [:]
+
+    static func appearance(for store: LayoutStore) -> SessionAppearance {
+        if let directory = store.workspaceDirectory {
+            return SessionAppearanceStore.appearance(forDirectory: directory)
+        }
+        return transient[store.workspaceID] ?? .default
+    }
+
+    static func set(_ appearance: SessionAppearance, for store: LayoutStore) {
+        if let directory = store.workspaceDirectory {
+            SessionAppearanceStore.set(appearance, forDirectory: directory)
+        } else {
+            transient[store.workspaceID] = appearance.isDefault ? nil : appearance
+        }
+    }
+}
+
 /// The two ways a project gets into this window, as the controls the sidebar's bar and the
 /// session tab belt both carry: `+` for a project that does not exist yet, the folder for
 /// one that does. One definition, so the two places cannot drift apart.
@@ -284,17 +313,16 @@ private struct SessionRow: View {
         self.select = select
         self.rename = rename
         self.close = close
-        _appearance = State(initialValue: SessionAppearanceStore.appearance(
-            forDirectory: store.workspaceDirectory))
+        _appearance = State(initialValue: SessionLook.appearance(for: store))
     }
 
     private var tint: SessionTint { SessionTint(storedValue: appearance.tint) }
 
     /// The project folder's own name — what an emptied field falls back to, and what Reset
-    /// puts back. Nil-safe: a workspace with no directory keeps whatever it is called.
+    /// puts back. A scratch session goes back to being called "New shell".
     private var defaultName: String {
         store.workspaceDirectory.map { URL(fileURLWithPath: $0).lastPathComponent }
-            ?? store.workspaceTitle
+            ?? ShellWorkspace.scratchTitle
     }
 
     /// The window-level flag, answered by the row it NAMES — and only while the sidebar is
@@ -396,11 +424,9 @@ private struct SessionRow: View {
         // a third control competing for the width the NAME needs. Both items here are views
         // of a menu command — a context menu is never the only way to reach something.
         .contextMenu {
+            // Live on a scratch session as well — it is how one is renamed. Its icon is
+            // kept for the session's lifetime (`SessionLook`), so nothing is silently lost.
             Button("Customize") { beginCustomizing() }
-                // A workspace with no directory has no key to file an icon under, so the
-                // picker would forget every choice the moment it closed. Dimmed rather than
-                // silently lossy.
-                .disabled(store.workspaceDirectory == nil)
             if canClose {
                 Divider()
                 Button("Close Session", action: close)
@@ -454,7 +480,7 @@ struct SessionCustomizerSheet: ViewModifier {
     }
 
     /// The defaults for a workspace with no directory: there is no file to read, and no
-    /// file to write, which is why Customize is dimmed on such a row.
+    /// file to write, which is why the sheet hides its agent section on such a session.
     static func loadAgents(forDirectory directory: String?) -> [AgentDefinition] {
         guard let directory else { return AgentDefinition.defaults }
         return ProjectAgents.load(in: URL(fileURLWithPath: directory, isDirectory: true))
@@ -466,7 +492,10 @@ struct SessionCustomizerSheet: ViewModifier {
         // popover closes the moment the pointer strays. See `SessionCustomizer`.
         .sheet(isPresented: $isPresented) {
             SessionCustomizer(name: name, appearance: $appearance, agents: agentsBinding,
-                              defaultName: defaultName) {
+                              defaultName: defaultName,
+                              // A scratch session has no `.ultra/agents.json` to edit:
+                              // the section would take changes and keep none of them.
+                              showsAgents: store.workspaceDirectory != nil) {
                 appearance = .default
                 agents = AgentDefinition.defaults
                 rename(defaultName)
@@ -482,7 +511,7 @@ struct SessionCustomizerSheet: ViewModifier {
         // One place the icon is written, whichever control changed it — the swatches, the
         // symbols and Reset all just move the binding.
         .onChange(of: appearance) { _, new in
-            SessionAppearanceStore.set(new, forDirectory: store.workspaceDirectory)
+            SessionLook.set(new, for: store)
         }
         // Written through on every edit, like the icon. The file is the project's, so a
         // list that matches what is already on disk — a row untouched, a Reset on a project
@@ -503,7 +532,7 @@ struct SessionCustomizerSheet: ViewModifier {
         // hold the default icon for the rest of the launch — the customisation would look
         // like it had not been saved at all.
         .onChange(of: store.workspaceDirectory) { _, directory in
-            appearance = SessionAppearanceStore.appearance(forDirectory: directory)
+            appearance = SessionLook.appearance(for: store)
             if agents != nil { agents = Self.loadAgents(forDirectory: directory) }
         }
     }

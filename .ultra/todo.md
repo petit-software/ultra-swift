@@ -1,5 +1,14 @@
 
 ## New shit
+- [x] Add option to settings apperance to turn off glass from panes. — Settings ▸ General ▸ Appearance ▸ Glass panes; off, a pane is a solid sheet of its theme's background. Not yet confirmed in the running app
+- [ ] Build and issue a GH release
+- [x] add option to ultra to always display whats new dialog when new version of ultra is downloaded this should be a super short list of things we added - this should be coming from a release of gh page from ultra but this must be added to the release cycle so it always creates a super short list of things based on original release description. — shown once on the first launch after an update (Settings ▸ Updates, on by default) and on Ultra ▸ What's New in Ultra… any time. The list is `whats-new.md` beside the DMG on the release: `scripts/release.sh` now takes the notes file, makes the list from each paragraph's bold lead, refuses notes with none, and publishes the release with gh. Not yet confirmed in the running app; the first release through the new script will confirm the cycle
+- [x] Add editor a light mode like in browser — the footer's sun and moon, Pane ▸ Editor ▸ Toggle Light Editor (⌃⌘L, the browser's and the chat's key), saved with the pane. Not yet confirmed in the running app
+- [x] add option to open MD files from system Open with > and Ultra should be there. Markdown files would open in editor. New ultra window would open with just Editor open. — Ultra claims Markdown as an alternate handler; the files open in a new window with one editor pane on no project. Needs a rebuilt Ultra.app for Launch Services to see the new Info.plist; the launch-by-double-click timing is not yet confirmed in the running app
+- [x] add option to equalize column height — Equalize Row Heights, beside Equalize Column Widths on the Pane menu, the window bar's ellipsis and the palette. Not yet confirmed in the running app
+- [x] Add option after last pill in the bottom project belt with a plus symbol that opens up a new empty project space without a name with just shell Called New shell that user can rename if they want. — the `+` after the last tab, and File ▸ New Shell Session (⇧⌘T); renamed from Customize. Not saved across launches: a session on no folder has nothing to be found by again. Not yet confirmed in the running app
+- [x] why chat can't do reddit fetch?
+- [x] media files should be openable / viewable in the editor
 - [x] Command pallete, add optoin to close the Project
 - [x] CMD + W should cloase all panse-as it is doing now but last is left closing it should be possible and that should close the whole project.
 - [x] Opening a project presevers a previously selected project panes instead of showing a fresh set of new project — fixed in code: a closed window left its sessions running where no window showed them, and File ▸ Open on one of those found it "open", had no window to raise and did nothing. A closing window now lets go of its sessions; the next window, or opening the project, takes them back still running. Not yet confirmed in the running app
@@ -18,3 +27,5 @@
 - [ ] Simulator: fix the enclosure's rendering and turn `showsEnclosure` back on
 - [ ] Simulator: a device booted from the pane stops responding — the view could stay on the boot-screen screenshot with input off; fixed defensively (re-point on any non-live contents, drop the stale still, re-read surfaces on poll), not yet reproduced here
 
+## Tuning
+- [x] Files, Add option at the bottom to open a folder in finder us this icon square.fill.on.square.fill

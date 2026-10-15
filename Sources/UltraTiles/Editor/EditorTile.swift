@@ -73,6 +73,14 @@ public struct EditorTile: View {
                     .frame(width: 6, height: 6)
                     .help("Unsaved changes")
             }
+            // The browser's and the chat's sun and moon, with the same key: a pane pinned
+            // light, or one that follows the app. Also on Pane ▸ Editor, so it is not
+            // pointer-only.
+            TileFooterButton(symbol: sessions.isLight ? "moon" : "sun.max",
+                             help: sessions.isLight ? "Follow the App's Appearance (⌃⌘L)"
+                                                    : "Show Editor Light (⌃⌘L)") {
+                sessions.toggleLight()
+            }
         }
     }
 
@@ -156,7 +164,15 @@ private struct FilePane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if document.isBinary {
+            if let media = document.media, let url = document.url {
+                // A picture, a film, a sound or a PDF is shown. One that is not on disk
+                // yet says so in the toast, and shows nothing until it arrives.
+                if case .failed = document.notice {
+                    EmptyTileState(icon: media.symbol, title: "Nothing to show yet")
+                } else {
+                    MediaView(url: url, kind: media, revision: document.mediaRevision)
+                }
+            } else if document.isBinary {
                 // WHICH file is the footer's job — it carries the full path in every state
                 // of this tile, including this one.
                 EmptyTileState(icon: "doc.questionmark", title: "Not a text file")
@@ -199,6 +215,13 @@ private struct FilePane: View {
 
 #Preview("Editor", traits: .fixedLayout(width: 620, height: 380)) {
     EditorTile(context: .inert(), sessions: EditorSessions())
+}
+
+#Preview("Editor showing an image", traits: .fixedLayout(width: 620, height: 380)) {
+    let sessions = EditorSessions()
+    sessions.open(.file(URL(fileURLWithPath: "/tmp/Package.swift")))
+    sessions.open(.file(MediaPreviewFixture.image))
+    return EditorTile(context: .inert(), sessions: sessions)
 }
 
 #Preview("Editor with tabs", traits: .fixedLayout(width: 620, height: 380)) {

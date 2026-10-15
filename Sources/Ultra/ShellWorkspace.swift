@@ -20,8 +20,17 @@ enum ShellWorkspace {
     ///   on screen there — and such a twin is not saved either: the project's layout is
     ///   the other window's, and a second document under the same folder is what made
     ///   the next launch restore a stale one.
+    /// What a session on no project is called until it is renamed.
+    static let scratchTitle = "New shell"
+
+    /// `directory` nil is a SCRATCH session: a shell on no project, the belt's `+` and
+    /// File ▸ New Shell Session. Its shell starts in the home folder, its tiles take home
+    /// as their root, it is called `scratchTitle`, and nothing of it is written to disk —
+    /// there is no folder to find it by again, so the next launch does not reopen it, the
+    /// way a Terminal tab does not come back. Within a run it is a session like any other:
+    /// renamed from Customize, kept running when its window closes, taken back by the next.
     static func make(storage: WorkspaceStorage,
-                     directory: String,
+                     directory: String?,
                      theme: TerminalTheme? = nil,
                      restore: Bool = true) -> LayoutStore {
         // BY PATH, not "whichever document is first on disk" — that stood in for this while
@@ -29,12 +38,18 @@ enum ShellWorkspace {
         //
         // A project with nothing to restore takes the DEFAULT layout, if one has been set:
         // the arrangement the user chose once, re-homed onto this folder. Without one it
-        // is a single shell, as before.
-        let restored = restore ? storage.load(directory: directory) : nil
+        // is a single shell, as before. A scratch session is always the single shell: it
+        // was asked for as "just a shell", and a default layout is a project's.
+        let restored = restore ? directory.flatMap { storage.load(directory: $0) } : nil
         // One document per project. Any others under this folder are what an earlier
         // build's unsaved-twin path left behind, and the next open must not find them.
-        if let restored { storage.retireDuplicates(for: directory, keeping: restored.id) }
-        let document = restored ?? defaultDocument(for: directory, storage: storage)
+        if let restored, let directory {
+            storage.retireDuplicates(for: directory, keeping: restored.id)
+        }
+        let document = restored ?? directory.flatMap { defaultDocument(for: $0, storage: storage) }
+        // Where a scratch session's shells start and its tiles look: the home folder,
+        // which is where a new terminal window starts everywhere else on the Mac.
+        let home = directory ?? NSHomeDirectory()
         let records: [PaneID: PaneRecord] = document.map { document in
             Dictionary(uniqueKeysWithValues: document.panes.compactMap { key, value in
                 PaneID(uuidString: key).map { ($0, value) }
@@ -48,7 +63,7 @@ enum ShellWorkspace {
         // History is restored only for a workspace that is itself being restored. A fresh
         // window opening on a project it has never opened has no panes to match, so there is
         // nothing to hand back and nothing to prune.
-        let factory = ShellPaneFactory(theme: theme, defaultDirectory: directory,
+        let factory = ShellPaneFactory(theme: theme, defaultDirectory: home,
                                        restoring: records,
                                        scrollback: ScrollbackStore())
 
@@ -58,7 +73,7 @@ enum ShellWorkspace {
         // Scoped to THIS workspace, by id. These closures used to read whichever store the
         // Registry dictionary happened to hand back first, so with two tabs open a tile
         // could type into a shell in the other one.
-        let root = URL(fileURLWithPath: directory)
+        let root = URL(fileURLWithPath: home)
         let tiles = TileFactory(context: TileContext(
             root: root,
             injectIntoShell: { [weak factory] text in
@@ -94,7 +109,10 @@ enum ShellWorkspace {
                                 metrics: .fromSettings,
                                 theme: theme,
                                 workspaceID: workspaceID,
-                                storage: restore ? storage : nil) { paneID in
+                                // No storage for a scratch session: a document saved for
+                                // it would never be loaded, and would sit in Application
+                                // Support until something pruned it.
+                                storage: restore && directory != nil ? storage : nil) { paneID in
             // Tiles first: the factory returns nil for anything it does not own, and the
             // shell factory picks up everything else. The canvas never learns the difference.
             if let tile = tiles.makeContent(for: paneID) {
@@ -105,8 +123,9 @@ enum ShellWorkspace {
         }
 
         store.workspaceTitle = document?.title
-            ?? URL(fileURLWithPath: directory).lastPathComponent
-        store.workspaceSubtitle = document?.subtitle ?? ShellPaneFactory.abbreviate(directory)
+            ?? directory.map { URL(fileURLWithPath: $0).lastPathComponent }
+            ?? scratchTitle
+        store.workspaceSubtitle = document?.subtitle ?? directory.map(ShellPaneFactory.abbreviate)
         store.workspaceDirectory = directory
         store.windowFrame = document?.windowFrame?.rect
 
@@ -428,6 +447,13 @@ enum ShellWorkspace {
         return Registry.tiles[store.workspaceID]?.editorSessions(for: target)
     }
 
+    /// The tabs of the editor that HAS the keyboard, or nil when the focused pane is not
+    /// one. For verbs about the pane itself — its look — rather than about a file, which
+    /// go to the pane a click would have filled (`editorSessions(in:)`).
+    static func focusedEditorSessions(in store: LayoutStore) -> EditorSessions? {
+        Registry.tiles[store.workspaceID]?.editorSessions(for: store.tree.focused)
+    }
+
     /// Show a page in a browser pane: the one already open, or a new one.
     ///
     /// The editor's rule, for the editor's reason: a Ports row clicked three times should be
@@ -582,6 +608,16 @@ enum ShellWorkspace {
     /// Open a new editor pane on a specific file. Kept for callers that mean a FILE.
     static func openEditor(on file: URL, in store: LayoutStore) {
         showInEditor(.file(file), in: store)
+    }
+
+    /// The FIRST pane of a session not yet laid out will be an editor on these files.
+    ///
+    /// For a session made for the files (`SessionList.openEditor`): its one pane is built
+    /// when the canvas first lays it out, and takes what is staged here — the kind, and
+    /// the files, every one of them into the same editor's tabs.
+    static func stageEditor(opening files: [URL], in store: LayoutStore) {
+        stageTile(.editor, for: store)
+        Registry.tiles[store.workspaceID]?.stage(opening: files.map(EditorRequest.file))
     }
 
     /// Open a new shell pane, optionally running an agent.

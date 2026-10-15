@@ -39,6 +39,9 @@ final class UIState {
     /// one wording, presented by the window whichever list is on screen. Closing stops the
     /// session's shells and agents, which no undo brings back.
     var closingSessionID: UUID?
+    /// The release list on screen, or nil. Set by the first launch after an update and by
+    /// Ultra ▸ What's New in Ultra…; the window presents it like its other sheets.
+    var whatsNew: WhatsNewContent?
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding

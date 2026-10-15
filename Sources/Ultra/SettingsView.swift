@@ -15,7 +15,9 @@ import UltraTiles
 /// glass, corners, shadows, the window's tint and edge — were sliders while the look was
 /// being found, and once it was found the sliders came out: what they settled on is the
 /// default in `Appearance`, and a tab of them only invited undoing it. The accent is the
-/// one choice that survived, and it sits with the terminal, which is what it colours.
+/// one choice that survived, and it sits with the terminal, which is what it colours. One
+/// switch came back since: General ▸ Appearance turns the panes' glass off altogether,
+/// which is not a number to tune but a material to decline.
 ///
 /// The theme picker is gone too, for now: the app is DARK. Light and Follow System are
 /// still there underneath — `Preferences.themeMode` reads them and the tests hold them —
@@ -73,6 +75,9 @@ private struct GeneralSettings: View {
                            isOn: Binding(get: { Updater.shared.checksAutomatically },
                                          set: { Updater.shared.checksAutomatically = $0 }))
                     Button("Check Now…") { Updater.shared.checkForUpdates() }
+                    Toggle("Show what's new after an update",
+                           isOn: prefs.flag({ Preferences.showsWhatsNew },
+                                            { Preferences.showsWhatsNew = $0 }))
                 } else {
                     // Says WHY rather than hiding an empty section. A missing control with no
                     // explanation is what makes people think the feature is broken.
@@ -82,6 +87,19 @@ private struct GeneralSettings: View {
                 }
             } header: {
                 Text("Updates")
+            }
+
+            Section {
+                Toggle("Glass panes",
+                       isOn: prefs.flag({ Appearance.paneGlass },
+                                        { Appearance.paneGlass = $0 }))
+            } header: {
+                Text("Appearance")
+            } footer: {
+                SettingNote("On, every pane is Liquid Glass over the desktop. Off, each pane "
+                            + "is a solid sheet of its theme's background instead — flat, "
+                            + "opaque and lighter on the GPU. The window bar and the "
+                            + "palette keep their glass either way.")
             }
 
             Section {

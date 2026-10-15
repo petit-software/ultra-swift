@@ -347,6 +347,12 @@ public final class LayoutStore {
         apply("Equalize Column Widths") { $0.equalize(axis: .horizontal) }
     }
 
+    /// The other way round: every stack of panes shared out evenly — two in a column half
+    /// each, three a third — with the widths of side-by-side panes left as they are.
+    public func equalizeRows() {
+        apply("Equalize Row Heights") { $0.equalize(axis: .vertical) }
+    }
+
     public func move(_ paneID: PaneID, toEdgeOf target: PaneID, edge: Edge) {
         apply("Move Pane") { $0.move(paneID, toEdgeOf: target, edge: edge) }
     }
