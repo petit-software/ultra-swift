@@ -67,6 +67,16 @@ public struct EditorTile: View {
                 TileFooterButton(symbol: "square.and.arrow.down", help: "Save (⌘S)",
                                  isEnabled: document.isDirty || document.isUntitled) { save(session) }
             }
+            // Markdown's two faces. The pencil on the page says "the text is one click
+            // away"; the book on the text says the same of the page. Also on Pane ▸
+            // Editor (⌃⌘R), so it is not pointer-only.
+            if let document = sessions.readableDocument {
+                TileFooterButton(symbol: document.isReading ? "pencil" : "book",
+                                 help: document.isReading ? "Edit the Text (⌃⌘R)"
+                                                          : "Read as a Page (⌃⌘R)") {
+                    document.toggleReading()
+                }
+            }
             if sessions.selected?.isDirty == true {
                 Circle()
                     .fill(Token.Colour.accent)
@@ -176,6 +186,10 @@ private struct FilePane: View {
                 // WHICH file is the footer's job — it carries the full path in every state
                 // of this tile, including this one.
                 EmptyTileState(icon: "doc.questionmark", title: "Not a text file")
+            } else if document.isReading, let url = document.url {
+                // Markdown as a page. A view of the same buffer the text view edits, so
+                // the page shows what the text would, unsaved edits included.
+                MarkdownReadingView(text: document.text, url: url)
             } else {
                 // A new file takes the caret as it appears: it was asked for in order to be
                 // typed into, and nothing else in the pane wants the keyboard.
@@ -221,6 +235,12 @@ private struct FilePane: View {
     let sessions = EditorSessions()
     sessions.open(.file(URL(fileURLWithPath: "/tmp/Package.swift")))
     sessions.open(.file(MediaPreviewFixture.image))
+    return EditorTile(context: .inert(), sessions: sessions)
+}
+
+#Preview("Editor reading Markdown", traits: .fixedLayout(width: 620, height: 380)) {
+    let sessions = EditorSessions()
+    sessions.open(.file(URL(fileURLWithPath: "/tmp/README.md")))
     return EditorTile(context: .inert(), sessions: sessions)
 }
 

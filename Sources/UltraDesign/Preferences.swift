@@ -203,6 +203,17 @@ public enum Preferences {
         set { setFlag("showsWhatsNew", newValue, current: showsWhatsNew) }
     }
 
+    /// Whether a Markdown file opens in the editor as a page to READ — headings, lists,
+    /// tables and code drawn as such — rather than as the text it is written in. On by
+    /// default: most Markdown opened from a file tree is opened to be read, and the text is
+    /// one click away in the pane's footer. Off, every file opens as text, and the same
+    /// click shows the page. The starting state for a file as it is opened; each file can
+    /// still be switched on its own.
+    public static var opensMarkdownReading: Bool {
+        get { flag("opensMarkdownReading", default: true) }
+        set { setFlag("opensMarkdownReading", newValue, current: opensMarkdownReading) }
+    }
+
     /// The version whose list has been shown — or, on a fresh install, the version that was
     /// installed, so the first update after it is the first one shown. Empty until the app
     /// has run once.
@@ -337,7 +348,8 @@ public enum Preferences {
                     "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
-                    "defaultProjectFolder", "showsWhatsNew", "whatsNewSeenVersion"] {
+                    "defaultProjectFolder", "showsWhatsNew", "whatsNewSeenVersion",
+                    "opensMarkdownReading"] {
             store.removeObject(forKey: prefix + key)
         }
         // The look is a preference too. Resetting everything except the thing the user was

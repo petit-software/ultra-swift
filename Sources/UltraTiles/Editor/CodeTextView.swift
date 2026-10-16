@@ -162,7 +162,9 @@ struct CodeTextView: NSViewRepresentable {
 
         /// System colours, every one dynamic, so the same file reads in light and dark
         /// appearance and under Increase Contrast without a palette of our own to keep.
-        static func colour(for kind: CodeTokenKind) -> NSColor {
+        /// Off the main actor: a pure table, and a page's code highlighter asks from
+        /// wherever it is rendered (`EditorCodeSyntaxHighlighter`).
+        nonisolated static func colour(for kind: CodeTokenKind) -> NSColor {
             switch kind {
             case .keyword: .systemPurple
             case .string: .systemRed

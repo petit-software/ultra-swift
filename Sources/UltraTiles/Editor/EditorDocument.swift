@@ -1,4 +1,5 @@
 import Foundation
+import UltraDesign
 
 /// One file, open for editing.
 ///
@@ -29,6 +30,11 @@ public final class EditorDocument {
     /// Counts the times a media file changed on disk, so the view showing it knows to
     /// load it again: a screenshot taken over the last, an image an agent regenerated.
     public private(set) var mediaRevision = 0
+    /// Whether the file is showing as the page it describes rather than as its text —
+    /// Markdown's second face, see `MarkdownReadingView`. Decided as the file is opened,
+    /// from `Preferences.opensMarkdownReading`, and switched from the footer or Pane ▸
+    /// Editor from then on. Never saved anywhere: it is about this sitting, not the file.
+    public private(set) var isReading = false
 
     public var text: String = "" {
         didSet {
@@ -65,6 +71,22 @@ public final class EditorDocument {
         return wantsInitialFocus
     }
 
+    /// A file the editor can show as a page: Markdown, told by its name the way the
+    /// highlighter tells it (`.md`, `README`, `CHANGELOG`…). A new file is not one until
+    /// its first save names it.
+    public var isMarkdown: Bool {
+        guard let url else { return false }
+        return CodeLanguage.detect(path: url.path)?.scanner == .markdown
+    }
+
+    /// Show the page, or the text. Only a Markdown file has a page to show; asked of any
+    /// other, this leaves it on its text.
+    public func setReading(_ reading: Bool) {
+        isReading = reading && isMarkdown && !isBinary
+    }
+
+    public func toggleReading() { setReading(!isReading) }
+
     public var displayName: String { url?.lastPathComponent ?? untitledName }
     /// True until the first save gives it a file. `save()` cannot work on one of these —
     /// the caller has to ask where, and then `save(to:)`.
@@ -78,6 +100,9 @@ public final class EditorDocument {
         isBinary = false
         media = nil
         mediaStamp = nil
+        // The page first, when the file has one and the setting says so — including a
+        // file not on disk yet, which becomes a page the moment it arrives.
+        isReading = Preferences.opensMarkdownReading && isMarkdown
         // A picture, a film, a sound or a PDF is shown, and its bytes are left to the
         // view that shows it: none of them is read here to find out it is not text.
         // Binary from the start, missing or not, so nothing typed can be saved over it.
@@ -102,6 +127,7 @@ public final class EditorDocument {
         // text view produces garbage that looks editable, and saving it corrupts the file.
         if data.prefix(8000).contains(0) {
             isBinary = true
+            isReading = false
             savedText = ""; text = ""; isDirty = false
             beginWatching()
             return

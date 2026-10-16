@@ -1,7 +1,7 @@
 
 ## New shit
 - [x] Add option to settings apperance to turn off glass from panes. — Settings ▸ General ▸ Appearance ▸ Glass panes; off, a pane is a solid sheet of the system's control background (the theme's navy painted solid came out blue). Not yet confirmed in the running app
-- [ ] Build and issue a GH release
+- [x] Build and issue a GH release — v0.32.0 published 2026-10-15 at https://github.com/petit-software/ultra-swift/releases/tag/v0.32.0: notarized app and DMG, appcast, deltas and whats-new.md, through the new release.sh
 - [x] add option to ultra to always display whats new dialog when new version of ultra is downloaded this should be a super short list of things we added - this should be coming from a release of gh page from ultra but this must be added to the release cycle so it always creates a super short list of things based on original release description. — shown once on the first launch after an update (Settings ▸ Updates, on by default) and on Ultra ▸ What's New in Ultra… any time. The list is `whats-new.md` beside the DMG on the release: `scripts/release.sh` now takes the notes file, makes the list from each paragraph's bold lead, refuses notes with none, and publishes the release with gh. Not yet confirmed in the running app; the first release through the new script will confirm the cycle
 - [x] Add editor a light mode like in browser — the footer's sun and moon, Pane ▸ Editor ▸ Toggle Light Editor (⌃⌘L, the browser's and the chat's key), saved with the pane. Not yet confirmed in the running app
 - [x] add option to open MD files from system Open with > and Ultra should be there. Markdown files would open in editor. New ultra window would open with just Editor open. — Ultra claims Markdown as an alternate handler; the files open in a new window with one editor pane on no project. Needs a rebuilt Ultra.app for Launch Services to see the new Info.plist; the launch-by-double-click timing is not yet confirmed in the running app
@@ -21,6 +21,7 @@
 - [x] Add option to open multiple tabs in the browser pane
 - [x] Sometimes click on ptoject names in the bottom switcher don't refresh the view and old projects panes are still persistent. — fixed in code: a click that travelled 4pt became a tab drag and selected nothing; the outgoing canvas now also drops its panes. Not yet confirmed in the running app
 - [x] Add option to ellipsis to equal column width that make 3 col to be 33, 4 calls to be 25 etc this should be one extra option first at the top with separator below
+- [x] Markdown opens in reading mode by default — rendered, not raw — with an Edit button in the footer to switch to the text; Settings ▸ Tiles ▸ Editor turns the default off — drawn by MarkdownUI (GitHub layout in the pane's colours, fences coloured by the editor's own highlighter); the footer's pencil/book and Pane ▸ Editor ▸ Toggle Reading Mode (⌃⌘R) switch per file; Settings ▸ Tiles ▸ Editor ▸ Open Markdown as a page. Checked offscreen in light and dark; not yet confirmed in the running app
 
 ## Simulator previews in Pane
 - [ ] Simulator: spike — SimulatorKit's own `SimDisplayView` (`initWithFrame:` + `setDevice:` build chrome, renderable and digitizer subviews) as the whole tile; keep it only if the first frame arrives without Swift-only calls

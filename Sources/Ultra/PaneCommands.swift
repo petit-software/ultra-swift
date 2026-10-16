@@ -302,6 +302,14 @@ enum PaneCommands {
                    isEnabled: { ShellWorkspace.focusedEditorSessions(in: $0) != nil }) { store in
             ShellWorkspace.focusedEditorSessions(in: store)?.toggleLight()
         },
+        // ⌃⌘R: a Markdown file's page or its text. Enabled only with a Markdown file
+        // showing in the focused editor, the one file kind that has both.
+        AppCommand(id: "editor.toggleReading", title: "Toggle Reading Mode", symbol: "book",
+                   menuPath: ["Pane", "Editor"],
+                   binding: KeyBinding("r", [.command, .control]),
+                   isEnabled: { ShellWorkspace.focusedEditorSessions(in: $0)?.readableDocument != nil }) { store in
+            ShellWorkspace.focusedEditorSessions(in: store)?.toggleReading()
+        },
     ]
 
     /// Verbs about the arrangement as a whole. Palette and menu only: a command that

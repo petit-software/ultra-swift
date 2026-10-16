@@ -145,6 +145,18 @@ public final class EditorSessions {
         sessions.first { $0.id == selectedID }
     }
 
+    /// The document the reading switch acts on: the tab showing, when it is a Markdown
+    /// file. Nil for a diff, a picture, a new file, or anything else with one face only.
+    public var readableDocument: EditorDocument? {
+        guard let selected, case .file(let document) = selected.content,
+              document.isMarkdown, !document.isBinary else { return nil }
+        return document
+    }
+
+    /// Pane ▸ Editor ▸ Toggle Reading Mode, and the footer's pencil and book: the page
+    /// or the text of the Markdown file showing.
+    public func toggleReading() { readableDocument?.toggleReading() }
+
     public var isEmpty: Bool { sessions.isEmpty }
 
     /// Show something, reusing the row that is already showing it.

@@ -154,6 +154,16 @@ something another editor does better.
   numbers, task boxes, quote marks, rules, front matter and HTML comments. The face stays
   monospaced and 12pt, so a heading does not change the height of its line. Not CommonMark:
   the common cases, and an odd one is plain text rather than wrong colour.
+- **Markdown as a page** (`MarkdownReadingView`). A Markdown file opens drawn — headings,
+  lists, task boxes, tables, fences, quotes and images, GitHub's layout in the pane's own
+  colours — because a README is opened to be read far more often than to be edited. The
+  footer's pencil shows the text; the book on the text shows the page; Pane ▸ Editor ▸
+  Toggle Reading Mode (⌃⌘R) does the same for the focused editor. The page is a view of
+  the buffer, unsaved edits included. Settings ▸ Tiles ▸ Editor ▸ Open Markdown as a page
+  is the starting state for a file as it is opened; the switch is per file from there, and
+  nothing about it is saved. Drawn by MarkdownUI — Foundation's parser flattens fences
+  and knows no tables or task boxes, the three things a README and a todo list are made
+  of — with fences coloured by the editor's own highlighter.
 - **Line numbers**, drawn per VISIBLE line — a 50,000-line file costs the same to scroll as
   a 50-line one.
 - **Smart substitutions off.** Curly quotes and em dashes silently replacing what you typed

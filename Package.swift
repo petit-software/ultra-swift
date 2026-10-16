@@ -23,6 +23,11 @@ let package = Package(
         // owns the parts that are easy to get wrong: atomic replacement, a resumed or
         // corrupt download, and not installing over a running copy of itself.
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
+        // Markdown, read rather than edited: the editor's reading mode. Foundation's own
+        // parser flattens code blocks and knows no tables or task boxes — the three things
+        // a README and a todo list are made of — so this is the one renderer that draws
+        // GitHub's Markdown the way GitHub does: tables, task lists, fences, quotes, images.
+        .package(url: "https://github.com/gonzalezreal/swift-markdown-ui", from: "2.4.1"),
     ],
     targets: [
         // Pure model + layout math. Deliberately depends on nothing of ours and
@@ -45,7 +50,8 @@ let package = Package(
         .target(name: "UltraSimulator"),
         // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
         // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
-        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat", "UltraSimulator"]),
+        .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat", "UltraSimulator",
+                                                   .product(name: "MarkdownUI", package: "swift-markdown-ui")]),
         .executableTarget(name: "Ultra",
                           dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal",
                                          "UltraTiles", "UltraLayout", "UltraDesign", "UltraChat",

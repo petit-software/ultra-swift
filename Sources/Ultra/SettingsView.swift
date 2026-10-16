@@ -266,6 +266,19 @@ private struct TileSettings: View {
             }
 
             Section {
+                Toggle("Open Markdown as a page",
+                       isOn: prefs.flag({ Preferences.opensMarkdownReading },
+                                        { Preferences.opensMarkdownReading = $0 }))
+            } header: {
+                Text("Editor")
+            } footer: {
+                SettingNote("On, a Markdown file opens drawn — headings, lists, tables and "
+                            + "code as such — and the footer's pencil (⌃⌘R) shows the text. "
+                            + "Off, it opens as text and the footer's book shows the page. "
+                            + "The starting state for each file as it is opened.")
+            }
+
+            Section {
                 LabeledContent("Todo file") {
                     TextField("", text: prefs.text({ Preferences.defaultTodoPath },
                                                    { Preferences.defaultTodoPath = $0 }))
@@ -320,7 +333,7 @@ private struct TileSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 480)
+        .frame(height: 560)
     }
 }
 
