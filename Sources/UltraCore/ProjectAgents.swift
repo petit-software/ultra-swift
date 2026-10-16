@@ -46,8 +46,8 @@ public struct AgentDefinition: Codable, Equatable, Sendable, Identifiable {
 ///
 /// A file in the project rather than a preference in `UserDefaults`, for the reason the todo
 /// list is a file: it travels with the checkout. A project that runs on `claude --model opus`
-/// says so once, in the repository, and every clone opens with the same "New Agent Pane"
-/// menu. It is COMMITTED, like the todo list — the agents are part of how the project is
+/// says so once, in the repository, and every clone opens with the same agents under
+/// Pane ▸ New Pane. It is COMMITTED, like the todo list — the agents are part of how the project is
 /// worked on, not a personal bookmark.
 ///
 /// Written when a project is CREATED or CLONED, with the built-in defaults; a project opened

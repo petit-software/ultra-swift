@@ -75,12 +75,43 @@ public enum AgentCompletionPolicy {
         return duration >= minimumDuration
     }
 
+    /// Below this, a turn that ended on its own is not news — the user had not had time
+    /// to go anywhere.
+    public static let minimumTurn: TimeInterval = 30
+
+    /// A turn that ended with a bell: the agent asked for someone, and a permission prompt
+    /// three seconds in is exactly when the someone is wanted. Not zero — a bell on the
+    /// first redraw of a turn would notify about nothing.
+    public static let minimumTurnWithBell: TimeInterval = 5
+
+    /// Whether a turn's end is worth a notification. The same two gates as a completion,
+    /// then a minimum that depends on how the turn ended.
+    public static func shouldNotifyTurnEnd(duration: TimeInterval,
+                                           rangBell: Bool,
+                                           isEnabled: Bool,
+                                           isWatching: Bool) -> Bool {
+        guard isEnabled, !isWatching else { return false }
+        return duration >= (rangBell ? minimumTurnWithBell : minimumTurn)
+    }
+
     /// The agent's own name, because "an agent finished" is useless to anyone running two.
     public static func message(command: String,
                                duration: TimeInterval) -> (title: String, body: String) {
+        ("\(command) finished", "Ran for \(elapsed(duration)).")
+    }
+
+    /// "claude is waiting" — a turn's end is a request for input, not a completion — and
+    /// which session, since the whole point is that the user is looking elsewhere.
+    public static func turnMessage(agent: String,
+                                   duration: TimeInterval,
+                                   session: String?) -> (title: String, body: String) {
+        let place = session.map { " in \($0)" } ?? ""
+        return ("\(agent) is waiting", "Worked for \(elapsed(duration))\(place).")
+    }
+
+    static func elapsed(_ duration: TimeInterval) -> String {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
-        let elapsed = minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
-        return ("\(command) finished", "Ran for \(elapsed).")
+        return minutes > 0 ? "\(minutes)m \(seconds)s" : "\(seconds)s"
     }
 }

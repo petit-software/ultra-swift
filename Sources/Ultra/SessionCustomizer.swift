@@ -20,7 +20,7 @@ struct SessionCustomizer: View {
     @Binding var name: String
     /// Bound, not passed: the row owns the value and writes it as it changes.
     @Binding var appearance: SessionAppearance
-    /// The project's agents — what "New Agent Pane" offers. Bound for the same reason the
+    /// The project's agents — what Pane ▸ New Pane offers. Bound for the same reason the
     /// look is: the row owns the value and writes it to `.ultra/agents.json` on every
     /// change, so there is nothing to confirm and nothing to lose to a closed sheet.
     @Binding var agents: [AgentDefinition]

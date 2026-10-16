@@ -56,7 +56,7 @@ struct SessionSidebar: View {
             // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
             // is possible, including the insertion line and the drag image.
             //
-            // The keyboard path is File ▸ Session ▸ Move Session Up / Down (⇧⌥⌘[ and ⇧⌥⌘]),
+            // The keyboard path is View ▸ Move Session Up / Down (⇧⌥⌘[ and ⇧⌥⌘]),
             // which is the rule rather than a courtesy: a drag-only reorder cannot be
             // reached at all by someone whose hands are on the keys, which here is everyone.
             .onMove { offsets, destination in
@@ -393,9 +393,7 @@ private struct SessionRow: View {
                         .font(Token.Type_.tileTitle)
                         .foregroundStyle(badge.colour)
                         // Free, and correct: SwiftUI drops a symbol effect under Reduce
-                        // Motion without this view having to ask. A working agent is the one
-                        // state that is about to change on its own, so it is the one worth
-                        // animating — the other three are settled.
+                        // Motion without this view having to ask.
                         .symbolEffect(.pulse, isActive: status == .working)
                         .help(badge.help)
                 }
@@ -548,11 +546,17 @@ extension View {
     }
 }
 
-/// How a session's agent status looks in the sidebar and on the tab belt.
+/// How a session's agent status looks in the sidebar: a pulsing dot while an agent is
+/// printing, and nothing otherwise.
 ///
 /// The mapping lives HERE rather than on `AgentStatus` itself: the status is a fact the
 /// terminal layer derives from a tty, and a type in `UltraTerminal` that knows about SF
 /// Symbols and sidebar colours is a layer boundary that has stopped meaning anything.
+///
+/// Only the live state. The row used to carry a question mark for an agent gone quiet
+/// and a tick or a triangle for one that had exited, sticky until the user went to look.
+/// They are gone: a system notification says "waiting" or "finished" where someone who
+/// has looked away will see it, and a row in a sidebar they are not looking at cannot.
 extension AgentStatus {
     struct Badge {
         let symbol: String
@@ -562,30 +566,16 @@ extension AgentStatus {
         let help: String
     }
 
-    /// Nil for `idle`, which is the state with nothing to say. An always-present grey dot
-    /// was tried in the head and rejected: a sidebar of six projects would carry six pieces
-    /// of punctuation reporting that nothing is happening in any of them, and the one row
-    /// that DID have news would have to compete with them to be noticed.
+    /// Nil for anything but `working`. An always-present grey dot was tried in the head and
+    /// rejected: a sidebar of six projects would carry six pieces of punctuation reporting
+    /// that nothing is happening in any of them.
     var badge: Badge? {
         switch self {
-        case .idle:
+        case .idle, .needsInput:
             nil
-        // A plain dot, because "working" is the state that needs no reading — it is the
-        // baseline the other three are exceptions to, and it is the one that pulses.
         case .working:
             Badge(symbol: "circle.fill", colour: Token.Colour.agentWorking,
                   help: "Agent working")
-        case .needsInput:
-            Badge(symbol: "questionmark.circle.fill", colour: Token.Colour.agentNeedsInput,
-                  help: "Agent waiting for you")
-        case .done:
-            Badge(symbol: "checkmark.circle.fill", colour: Token.Colour.agentDone,
-                  help: "Agent finished")
-        // A triangle rather than a fifth circle. Failure is the one state where the SHAPE
-        // should differ from a glance away, not only the colour.
-        case .failed:
-            Badge(symbol: "exclamationmark.triangle.fill", colour: Token.Colour.agentFailed,
-                  help: "Agent exited with an error")
         }
     }
 }

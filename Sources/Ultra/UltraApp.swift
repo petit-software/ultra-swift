@@ -117,12 +117,10 @@ struct WorkspaceWindow: View {
                 MenuBarItem.shared.openWorkspace = { openWindow(id: UltraApp.workspaceWindowID) }
                 WorkspaceModel.openNewWindow = { openWindow(id: UltraApp.workspaceWindowID) }
                 Updater.shared.startIfUpdatable()
-                // After the window is up and its sessions are open, so the dialog arrives
-                // over a working window rather than ahead of it. Once per launch; the
-                // checker says no to every window but the first to ask.
-                await WhatsNewChecker.shared.checkAfterUpdate { [ui = model.ui] content in
-                    ui.whatsNew = content
-                }
+                // No What's New dialog here. Sparkle's own update prompt already lists
+                // what the release changed, from the same `whats-new.md`; a second
+                // dialog saying it again on the next launch was the same news twice.
+                // Ultra ▸ What's New in Ultra… has the list whenever it is wanted.
             }
             .onDisappear {
                 // EVERY session, not just the one on screen. A window holds several now, and
@@ -354,12 +352,6 @@ struct WorkspaceCommands: Commands {
     @FocusedValue(\.uiState) private var ui
     @Environment(\.openWindow) private var openWindow
 
-    /// What the focused pane currently is, so "Change Pane To" can disable the no-op.
-    private var currentKind: PaneRecord.Kind? {
-        guard let store else { return nil }
-        return store.surfaces.records[store.tree.focused]?.kind
-    }
-
     private func chooseFolder() {
         let folders = chooseProjectFolders()
         // No window at all: every folder rides into the one window about to open, rather
@@ -469,23 +461,10 @@ struct WorkspaceCommands: Commands {
             // and the duplicate ⌘N meant SwiftUI dropped the shortcut from one of them —
             // the same collision documented on ⌘W below.
 
+            // What happens TO a session: its name and look, its project files, its end.
+            // Moving between sessions is View ▸ Next / Previous Session, with the sidebar
+            // toggle and the palette — the things that change what is on screen.
             Menu("Session") {
-                Button("Next Session") { sessions?.selectNext() }
-                    .keyboardShortcut("]", modifiers: [.command, .option])
-                Button("Previous Session") { sessions?.selectPrevious() }
-                    .keyboardShortcut("[", modifiers: [.command, .option])
-
-                // The same two keys as switching, plus shift: ⌥⌘] goes to the next session,
-                // ⇧⌥⌘] takes the session WITH you. Deliberately not ⌃⌘↑/↓ or ⌥⌘↑/↓, which
-                // read better and are both taken — by Grow Pane and Focus Pane, whose arrows
-                // are worth more than a mnemonic here.
-                Button("Move Session Up") { sessions?.moveSelected(by: -1) }
-                    .keyboardShortcut("[", modifiers: [.command, .option, .shift])
-                    .disabled(!(sessions?.canMoveSelected(by: -1) ?? false))
-                Button("Move Session Down") { sessions?.moveSelected(by: 1) }
-                    .keyboardShortcut("]", modifiers: [.command, .option, .shift])
-                    .disabled(!(sessions?.canMoveSelected(by: 1) ?? false))
-                Divider()
                 // The keyboard path to the sidebar's Customize sheet. It is also on the
                 // row's context menu, and a command reachable ONLY from a context menu is
                 // the anti-pattern the `keyboard-first` skill names outright — a terminal
@@ -530,76 +509,6 @@ struct WorkspaceCommands: Commands {
             }
             .disabled(sessions == nil)
 
-            Button("New Shell Pane") {
-                guard let store else { return }
-                ShellWorkspace.openShell(in: store)
-            }
-            .keyboardShortcut("t", modifiers: [.command, .option])
-            .disabled(store == nil)
-
-            // The project's agents, from `.ultra/agents.json`. The FIRST installed one is
-            // the default — what ⌥⌘A and "New Agent Pane" in the palette open — and it
-            // carries the key so the menu teaches it. An agent that is not installed stays
-            // in the list, dimmed, with the binary it was looking for: hidden, it would look
-            // like the project had forgotten it.
-            Menu("New Agent Pane") {
-                let agents = store.map(ShellWorkspace.agents(in:)) ?? []
-                let preferred = store.flatMap(ShellWorkspace.defaultAgent(in:))
-                ForEach(agents) { agent in
-                    let available = ShellWorkspace.isAvailable(agent)
-                    Button(agent.name) {
-                        guard let store else { return }
-                        ShellWorkspace.openShell(agent: agent, in: store)
-                    }
-                    .modifier(AgentShortcut(isDefault: agent == preferred))
-                    .disabled(!available)
-                    .help(available ? agent.command : "\(agent.binary) is not installed")
-                }
-                if agents.isEmpty {
-                    Text("No agents — add one under Customize")
-                }
-            }
-            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
-
-            // Every tile kind, from one list — a new kind must not need three separate
-            // edits to become openable. The two shell kinds have their own items above.
-            Menu("New Tile Pane") {
-                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
-                    Button(entry.title) {
-                        guard let store else { return }
-                        ShellWorkspace.openTile(entry.kind, in: store)
-                    }
-                    .modifier(TileShortcut(kind: entry.kind))
-                }
-            }
-            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
-
-            // Switching an EXISTING pane, rather than opening another one. Separate on
-            // purpose: converting a shell ends its process, which is not something to
-            // discover by picking the wrong menu item.
-            Menu("Change Pane To") {
-                ForEach(PaneKind.all) { entry in
-                    Button(entry.title) {
-                        guard let store else { return }
-                        ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
-                    }
-                    .disabled(currentKind == entry.kind)
-                }
-            }
-            .disabled(store == nil)
-
-            // Switching an existing pane to a PARTICULAR agent. "Change Pane To ▸ Agent"
-            // above takes the default; this is for a project with more than one.
-            Menu("Change Pane to Agent") {
-                ForEach(store.map(ShellWorkspace.agents(in:)) ?? []) { agent in
-                    Button(agent.name) {
-                        guard let store else { return }
-                        ShellWorkspace.convert(store.tree.focused, toAgent: agent, in: store)
-                    }
-                    .disabled(!ShellWorkspace.isAvailable(agent))
-                }
-            }
-            .disabled(store == nil)
         }
 
         // ⌘W belongs to the PANE here, the way it does in every terminal — and taking it
@@ -643,6 +552,31 @@ struct WorkspaceCommands: Commands {
             Button("Command Palette…") { ui?.isPaletteShown.toggle() }
                 .keyboardShortcut("k", modifiers: .command)
                 .disabled(ui == nil)
+
+            Divider()
+
+            // Which session is on screen, beside the system's own Show Sidebar: the View
+            // menu is where a Mac app keeps what is shown. They were under File ▸ Session,
+            // between opening a project and closing one, where nobody looked for a way to
+            // the next tab.
+            Button("Next Session") { sessions?.selectNext() }
+                .keyboardShortcut("]", modifiers: [.command, .option])
+                .disabled(sessions == nil)
+            Button("Previous Session") { sessions?.selectPrevious() }
+                .keyboardShortcut("[", modifiers: [.command, .option])
+                .disabled(sessions == nil)
+
+            // The same two keys as switching, plus shift: ⌥⌘] goes to the next session,
+            // ⇧⌥⌘] takes the session WITH you. Kept beside Next and Previous so the menu
+            // teaches the pair. Deliberately not ⌃⌘↑/↓ or ⌥⌘↑/↓, which read better and
+            // are both taken — by Grow Pane and Focus Pane, whose arrows are worth more
+            // than a mnemonic here.
+            Button("Move Session Up") { sessions?.moveSelected(by: -1) }
+                .keyboardShortcut("[", modifiers: [.command, .option, .shift])
+                .disabled(!(sessions?.canMoveSelected(by: -1) ?? false))
+            Button("Move Session Down") { sessions?.moveSelected(by: 1) }
+                .keyboardShortcut("]", modifiers: [.command, .option, .shift])
+                .disabled(!(sessions?.canMoveSelected(by: 1) ?? false))
         }
 
         // ⌘Z is the TEXT's while text is being edited, and the layout's otherwise — decided
@@ -753,13 +687,6 @@ struct RootView: View {
 
     /// The session on screen. Nil only for the instant before the first one exists.
     private var store: LayoutStore? { sessions.selected }
-
-    /// What the focused pane is right now, so File ▸ Change Pane To can dim the entry the
-    /// user is already looking at.
-    private var currentKind: PaneRecord.Kind? {
-        guard let store else { return nil }
-        return store.surfaces.records[store.tree.focused]?.kind
-    }
 
     private func chooseSessionFolder() {
         for folder in chooseProjectFolders() { sessions.open(directory: folder) }
@@ -1001,7 +928,7 @@ struct RootView: View {
                                     }
                                 }
                             }
-                            // Each agent by name, the way the File menu has them: "Agent"
+                            // Each agent by name, the way the Pane menu has them: "Agent"
                             // on its own would open the default and leave the rest
                             // undiscoverable from the one place a new user looks.
                             Section("New Agent Pane") {
@@ -1160,41 +1087,6 @@ func chooseProjectFolders() -> [String] {
     guard panel.runModal() == .OK else { return [] }
     return panel.urls.map(\.path)
 }
-
-/// Default shortcuts for the tile kinds that earn one. Kinds without a binding are still
-/// reachable from the menu and the palette — a shortcut nobody can remember is not a feature.
-/// ⌥⌘A on the default agent only. Beside ⌥⌘T for a shell: the two kinds of pane that
-/// run something. ⌃A alone is readline's start-of-line and ⌘A is Select All, so the pair
-/// with ⌥ is the free one.
-private struct AgentShortcut: ViewModifier {
-    let isDefault: Bool
-
-    func body(content: Content) -> some View {
-        if isDefault {
-            content.keyboardShortcut("a", modifiers: [.command, .option])
-        } else {
-            content
-        }
-    }
-}
-
-private struct TileShortcut: ViewModifier {
-    let kind: PaneRecord.Kind
-
-    func body(content: Content) -> some View {
-        switch kind {
-        case .fileTree: content.keyboardShortcut("e", modifiers: [.command, .option])
-        case .todo: content.keyboardShortcut("y", modifiers: [.command, .option])
-        case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
-        case .chat: content.keyboardShortcut("c", modifiers: [.command, .option])
-        case .browser: content.keyboardShortcut("b", modifiers: [.command, .option])
-        // P for phone. ⌥⌘S is the sidebar.
-        case .simulator: content.keyboardShortcut("p", modifiers: [.command, .option])
-        default: content
-        }
-    }
-}
-
 
 /// The window's name, centred in its header.
 ///

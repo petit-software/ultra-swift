@@ -3,22 +3,20 @@ import SwiftUI
 import UltraCore
 import UltraDesign
 
-/// What a release changed, in a few lines, shown once on the first launch after an update.
+/// What a release changed, in a few lines, on request from Ultra ▸ What's New in Ultra….
 ///
 /// The list comes from the release itself — the `whats-new.md` that `scripts/release.sh`
 /// publishes beside every DMG, made from the bold leads of the release's description — so
 /// the app ships no copy of its own changelog and the dialog can never describe a release
 /// other than the one running. See `WhatsNew` for the pure half of this.
 ///
-/// The automatic showing is a setting (`Preferences.showsWhatsNew`, on by default), and
-/// Ultra ▸ What's New in Ultra… shows the current version's list at any time — which is
-/// also how it is seen on a copy built from source, where an automatic dialog on every
-/// version bump would be noise.
+/// On request ONLY. It used to open on its own on the first launch after an update, and
+/// that was the same list twice: Sparkle's update prompt shows the release notes, made from
+/// the same file, before the update is installed. The menu item is the one place it lives
+/// now — which is also how it is seen on a copy built from source.
 @MainActor
 final class WhatsNewChecker {
     static let shared = WhatsNewChecker()
-
-    private var checkedThisLaunch = false
 
     private init() {}
 
@@ -31,32 +29,9 @@ final class WhatsNewChecker {
         Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
     }
 
-    /// The first window of a launch asks. Once per launch, and only on a copy that updates:
-    /// a checkout's version moves with every bump and none of them is an update.
-    ///
-    /// Fetched before anything is shown, so an offline launch shows nothing and does NOT
-    /// record the version — the next launch tries again. The version is recorded on a
-    /// fresh install as well, so that the first update after it is seen.
-    func checkAfterUpdate(present: @escaping @MainActor (WhatsNewContent) -> Void) async {
-        guard !checkedThisLaunch else { return }
-        checkedThisLaunch = true
-        let current = Self.currentVersion
-        let seen = Preferences.whatsNewSeenVersion
-        if seen.isEmpty {
-            Preferences.whatsNewSeenVersion = current
-            return
-        }
-        guard !Updater.isBuiltFromSource,
-              WhatsNew.isDue(current: current, seen: seen, enabled: Preferences.showsWhatsNew)
-        else { return }
-        guard let items = await fetch(version: current), !items.isEmpty else { return }
-        Preferences.whatsNewSeenVersion = current
-        present(WhatsNewContent(version: current, items: items))
-    }
-
-    /// The menu's path: the running version's list, whatever has been seen. An empty list
-    /// is shown as such, with the release page a click away — a dialog that silently did
-    /// not open would look like a broken menu item.
+    /// The menu's path: the running version's list. An empty list is shown as such, with
+    /// the release page a click away — a dialog that silently did not open would look
+    /// like a broken menu item.
     func show(present: @escaping @MainActor (WhatsNewContent) -> Void) async {
         let current = Self.currentVersion
         let items = await fetch(version: current) ?? []

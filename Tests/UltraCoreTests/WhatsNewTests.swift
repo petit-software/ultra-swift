@@ -37,15 +37,4 @@ struct WhatsNewTests {
         #expect(WhatsNew.assetURL(version: "0.32.0", feed: nil)?.absoluteString
                 == WhatsNew.defaultReleases + "/download/v0.32.0/whats-new.md")
     }
-
-    @Test("due on the first launch after an update, and only then")
-    func due() {
-        #expect(WhatsNew.isDue(current: "0.32.0", seen: "0.31.0", enabled: true))
-        #expect(!WhatsNew.isDue(current: "0.32.0", seen: "0.32.0", enabled: true))
-        // A fresh install has nothing to be new since.
-        #expect(!WhatsNew.isDue(current: "0.32.0", seen: nil, enabled: true))
-        #expect(!WhatsNew.isDue(current: "0.32.0", seen: "", enabled: true))
-        // Turned off in Settings.
-        #expect(!WhatsNew.isDue(current: "0.32.0", seen: "0.31.0", enabled: false))
-    }
 }

@@ -18,9 +18,12 @@ public struct EditorTile: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Absent rather than empty with nothing open: a bare strip over "Nothing open"
-            // is a band of chrome labelling nothing.
-            if !sessions.isEmpty {
+            // Only once there is something to switch between. With one file the strip
+            // said the name the footer already says, a line of chrome over nothing to
+            // choose; with none it labelled "Nothing open". The one file's tab comes back
+            // the moment a second opens. Closing the one file is ⌃⌘W (Pane ▸ Editor ▸
+            // Close), which is the keyboard path either way.
+            if sessions.sessions.count > 1 {
                 EditorTabStrip(sessions: sessions)
             }
             content
@@ -85,7 +88,9 @@ public struct EditorTile: View {
             }
             // The browser's and the chat's sun and moon, with the same key: a pane pinned
             // light, or one that follows the app. Also on Pane ▸ Editor, so it is not
-            // pointer-only.
+            // pointer-only. Last, after the line, as in every footer — see
+            // `TileFooterSeparator`.
+            TileFooterSeparator()
             TileFooterButton(symbol: sessions.isLight ? "moon" : "sun.max",
                              help: sessions.isLight ? "Follow the App's Appearance (⌃⌘L)"
                                                     : "Show Editor Light (⌃⌘L)") {

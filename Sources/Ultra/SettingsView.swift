@@ -75,9 +75,6 @@ private struct GeneralSettings: View {
                            isOn: Binding(get: { Updater.shared.checksAutomatically },
                                          set: { Updater.shared.checksAutomatically = $0 }))
                     Button("Check Now…") { Updater.shared.checkForUpdates() }
-                    Toggle("Show what's new after an update",
-                           isOn: prefs.flag({ Preferences.showsWhatsNew },
-                                            { Preferences.showsWhatsNew = $0 }))
                 } else {
                     // Says WHY rather than hiding an empty section. A missing control with no
                     // explanation is what makes people think the feature is broken.
@@ -308,7 +305,7 @@ private struct TileSettings: View {
                             + "telling an agent to plan in the todo list and how to treat the "
                             + "other files here, plus a CLAUDE.md that imports it. Opening a "
                             + "folder never writes into it; use File ▸ Session ▸ Write "
-                            + "AGENTS.md for those. The agents File ▸ New Agent Pane lists are "
+                            + "AGENTS.md for those. The agents Pane ▸ New Pane lists are "
                             + "added per project in the session's Customize sheet and kept in "
                             + ".ultra/agents.json.")
             }
@@ -368,17 +365,19 @@ private struct AgentSettings: View {
             }
 
             Section {
-                Toggle("Notify me when a long-running agent finishes",
+                Toggle("Notify me when an agent finishes or waits for me",
                        isOn: prefs.flag({ Preferences.notifiesOnAgentCompletion },
                                         { Preferences.notifiesOnAgentCompletion = $0 }))
             } header: {
                 Text("Notifications")
             } footer: {
                 SettingNote("""
-                            Only for agents that ran longer than \
-                            \(Int(AgentCompletionPolicy.minimumDuration)) seconds, and only \
-                            when you are not already looking at Ultra. Turning this on asks \
-                            macOS for permission to show notifications.
+                            When an agent's turn ends — it stops printing and stays quiet, \
+                            or rings for you — and when one exits. Only for turns longer \
+                            than \(Int(AgentCompletionPolicy.minimumTurn)) seconds, unless the \
+                            agent rang, and only when you are not already looking at Ultra. \
+                            Clicking the notification goes to the session. Turning this on \
+                            asks macOS for permission to show notifications.
                             """)
             }
         }

@@ -151,9 +151,6 @@ public struct SimulatorTile: View {
                              isEnabled: session.isBooted) {
                 Task { await session.takeScreenshot() }
             }
-            TileFooterButton(symbol: session.appearance == .dark ? "sun.max" : "moon",
-                             help: "Toggle Dark Appearance on the device",
-                             isEnabled: session.isBooted) { session.toggleAppearance() }
             TileFooterButton(symbol: "link", help: "Open URL on Device…",
                              isEnabled: session.isBooted) { askForURL() }
             TileFooterButton(symbol: "minus.magnifyingglass", help: "Zoom Out on Device (⌃⌘-)",
@@ -162,6 +159,12 @@ public struct SimulatorTile: View {
                              isEnabled: session.device != nil && !session.isFitted) { session.zoomToFit() }
             TileFooterButton(symbol: "plus.magnifyingglass", help: "Zoom In on Device (⌃⌘=)",
                              isEnabled: session.device != nil && session.canZoomIn) { session.zoomIn() }
+            // Last, after the line, as in every footer — see `TileFooterSeparator`. The
+            // device's appearance rather than the pane's, but it is the same sun and moon.
+            TileFooterSeparator()
+            TileFooterButton(symbol: session.appearance == .dark ? "sun.max" : "moon",
+                             help: "Toggle Dark Appearance on the device",
+                             isEnabled: session.isBooted) { session.toggleAppearance() }
         }
     }
 

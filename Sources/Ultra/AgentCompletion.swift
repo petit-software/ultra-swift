@@ -30,20 +30,29 @@ final class AgentCompletionNotifier {
     /// centre goes through this, so a debug run stays a debug run instead of a crash.
     static var canNotify: Bool { Bundle.main.bundleIdentifier != nil }
 
+    /// The session a notification is about, carried in its `userInfo` so a click on it can
+    /// go there. Read on the notification centre's queue, hence `nonisolated`.
+    nonisolated static let workspaceKey = "workspaceID"
+
     private var hasRequestedAuthorization = false
     private var activationObserver: NSObjectProtocol?
+    /// Held for as long as the app runs: the centre keeps only a weak reference.
+    private let clicks = NotificationClicks()
 
     /// Injectable so tests never touch the real notification centre.
-    var deliver: (String, String) -> Void
+    var deliver: (String, String, UUID?) -> Void
     /// Injectable for the same reason as `deliver`.
     var clearDelivered: () -> Void
 
     private init() {
-        deliver = { title, body in
+        deliver = { title, body, workspaceID in
             guard Self.canNotify else { return }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
+            if let workspaceID {
+                content.userInfo = [Self.workspaceKey: workspaceID.uuidString]
+            }
             let request = UNNotificationRequest(
                 identifier: Self.identifierPrefix + UUID().uuidString,
                 content: content, trigger: nil)
@@ -64,9 +73,9 @@ final class AgentCompletionNotifier {
         }
     }
 
-    func notify(title: String, body: String) {
+    func notify(title: String, body: String, workspaceID: UUID? = nil) {
         requestAuthorizationIfNeeded()
-        deliver(title, body)
+        deliver(title, body, workspaceID)
     }
 
     /// Take the notifications back whenever the user comes to look.
@@ -82,6 +91,11 @@ final class AgentCompletionNotifier {
     /// is still there at the next launch, and that stale one is the most worth clearing.
     func startClearingWhenActive() {
         guard activationObserver == nil else { return }
+        // The delegate is what makes a click go somewhere, and what shows a banner while
+        // the app is active but has no window on screen — the one "not watching" case
+        // where macOS would otherwise swallow it. Set once, here, which runs before the
+        // first notification can be posted.
+        if Self.canNotify { UNUserNotificationCenter.current().delegate = clicks }
         activationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil, queue: .main) { [weak self] _ in
@@ -99,5 +113,34 @@ final class AgentCompletionNotifier {
         hasRequestedAuthorization = true
         UNUserNotificationCenter.current()
             .requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+}
+
+/// What happens when a notification is clicked: the session it names comes to the front.
+///
+/// The centre calls these on its own queue, so the work hops to the main actor once the
+/// `userInfo` it needs has been read — the response itself is not Sendable.
+private final class NotificationClicks: NSObject, UNUserNotificationCenterDelegate {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            didReceive response: UNNotificationResponse,
+                                            withCompletionHandler completion: @escaping () -> Void) {
+        let raw = response.notification.request.content.userInfo[AgentCompletionNotifier.workspaceKey] as? String
+        let workspaceID = raw.flatMap(UUID.init(uuidString:))
+        Task { @MainActor in
+            NSApplication.shared.activate()
+            if let workspaceID { _ = SessionList.raise(workspaceID: workspaceID) }
+        }
+        // Answered here, on the centre's queue: the handler is not Sendable, and the hop
+        // above has what it needs already.
+        completion()
+    }
+
+    /// Shown even while the app is frontmost. The policy has already decided the user is
+    /// not watching — the app can be active with every window closed — and a banner
+    /// suppressed here would be a decision made twice, the second time wrongly.
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completion: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completion([.banner, .sound])
     }
 }

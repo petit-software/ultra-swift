@@ -246,7 +246,17 @@ can be sent into a fresh shell.
 - Per-pane agent activity state from the foreground process.
 - Dock badge and menu-bar indicator driven from the app layer (not a view timer — the same
   throttling problem the Electron app solved by moving this to the main process).
-- Notifications on long-running agent completion, opt-in.
+- **Notifications when an agent stops — DONE.** Opt-in, one switch. Two events, both
+  derived from the tty since no agent CLI reports anything: an agent EXITING after at least
+  30 s (`AgentCompletionTracker`), and an agent's TURN ending (`AgentTurnTracker`) — it
+  stops printing and stays quiet for 15 s, or rings `BEL` as it stops, which is believed
+  at once and lets a turn as short as 5 s through, since a permission prompt is exactly
+  when the user is wanted. Neither fires while the app is active with a window on screen.
+  "claude is waiting · Worked for 2m 10s in ultra-swift"; a click raises that session.
+  The sidebar's finished-agent badges — the question mark, the tick, the triangle, sticky
+  until the user went to look — were dropped with this: a notification reaches someone who
+  has looked away, and a badge in a sidebar they are not looking at did not. The row
+  keeps its pulsing dot while an agent is printing, which is the live state.
 - **An `AGENTS.md` in every project Ultra creates — DONE.** The tiles' whole argument for
   keeping files rather than app state is that the agent next door can use them, and it
   cannot use what it has not been told about. `AgentInstructions` (UltraCore) writes a short
@@ -370,16 +380,16 @@ would be pretending three of these are settled.
 - **A build from source never updates — DONE.** `build-app.sh` deletes any feed URL and
   `Updater` additionally refuses when the bundle sits beside a `Package.swift`. Verified both
   ways: the menu item is absent from a checkout build and present on a copy outside it.
-- **What's new, once, after an update — DONE.** The first launch on a new version shows a
-  short list of what the release changed (`WhatsNewChecker`, `WhatsNewSheet`), off a setting
-  that is on by default. The list is the release's own: `scripts/release.sh` takes the bold
-  lead of each paragraph of the release description, refuses a description with none, and
-  publishes them as `whats-new.md` beside the DMG — and as the appcast's release notes, so
-  Sparkle's own prompt says the same thing. The app fetches that asset for its version and
-  shows its lines; it parses no prose and ships no changelog. A fresh install records its
-  version and shows nothing; an offline launch shows nothing and tries again next time.
-  Ultra ▸ What's New in Ultra… shows the running version's list at any time, including on a
-  build from source, where the automatic dialog never appears.
+- **What's new, on request — DONE.** Ultra ▸ What's New in Ultra… shows a short list of
+  what the running release changed (`WhatsNewChecker`, `WhatsNewSheet`). The list is the
+  release's own: `scripts/release.sh` takes the bold lead of each paragraph of the release
+  description, refuses a description with none, and publishes them as `whats-new.md` beside
+  the DMG — and as the appcast's release notes, so Sparkle's update prompt says the same
+  thing. The app fetches that asset for its version and shows its lines; it parses no prose
+  and ships no changelog. It used to open on its own on the first launch after an update,
+  and was dropped: Sparkle had already shown the same list before installing, and a second
+  dialog on the next launch was the news twice. The menu item is the one path, on a build
+  from source too.
 - **Rate limits.** Unauthenticated GitHub API is 60 requests an hour per IP. A check on
   launch and a daily one after is nowhere near it; anything that polls is.
 - **Channels.** GitHub marks prereleases, so stable-versus-early is a flag rather than a

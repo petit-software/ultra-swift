@@ -17,9 +17,9 @@ enum PaneCommands {
                                  + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
                                  + [newShell, closeSession, whatsNew]
 
-    /// The running version's release list, on request. The same dialog the first launch
-    /// after an update shows on its own (`WhatsNewChecker`); here for the user who
-    /// dismissed it, turned it off, or runs a build from source where it never appears.
+    /// The running version's release list, on request (`WhatsNewChecker`). The only way
+    /// to it: Sparkle's update prompt shows the same list before installing, so the app
+    /// does not open it again on launch.
     static let whatsNew = AppCommand(
         id: "app.whatsNew", title: "What's New in Ultra…", symbol: "sparkles",
         menuPath: ["Ultra"],
@@ -78,6 +78,27 @@ enum PaneCommands {
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
+        },
+        // Along the pane's row of chats, and off it. No keys: ⇧⌘] and ⌃⌘] are the
+        // editor's and the browser's rows, and the browser's are live whenever a browser
+        // pane exists, so a third pair on the same keys would fire two at once. The
+        // palette has them, which is the keyboard path a tab strip must have.
+        AppCommand(id: "chat.next", title: "Next Chat", symbol: "chevron.right",
+                   menuPath: ["Pane", "Chat"],
+                   isEnabled: { (ShellWorkspace.chatStore(in: $0)?.openIDs.count ?? 0) > 1 }) { store in
+            ShellWorkspace.chatStore(in: store)?.selectNext()
+        },
+        AppCommand(id: "chat.previous", title: "Previous Chat", symbol: "chevron.left",
+                   menuPath: ["Pane", "Chat"],
+                   isEnabled: { (ShellWorkspace.chatStore(in: $0)?.openIDs.count ?? 0) > 1 }) { store in
+            ShellWorkspace.chatStore(in: store)?.selectPrevious()
+        },
+        AppCommand(id: "chat.closeTab", title: "Close Chat Tab", symbol: "xmark",
+                   menuPath: ["Pane", "Chat"],
+                   keywords: ["Close Chat"],
+                   isEnabled: { ShellWorkspace.chatStore(in: $0) != nil }) { store in
+            guard let chat = ShellWorkspace.chatStore(in: store) else { return }
+            chat.close(chat.current.id)
         },
         // ⌃⌘L, the browser's key for the same thing. The two share it on purpose: one key
         // for "this pane, light or not", and the menu fires whichever is enabled — this one
@@ -333,14 +354,15 @@ enum PaneCommands {
     ]
 
     /// Opening and switching pane kinds. Palette-only: seven kinds times two verbs is
-    /// fourteen bindings nobody would remember, and the three that earn a shortcut declare
-    /// it on the menu item instead.
+    /// fourteen bindings nobody would remember, and the kinds that earn a shortcut declare
+    /// it on the menu item instead (`TileShortcut`). On the menu they are Pane ▸ New Pane
+    /// and Pane ▸ Change Pane To, where the title is just the kind.
     static let paneKinds: [AppCommand] =
         PaneKind.all.filter { $0.kind != .shell }.map { entry in
             AppCommand(id: "pane.new.\(entry.kind.rawValue)",
                        title: "New \(entry.title) Pane",
                        symbol: entry.symbol,
-                       menuPath: ["File"],
+                       menuPath: ["Pane", "New Pane"],
                        binding: nil,
                        isEnabled: { ShellWorkspace.canOpen(entry.kind, in: $0) }) { store in
                 ShellWorkspace.openTile(entry.kind, in: store)
@@ -350,7 +372,7 @@ enum PaneCommands {
             AppCommand(id: "pane.change.\(entry.kind.rawValue)",
                        title: "Change Pane to \(entry.title)",
                        symbol: entry.symbol,
-                       menuPath: ["File"],
+                       menuPath: ["Pane", "Change Pane To"],
                        binding: nil,
                        isEnabled: { store in
                            store.surfaces.records[store.tree.focused]?.kind != entry.kind
@@ -559,8 +581,93 @@ struct PaneMenuCommands: Commands {
             .modifier(BindingModifier(binding: command.defaultBinding))
     }
 
+    /// What the focused pane is right now, so Change Pane To can dim the entry the user
+    /// is already looking at.
+    private var currentKind: PaneRecord.Kind? {
+        guard let store else { return nil }
+        return store.surfaces.records[store.tree.focused]?.kind
+    }
+
+    private var canOpenNewPane: Bool {
+        store.map { ShellWorkspace.canOpenNewPane(in: $0) } ?? false
+    }
+
     var body: some Commands {
         CommandMenu("Pane") {
+            // Another pane, of any kind, in one list: a shell, then the project's agents by
+            // name, then every tile. These sat on File as five items — New Shell Pane, New
+            // Agent Pane, New Tile Pane, Change Pane To, Change Pane to Agent — between
+            // opening a project and closing a window, which is not where a pane lives.
+            Menu("New Pane") {
+                Button("Shell") {
+                    guard let store else { return }
+                    ShellWorkspace.openShell(in: store)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .option])
+
+                // Each agent by name. The FIRST installed one is the default — what ⌥⌘A
+                // and "New Agent Pane" in the palette open — and it carries the key so the
+                // menu teaches it. An agent that is not installed stays in the list,
+                // dimmed, with the binary it was looking for: hidden, it would look like
+                // the project had forgotten it.
+                let agents = store.map(ShellWorkspace.agents(in:)) ?? []
+                let preferred = store.flatMap(ShellWorkspace.defaultAgent(in:))
+                ForEach(agents) { agent in
+                    let available = ShellWorkspace.isAvailable(agent)
+                    Button(agent.name) {
+                        guard let store else { return }
+                        ShellWorkspace.openShell(agent: agent, in: store)
+                    }
+                    .modifier(AgentShortcut(isDefault: agent == preferred))
+                    .disabled(!available)
+                    .help(available ? agent.command : "\(agent.binary) is not installed")
+                }
+                if agents.isEmpty {
+                    Text("No agents — add one under Customize")
+                }
+
+                Divider()
+
+                // Every tile kind, from one list — a new kind must not need three separate
+                // edits to become openable.
+                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
+                    Button(entry.title) {
+                        guard let store else { return }
+                        ShellWorkspace.openTile(entry.kind, in: store)
+                    }
+                    .modifier(TileShortcut(kind: entry.kind))
+                }
+            }
+            .disabled(!canOpenNewPane)
+
+            // Switching an EXISTING pane, rather than opening another one. Separate on
+            // purpose: converting a shell ends its process, which is not something to
+            // discover by picking the wrong menu item. The same three sections as New
+            // Pane: the agents by name are for a project with more than one — "Agent"
+            // alone would take the default.
+            Menu("Change Pane To") {
+                ForEach(PaneKind.all.filter { $0.kind != .agent }) { entry in
+                    Button(entry.title) {
+                        guard let store else { return }
+                        ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
+                    }
+                    .disabled(currentKind == entry.kind)
+                }
+                let agents = store.map(ShellWorkspace.agents(in:)) ?? []
+                if !agents.isEmpty {
+                    Divider()
+                }
+                ForEach(agents) { agent in
+                    Button(agent.name) {
+                        guard let store else { return }
+                        ShellWorkspace.convert(store.tree.focused, toAgent: agent, in: store)
+                    }
+                    .disabled(!ShellWorkspace.isAvailable(agent))
+                }
+            }
+            .disabled(store == nil)
+
+            Divider()
             ForEach(PaneCommands.splits) { item($0) }
             Divider()
             ForEach(PaneCommands.others) { item($0) }
@@ -637,6 +744,40 @@ private struct BindingModifier: ViewModifier {
             content.keyboardShortcut(binding.key, modifiers: binding.modifiers)
         } else {
             content
+        }
+    }
+}
+
+/// Default shortcuts for the pane kinds that earn one. Kinds without a binding are still
+/// reachable from the menu and the palette — a shortcut nobody can remember is not a feature.
+/// ⌥⌘A on the default agent only. Beside ⌥⌘T for a shell: the two kinds of pane that
+/// run something. ⌃A alone is readline's start-of-line and ⌘A is Select All, so the pair
+/// with ⌥ is the free one.
+private struct AgentShortcut: ViewModifier {
+    let isDefault: Bool
+
+    func body(content: Content) -> some View {
+        if isDefault {
+            content.keyboardShortcut("a", modifiers: [.command, .option])
+        } else {
+            content
+        }
+    }
+}
+
+private struct TileShortcut: ViewModifier {
+    let kind: PaneRecord.Kind
+
+    func body(content: Content) -> some View {
+        switch kind {
+        case .fileTree: content.keyboardShortcut("e", modifiers: [.command, .option])
+        case .todo: content.keyboardShortcut("y", modifiers: [.command, .option])
+        case .git: content.keyboardShortcut("g", modifiers: [.command, .option])
+        case .chat: content.keyboardShortcut("c", modifiers: [.command, .option])
+        case .browser: content.keyboardShortcut("b", modifiers: [.command, .option])
+        // P for phone. ⌥⌘S is the sidebar.
+        case .simulator: content.keyboardShortcut("p", modifiers: [.command, .option])
+        default: content
         }
     }
 }

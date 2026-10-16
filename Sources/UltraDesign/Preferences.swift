@@ -138,7 +138,7 @@ public enum Preferences {
         }
     }
 
-    /// Notify when a long-running agent finishes.
+    /// Notify when an agent's turn ends, or an agent exits.
     ///
     /// Off by default, and deliberately so: turning it on is what asks macOS for permission
     /// to post notifications, and an app that raises that prompt on first launch for a
@@ -196,13 +196,6 @@ public enum Preferences {
         set { setFlag("writesAgentInstructions", newValue, current: writesAgentInstructions) }
     }
 
-    /// Whether the first launch after an update shows what the release changed. On by
-    /// default: an update that arrives overnight through Sparkle is otherwise invisible.
-    public static var showsWhatsNew: Bool {
-        get { flag("showsWhatsNew", default: true) }
-        set { setFlag("showsWhatsNew", newValue, current: showsWhatsNew) }
-    }
-
     /// Whether a Markdown file opens in the editor as a page to READ — headings, lists,
     /// tables and code drawn as such — rather than as the text it is written in. On by
     /// default: most Markdown opened from a file tree is opened to be read, and the text is
@@ -212,14 +205,6 @@ public enum Preferences {
     public static var opensMarkdownReading: Bool {
         get { flag("opensMarkdownReading", default: true) }
         set { setFlag("opensMarkdownReading", newValue, current: opensMarkdownReading) }
-    }
-
-    /// The version whose list has been shown — or, on a fresh install, the version that was
-    /// installed, so the first update after it is the first one shown. Empty until the app
-    /// has run once.
-    public static var whatsNewSeenVersion: String {
-        get { string("whatsNewSeenVersion", default: "") }
-        set { setString("whatsNewSeenVersion", newValue, current: whatsNewSeenVersion) }
     }
 
     /// Seconds between refreshes. Each tile shells out to a real command, so these are the
@@ -348,6 +333,8 @@ public enum Preferences {
                     "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
+                    // The two What's New keys are gone with the launch-time dialog, and
+                    // are still cleared here so a reset leaves nothing of theirs behind.
                     "defaultProjectFolder", "showsWhatsNew", "whatsNewSeenVersion",
                     "opensMarkdownReading"] {
             store.removeObject(forKey: prefix + key)

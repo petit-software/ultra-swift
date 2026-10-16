@@ -20,6 +20,11 @@ public struct ChatTile: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            // Only once there is something to switch between, as the editor's: with one
+            // chat the strip would say the title over the one chat it belongs to.
+            if store.openIDs.count > 1 {
+                ChatTabStrip(store: store)
+            }
             if let error = store.error { errorBar(error) }
             if store.current.messages.isEmpty {
                 emptyState
@@ -39,7 +44,32 @@ public struct ChatTile: View {
         .onExitCommand { store.stop() }
     }
 
-    // MARK: - Transcript
+    // MARK: - Tabs
+
+/// The chats open in this pane as the tile's row of tabs — `TileTabStrip`, which the
+/// editor and the browser share. A view of its own so a title arriving with the first
+/// question redraws the strip and not the transcript. The keyboard path along the row is
+/// Pane ▸ Chat ▸ Next / Previous Chat, from the palette.
+private struct ChatTabStrip: View {
+    let store: ChatStore
+
+    var body: some View {
+        TileTabStrip(tabs: store.openConversations.map { conversation in
+                         TileTab(id: conversation.id,
+                                 title: conversation.displayTitle,
+                                 symbol: "text.bubble",
+                                 help: "\(conversation.displayTitle) — \(conversation.provider.title) · \(conversation.model)",
+                                 accessibilityLabel: "Chat, \(conversation.displayTitle)")
+                     },
+                     selectedID: store.current.id,
+                     label: "Open chats",
+                     truncation: .tail,
+                     select: { store.open($0) },
+                     close: { store.close($0) })
+    }
+}
+
+// MARK: - Transcript
 
     private var transcript: some View {
         ScrollView {
@@ -177,7 +207,9 @@ public struct ChatTile: View {
                 modelEntries
             }
             // The browser's sun and moon, with the same key: a pane pinned light, or one
-            // that follows the app. Also on Pane ▸ Chat, so it is not pointer-only.
+            // that follows the app. Also on Pane ▸ Chat, so it is not pointer-only. Last,
+            // after the line, as in every footer — see `TileFooterSeparator`.
+            TileFooterSeparator()
             TileFooterButton(symbol: store.isLight ? "moon" : "sun.max",
                              help: store.isLight ? "Follow the App's Appearance (⌃⌘L)"
                                                  : "Show Chat Light (⌃⌘L)") {

@@ -115,4 +115,41 @@ struct AgentCompletionPolicyTests {
         #expect(AgentCompletionPolicy.message(command: "codex", duration: 45).body
                 == "Ran for 45s.")
     }
+
+    // MARK: - Turn ends
+
+    @Test("a turn that ended on its own needs the full minimum", arguments: [5.0, 29.9])
+    func shortTurnIsNotNews(duration: TimeInterval) {
+        #expect(!AgentCompletionPolicy.shouldNotifyTurnEnd(duration: duration, rangBell: false,
+                                                           isEnabled: true, isWatching: false))
+        #expect(AgentCompletionPolicy.shouldNotifyTurnEnd(duration: 30, rangBell: false,
+                                                          isEnabled: true, isWatching: false))
+    }
+
+    /// A permission prompt three seconds in is exactly when the user is wanted.
+    @Test("a bell lets a short turn through, but not a trivial one")
+    func bellLowersTheBar() {
+        #expect(AgentCompletionPolicy.shouldNotifyTurnEnd(duration: 5, rangBell: true,
+                                                          isEnabled: true, isWatching: false))
+        #expect(!AgentCompletionPolicy.shouldNotifyTurnEnd(duration: 1, rangBell: true,
+                                                           isEnabled: true, isWatching: false))
+    }
+
+    @Test("a turn end is silent when off, or when the user is watching")
+    func turnEndGates() {
+        #expect(!AgentCompletionPolicy.shouldNotifyTurnEnd(duration: 600, rangBell: true,
+                                                           isEnabled: false, isWatching: false))
+        #expect(!AgentCompletionPolicy.shouldNotifyTurnEnd(duration: 600, rangBell: true,
+                                                           isEnabled: true, isWatching: true))
+    }
+
+    @Test("the turn message says who is waiting, for how long, and where")
+    func turnMessage() {
+        let (title, body) = AgentCompletionPolicy.turnMessage(agent: "claude", duration: 130,
+                                                              session: "ultra-swift")
+        #expect(title == "claude is waiting")
+        #expect(body == "Worked for 2m 10s in ultra-swift.")
+        #expect(AgentCompletionPolicy.turnMessage(agent: "codex", duration: 45, session: nil).body
+                == "Worked for 45s.")
+    }
 }

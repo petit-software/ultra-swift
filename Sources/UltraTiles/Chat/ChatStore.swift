@@ -14,6 +14,14 @@ public final class ChatStore {
     /// one on screen is `current`.
     public private(set) var conversations: [ChatConversation] = []
     public private(set) var current: ChatConversation
+    /// The conversations open in this pane, as its tabs, in the order they were opened.
+    /// `current` is always one of them. A new chat and one picked from the tray both open
+    /// a tab beside the others rather than in their place, the way a file opens in the
+    /// editor; closing a tab puts the chat away, and only the tray deletes one.
+    public private(set) var openIDs: [UUID]
+    /// The open conversations that are not on screen, as they were when the user left
+    /// them. `current` is the live one; these wait their turn.
+    private var parked: [UUID: ChatConversation] = [:]
     public private(set) var isStreaming = false
     /// Something that stopped a request before an answer began. Shown once, in a bar,
     /// and cleared by the next send. A failure mid-answer is a note on the message instead.
@@ -51,11 +59,15 @@ public final class ChatStore {
         self.makeProvider = makeProvider
         self.appleUnavailable = AppleProvider.unavailableReason
         conversations = archive.load()
-        if let conversationID, let saved = archive.load(id: conversationID) {
-            current = saved
-        } else {
-            current = Self.fresh()
-        }
+        let saved = conversationID.flatMap { id in ChatArchive(root: root).load(id: id) }
+        let first = saved ?? Self.fresh()
+        current = first
+        openIDs = [first.id]
+    }
+
+    /// The tabs, in order: what is open here, `current` among them.
+    public var openConversations: [ChatConversation] {
+        openIDs.compactMap { $0 == current.id ? current : parked[$0] }
     }
 
     /// A conversation that has not been saved yet. It is written the first time it has a
@@ -74,15 +86,51 @@ public final class ChatStore {
         var next = Self.fresh()
         next.provider = current.provider
         next.model = current.model
-        current = next
-        error = nil
-        onChange?(current)
+        show(next)
     }
 
+    /// Bring a conversation to the front: one already open here, or one from the tray,
+    /// which opens in a new tab.
     public func open(_ id: UUID) {
-        guard id != current.id, let saved = archive.load(id: id) else { return }
+        guard id != current.id else { return }
+        guard let next = parked[id] ?? archive.load(id: id) else { return }
         stop()
-        current = saved
+        show(next)
+    }
+
+    /// Put a tab away. The chat stays on disk, in the tray. Closing the one on screen
+    /// lands on the tab before it, the way the editor does, and closing the last tab
+    /// leaves a fresh chat, since a chat pane always shows a chat.
+    public func close(_ id: UUID) {
+        guard let index = openIDs.firstIndex(of: id) else { return }
+        openIDs.remove(at: index)
+        parked[id] = nil
+        guard id == current.id else { return }
+        stop()
+        guard !openIDs.isEmpty, let next = parked[openIDs[max(0, index - 1)]] else {
+            newConversation()
+            return
+        }
+        show(next)
+    }
+
+    /// Wraps, like the editor's: a row of tabs is a ring, and the end just means pressing
+    /// the other key.
+    public func selectNext() { step(by: 1) }
+    public func selectPrevious() { step(by: -1) }
+
+    private func step(by offset: Int) {
+        guard openIDs.count > 1, let index = openIDs.firstIndex(of: current.id) else { return }
+        open(openIDs[(index + offset + openIDs.count) % openIDs.count])
+    }
+
+    /// Make `next` the conversation on screen, parking the one that was, and give it a
+    /// tab if it has none yet.
+    private func show(_ next: ChatConversation) {
+        parked[current.id] = current
+        parked[next.id] = nil
+        current = next
+        if !openIDs.contains(next.id) { openIDs.append(next.id) }
         error = nil
         onChange?(current)
     }
@@ -90,7 +138,9 @@ public final class ChatStore {
     public func delete(_ id: UUID) {
         archive.delete(id: id)
         conversations.removeAll { $0.id == id }
-        if current.id == id { newConversation() }
+        if openIDs.contains(id) {
+            close(id)
+        }
     }
 
     public func setProvider(_ provider: ChatProviderID) {

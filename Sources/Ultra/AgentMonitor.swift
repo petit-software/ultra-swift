@@ -49,13 +49,20 @@ final class AgentMonitor {
     private(set) var statuses = AgentStatusTracker()
     private(set) var statusBySession: [UUID: AgentStatus] = [:]
 
+    /// The turns, for the notification that an agent has stopped and is waiting. The
+    /// transition logic lives in UltraTerminal beside the other two trackers, and for the
+    /// same reason: so it can be tested without a tty.
+    private(set) var turns = AgentTurnTracker()
+
     /// Injectable so tests can run the whole transition without a clock or a notification.
     var now: () -> Date = Date.init
     var isWatching: () -> Bool = {
         NSApp?.isActive == true && (NSApp?.windows.contains { $0.isVisible } ?? false)
     }
-    var announce: (String, String) -> Void = { title, body in
-        AgentCompletionNotifier.shared.notify(title: title, body: body)
+    /// Title, body, and the session the news is about, so a click on the notification can
+    /// go there. Nil for a completion, which no longer has a pane to go to.
+    var announce: (String, String, UUID?) -> Void = { title, body, workspaceID in
+        AgentCompletionNotifier.shared.notify(title: title, body: body, workspaceID: workspaceID)
     }
 
     private init() {}
@@ -98,10 +105,18 @@ final class AgentMonitor {
     /// still has something to say, and a count has already forgotten it.
     func observeStatuses(_ byWorkspace: [UUID: [PaneID: AgentPaneSample]]) {
         var flattened: [PaneID: AgentPaneSample] = [:]
-        for samples in byWorkspace.values {
+        var workspaceOfPane: [PaneID: UUID] = [:]
+        for (workspaceID, samples) in byWorkspace {
             flattened.merge(samples) { first, _ in first }
+            for paneID in samples.keys { workspaceOfPane[paneID] = workspaceID }
         }
-        statuses.observe(flattened, at: now())
+        let timestamp = now()
+        statuses.observe(flattened, at: timestamp)
+        // Once, over every workspace's panes: the tracker forgets panes it is not shown,
+        // so showing it one workspace at a time would end every other workspace's turns.
+        for end in turns.observe(flattened, statuses: statuses.statusByPane, at: timestamp) {
+            announceIfWorthIt(end, in: workspaceOfPane[end.paneID])
+        }
         // Rebuilt rather than updated in place, so a session that has closed takes its entry
         // with it instead of leaving a badge behind for a row that no longer exists.
         let rolled = byWorkspace.mapValues { samples in
@@ -113,17 +128,6 @@ final class AgentMonitor {
         // not happened. `runningCount` above has always been guarded for the same reason.
         guard rolled != statusBySession else { return }
         statusBySession = rolled
-    }
-
-    /// The user has looked at this session: put its finished badges away.
-    ///
-    /// Acknowledging the SESSION rather than a pane, because a row is what the badge is on
-    /// — going to a session is a statement about all of it, and leaving one pane's green dot
-    /// standing after the user has been there would make the row lie.
-    func acknowledge(session workspaceID: UUID) {
-        guard let factory = ShellWorkspace.Registry.factories[workspaceID] else { return }
-        statuses.acknowledge(factory.shells.keys)
-        statusBySession[workspaceID] = .idle
     }
 
     /// Fold one sample into the running set, announcing whatever finished.
@@ -145,7 +149,22 @@ final class AgentMonitor {
             isWatching: isWatching()) else { return }
         let message = AgentCompletionPolicy.message(command: completion.command,
                                                     duration: completion.duration)
-        announce(message.title, message.body)
+        announce(message.title, message.body, nil)
+    }
+
+    /// A turn that ended: the same gates as a completion, with the bell letting a short
+    /// turn through, and the session's name in the body so the reader knows where to go.
+    private func announceIfWorthIt(_ end: AgentTurnEnd, in workspaceID: UUID?) {
+        guard AgentCompletionPolicy.shouldNotifyTurnEnd(
+            duration: end.duration,
+            rangBell: end.rangBell,
+            isEnabled: Preferences.notifiesOnAgentCompletion,
+            isWatching: isWatching()) else { return }
+        let session = workspaceID.flatMap { ShellWorkspace.Registry.stores[$0]?.workspaceTitle }
+        let message = AgentCompletionPolicy.turnMessage(agent: end.agent,
+                                                        duration: end.duration,
+                                                        session: session)
+        announce(message.title, message.body, workspaceID)
     }
 
     func update(to count: Int) {

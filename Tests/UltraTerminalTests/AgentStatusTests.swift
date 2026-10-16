@@ -75,36 +75,19 @@ struct AgentStatusTrackerTests {
                 == [paneA: .working])
     }
 
-    // MARK: - Finishing
+    // MARK: - Leaving
 
-    /// The transition a single sample cannot see: a pane whose agent has exited looks
-    /// exactly like a pane that never had one.
-    @Test("an agent that disappears has finished")
-    func disappearingIsDone() {
+    /// A pane whose agent has gone is a shell. What the agent's leaving MEANS — a
+    /// completion worth a notification — is `AgentCompletionTracker`'s to say, from
+    /// what it saw on earlier ticks; the status is only ever about now.
+    @Test("an agent that disappears leaves an idle pane")
+    func disappearingIsIdle() {
         var tracker = AgentStatusTracker()
         _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0)], at: t0)
-        #expect(tracker.observe([paneA: AgentPaneSample()], at: later(1)) == [paneA: .done])
+        #expect(tracker.observe([paneA: AgentPaneSample(lastOutputAt: t0)], at: later(1))
+                == [paneA: .idle])
     }
 
-    @Test("a non-zero exit is a failure, not a finish")
-    func nonZeroExitFails() {
-        var tracker = AgentStatusTracker()
-        _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0)], at: t0)
-        let exited = AgentPaneSample(lastOutputAt: t0, exitCode: 1)
-        #expect(tracker.observe([paneA: exited], at: later(1)) == [paneA: .failed])
-    }
-
-    /// `ShellTerminalView` reports a signal-killed process as -1 for exactly this: an agent
-    /// that was killed did not complete its work, and a green row would say it had.
-    @Test("a signalled agent is a failure")
-    func signalledFails() {
-        var tracker = AgentStatusTracker()
-        _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0)], at: t0)
-        let killed = AgentPaneSample(lastOutputAt: t0, exitCode: -1)
-        #expect(tracker.observe([paneA: killed], at: later(1)) == [paneA: .failed])
-    }
-
-    /// The whole reason the tracker is stateful rather than a pure function of one sample.
     @Test("a plain shell that never ran an agent stays idle")
     func plainShellStaysIdle() {
         var tracker = AgentStatusTracker()
@@ -112,44 +95,6 @@ struct AgentStatusTrackerTests {
         #expect(tracker.observe([paneA: shell], at: later(1)) == [paneA: .idle])
         #expect(tracker.observe([paneA: shell], at: later(600)) == [paneA: .idle],
                 "silence in a shell at a prompt is not an agent waiting for anything")
-    }
-
-    /// A completion shown for the one second it takes the next poll to arrive is a
-    /// completion nobody sees.
-    @Test("a finished badge survives later ticks")
-    func doneIsSticky() {
-        var tracker = AgentStatusTracker()
-        _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0)], at: t0)
-        _ = tracker.observe([paneA: AgentPaneSample()], at: later(1))
-        #expect(tracker.observe([paneA: AgentPaneSample()], at: later(300)) == [paneA: .done])
-    }
-
-    @Test("acknowledging puts a finished badge away and leaves a running one alone")
-    func acknowledgeClearsOnlyTerminalStates() {
-        var tracker = AgentStatusTracker()
-        _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0),
-                             paneB: AgentPaneSample(agent: "codex", lastOutputAt: t0)], at: t0)
-        _ = tracker.observe([paneA: AgentPaneSample(),
-                             paneB: AgentPaneSample(agent: "codex", lastOutputAt: later(1))],
-                            at: later(1))
-        #expect(tracker.status(for: paneA) == .done)
-
-        tracker.acknowledge([paneA, paneB])
-        #expect(tracker.status(for: paneA) == .idle)
-        #expect(tracker.status(for: paneB) == .working,
-                "blanking a row that is still working would be a lie the next tick corrects")
-    }
-
-    /// An acknowledged completion must not come straight back — the pane still has no agent
-    /// and still has an exit code, so only the remembered status stops it repeating.
-    @Test("an acknowledged completion does not return")
-    func acknowledgedStaysAway() {
-        var tracker = AgentStatusTracker()
-        _ = tracker.observe([paneA: AgentPaneSample(agent: "claude", lastOutputAt: t0)], at: t0)
-        _ = tracker.observe([paneA: AgentPaneSample(exitCode: 1)], at: later(1))
-        tracker.acknowledge([paneA])
-        #expect(tracker.observe([paneA: AgentPaneSample(exitCode: 1)], at: later(2))
-                == [paneA: .idle])
     }
 
     /// A pane id is never reissued, but a status left behind for one that is gone is a badge
@@ -165,14 +110,11 @@ struct AgentStatusTrackerTests {
 
     // MARK: - Rolling a session up
 
-    /// Ordered by what the user has to DO. A stalled agent is blocked on them right now; a
-    /// failed one has already stopped.
-    @Test("a session reports its most demanding pane")
-    func rollupPrefersTheMostDemanding() {
-        #expect(AgentStatus.rollup([.idle, .done]) == .done)
-        #expect(AgentStatus.rollup([.done, .working]) == .working)
-        #expect(AgentStatus.rollup([.working, .failed]) == .failed)
-        #expect(AgentStatus.rollup([.failed, .needsInput]) == .needsInput)
+    /// A session with one agent still printing is working, whatever the others are doing.
+    @Test("a session reports its busiest pane")
+    func rollupPrefersWorking() {
+        #expect(AgentStatus.rollup([.idle, .needsInput]) == .needsInput)
+        #expect(AgentStatus.rollup([.needsInput, .working]) == .working)
         #expect(AgentStatus.rollup([AgentStatus]()) == .idle)
     }
 

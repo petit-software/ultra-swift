@@ -237,6 +237,17 @@ final class SessionList {
         return true
     }
 
+    /// Bring forward the window that has this session, and the session in it. What a click
+    /// on "claude is waiting" does.
+    static func raise(workspaceID: UUID) -> Bool {
+        for list in lists.allObjects where list.sessions.contains(where: { $0.workspaceID == workspaceID }) {
+            list.select(workspaceID)
+            list.window?.makeKeyAndOrderFront(nil)
+            return true
+        }
+        return false
+    }
+
     /// Bring forward the window that has this project, if one does.
     static func raise(directory: String) -> Bool {
         let wanted = WorkspaceDocument.canonical(directory)
@@ -289,11 +300,6 @@ final class SessionList {
             persist()
         }
         selected?.reclaimKeyboardFocus()
-        // Going to a session is how its finished-agent badge is dismissed. `done` and
-        // `failed` are sticky precisely so a completion is not shown for the one second it
-        // takes the next poll to arrive — which means something has to put them away, and
-        // "the user went and looked" is the only honest something available.
-        AgentMonitor.shared.acknowledge(session: id)
     }
 
     /// Wraps, for the same reason the editor's list does: stopping at the end just means

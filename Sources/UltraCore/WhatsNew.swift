@@ -48,14 +48,4 @@ public enum WhatsNew {
     public static func pageURL(version: String, feed: String?) -> URL? {
         URL(string: "\(releases(feed: feed))/tag/v\(version)")
     }
-
-    /// Whether this launch is the first on a new version — and so the one to show the list.
-    ///
-    /// Not on a fresh install: there `seen` is nil, nothing was updated, and a dialog
-    /// about what changed since a version the user never ran answers no question. The
-    /// caller records the version after this returns false too, so the NEXT update shows.
-    public static func isDue(current: String, seen: String?, enabled: Bool) -> Bool {
-        guard enabled, let seen, !seen.isEmpty else { return false }
-        return seen != current
-    }
 }

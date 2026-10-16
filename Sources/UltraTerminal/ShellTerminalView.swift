@@ -116,11 +116,7 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
             agent: isRunningAgent(given: activity)
                 ? (activity?.command ?? spec.agentCommand ?? "agent") : nil,
             lastOutputAt: lastOutputAt,
-            lastBellAt: lastBellAt,
-            // Only for a pane that WAS an agent: a plain shell's exit code says nothing about
-            // an agent, and reporting it would paint a row red for an `exit 1` typed at a
-            // prompt.
-            exitCode: spec.agentCommand == nil ? nil : lastExitCode)
+            lastBellAt: lastBellAt)
     }
 
     /// Run once, from the first layout pass that gives the view a real size, then dropped.

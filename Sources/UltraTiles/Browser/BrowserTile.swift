@@ -70,11 +70,6 @@ public struct BrowserTile: View {
             // Here rather than at the end of the tab strip: the strip is not there with one
             // tab, which is exactly when a second is asked for.
             TileFooterButton(symbol: "plus", help: "New Tab (⌃⌘T)") { tabs.newTab() }
-            TileFooterButton(symbol: session.isDark ? "sun.max" : "moon",
-                             help: session.isDark ? "Show Page Light (⌃⌘L)"
-                                                  : "Show Page Dark (⌃⌘L)") {
-                session.toggleDark()
-            }
             TileFooterButton(symbol: "wrench.and.screwdriver", help: "Show Web Inspector (⌥⌘I)",
                              isEnabled: session.requestedURL != nil) {
                 session.showInspector()
@@ -86,6 +81,13 @@ public struct BrowserTile: View {
             TileFooterButton(symbol: "safari", help: "Open in Default Browser",
                              isEnabled: session.requestedURL != nil) {
                 session.openInDefaultBrowser()
+            }
+            // Last, after the line, as in every footer — see `TileFooterSeparator`.
+            TileFooterSeparator()
+            TileFooterButton(symbol: session.isDark ? "sun.max" : "moon",
+                             help: session.isDark ? "Show Page Light (⌃⌘L)"
+                                                  : "Show Page Dark (⌃⌘L)") {
+                session.toggleDark()
             }
         }
     }

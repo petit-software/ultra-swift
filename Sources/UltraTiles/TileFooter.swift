@@ -88,6 +88,24 @@ public struct TileFooterButton: View {
     }
 }
 
+/// A thin line between two groups of footer controls.
+///
+/// One use so far, and it is a rule: the sun-and-moon toggle that pins a pane light or
+/// dark is the LAST control of every footer that has one, with this before it. The other
+/// controls act on what the pane holds — a file, a page, a device; that one acts on the
+/// pane itself, and the gap says so before the icon does.
+public struct TileFooterSeparator: View {
+    public init() {}
+
+    public var body: some View {
+        Rectangle()
+            .fill(Token.Colour.separator)
+            .frame(width: 1, height: 12)
+            .padding(.horizontal, 5)
+            .accessibilityHidden(true)
+    }
+}
+
 /// The "where is this list stored" control, shared by every tile that keeps a file.
 ///
 /// Context and Todo had the same folder menu written out twice, down to the modifier stack.
@@ -192,5 +210,7 @@ public extension View {
         TileFooterButton(symbol: "eye.slash", help: "Show dotfiles") {}
         TileFooterButton(symbol: "arrow.clockwise", help: "Reload") {}
         TileFooterButton(symbol: "trash", help: "Delete", isEnabled: false) {}
+        TileFooterSeparator()
+        TileFooterButton(symbol: "moon", help: "Show Light") {}
     }
 }

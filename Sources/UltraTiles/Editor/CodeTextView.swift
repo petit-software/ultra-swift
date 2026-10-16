@@ -44,7 +44,9 @@ struct CodeTextView: NSViewRepresentable {
         textView.allowsUndo = true
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textColor = NSColor(Token.Colour.label)
-        textView.insertionPointColor = NSColor(Token.Colour.accent)
+        // The INK, not the accent: the default accent is white, and a white caret in an
+        // editor shown light was nowhere to be seen.
+        textView.insertionPointColor = Token.Colour.accentInkColour
         textView.backgroundColor = .clear
         textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 6, height: 8)

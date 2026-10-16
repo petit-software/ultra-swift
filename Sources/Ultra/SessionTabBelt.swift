@@ -16,7 +16,7 @@ import UltraTerminal
 /// A VIEW of the sidebar, not a second list: the same `SessionList`, the same selection,
 /// the same icon, and the same Customize sheet on a right-click. No agent badge: the belt
 /// names sessions, and the sidebar is where their agents are watched. Reordering is
-/// by dragging a tab along the belt, and on File ▸ Session ▸ Move Session Up / Down.
+/// by dragging a tab along the belt, and on View ▸ Move Session Up / Down.
 struct SessionTabBelt: View {
     @Bindable var sessions: SessionList
     /// For the customise flag, which File ▸ Session ▸ Customize Session… sets as well.

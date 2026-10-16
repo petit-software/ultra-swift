@@ -116,6 +116,13 @@ public enum Token {
         /// own ink on both.
         public static var accentInk: Color { ink() }
 
+        /// The same ink for an AppKit view that wants an `NSColor` — the editor's caret.
+        /// Dynamic on the white accent, so a caret in an editor pinned light is black on
+        /// white rather than white on white, which is no caret.
+        public static var accentInkColour: NSColor {
+            Preferences.accentColour == .white ? whiteInkColour() : NSColor(Preferences.accentColour.color)
+        }
+
         static func ink(accent: Preferences.AccentColour = Preferences.accentColour) -> Color {
             accent == .white ? Color(nsColor: whiteInkColour()) : accent.color
         }
@@ -235,17 +242,15 @@ public enum Token {
 
         // MARK: Agent status
         //
-        // The four states a session row can report — see `AgentStatus`. System colours
-        // rather than hand-picked hues, for the reason `SessionTint` gives: they are legible
-        // in both appearances and follow Increase Contrast without this app tracking it.
+        // A session row's working dot — see `AgentStatus`. A system colour rather than a
+        // hand-picked hue, for the reason `SessionTint` gives: legible in both appearances
+        // and following Increase Contrast without this app tracking it.
         //
-        // Deliberately NOT the accent, even for `agentWorking`, which is the one that would
-        // read naturally as "the app's own colour". The accent is user-chosen and can be any
-        // of twelve hues, including the green and the red these have to be told apart from —
-        // a status vocabulary that changes meaning with a preference is not a vocabulary.
+        // Deliberately NOT the accent, which would read naturally as "the app's own
+        // colour". The accent is user-chosen and can be any of twelve hues, and a status
+        // that changes meaning with a preference is not a status.
         public static let agentWorking = Color(nsColor: .systemBlue)
-        public static let agentNeedsInput = Color(nsColor: .systemYellow)
-        public static let agentDone = Color(nsColor: .systemGreen)
+        /// Something that went wrong, in the one place the app says so in colour.
         public static let agentFailed = Color(nsColor: .systemRed)
 
         /// Divider hairline. Under Increase Contrast this becomes an opaque separator.

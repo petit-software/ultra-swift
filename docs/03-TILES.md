@@ -78,7 +78,7 @@ The primary tile. A login shell, usually with an agent CLI running in it.
   the Electron app's approach and it is the right one — Ultra is a harness, not an agent loop.
 - **Agent registry**: `{ name, command }` entries in `<project>/.ultra/agents.json`
   (`ProjectAgents`). A project starts with NONE: no file is written when it is created, and a
-  project without the file reads as having no agents, so File ▸ New Agent Pane is empty until
+  project without the file reads as having no agents, so Pane ▸ New Pane lists none until
   the user adds one from the session's Customize sheet. `claude`, `codex` and `gemini` stay
   KNOWN — `AgentDefinition.known` — so a pane running one of them still lights the sidebar's
   agent badge whether or not this project lists it. The file is committed, like the todo
@@ -88,7 +88,7 @@ The primary tile. A login shell, usually with an agent CLI running in it.
 - **Agent pane**: its own `PaneRecord.Kind` (`agent`), built by the same factory as a shell —
   a shell whose `command` is one of the registry's entries, launched with `exec` as above. Being
   a kind is what lets "Agent" sit beside "Todo" in every pane menu, name itself in the header,
-  and be told apart from a plain shell in a layout. File ▸ New Agent Pane lists the project's
+  and be told apart from a plain shell in a layout. Pane ▸ New Pane lists the project's
   agents; ⌥⌘A and the palette's "New Agent Pane" open the first installed one. A `shell`
   record written before the kind existed, carrying a command, restores as an agent.
 - **Resize**: driven by the coalescing rules in `01-SPLIT-ENGINE.md` § 6.
@@ -136,11 +136,12 @@ something another editor does better.
   started here is nearly always a note about the project, and that is where those live. The
   panel is only a default; the file goes wherever it is taken. `.ultra/` is made if the
   project has none, and removed again if the save is cancelled.
-- **Tabs along the top**, one per open file or diff, in the order they were opened. A row
-  of tabs rather than a sidebar: a sidebar took a column off a pane that is already as
-  narrow as the user made it, and hid itself below 400pt, which is where most editor panes
-  live. ⇧⌘] / ⇧⌘[ move along the row; ⌃⌘W closes the tab showing. The selected tab is
-  scrolled into view when the row is longer than the pane.
+- **Tabs along the top**, one per open file or diff, in the order they were opened, and
+  only once there are two: with one file the strip said the name the footer already says.
+  A row of tabs rather than a sidebar: a sidebar took a column off a pane that is already
+  as narrow as the user made it, and hid itself below 400pt, which is where most editor
+  panes live. ⇧⌘] / ⇧⌘[ move along the row; ⌃⌘W closes the tab showing, strip or no strip.
+  The selected tab is scrolled into view when the row is longer than the pane.
 - **Generic colouring** (`CodeHighlighter`): comments, strings, numbers, keywords,
   capitalised types and `@`/`#`/`$` attributes, from a table of a dozen facts per language
   (`CodeLanguage`) and one linear pass — not a grammar. The language comes from the file's
@@ -375,6 +376,15 @@ APIs. Every provider is tested against a recorded transcript.
 - The store (`ChatStore`) is owned by the tile factory, like an editor's tabs, so an answer
   still streaming survives the pane being rebuilt. The pane's record carries the
   conversation id in `command`, the way an editor's carries its file.
+- Several chats open in one pane as tabs along the top (`TileTabStrip`, the editor's and
+  the browser's), shown only once there are two. New Chat and a chat picked from the tray
+  open beside the others; closing a tab puts the chat away and the tray keeps it; only
+  Delete This Chat removes one. Pane ▸ Chat ▸ Next / Previous Chat and Close Chat Tab are
+  the keyboard path, from the palette: the keys the editor's and the browser's rows use
+  are taken.
+- The sun-and-moon toggle is the last control of every footer that has one, after a thin
+  line (`TileFooterSeparator`): the other controls act on what the pane holds; that one acts
+  on the pane.
 - The answer is rendered in blocks (`MarkdownBlocks`): paragraphs through Foundation's
   Markdown parser; lists drawn with bullets or their numbers in a column, nesting stepped
   in; a heading as its own line; fenced code in a box whose Copy and "type at the prompt"
@@ -450,7 +460,7 @@ APIs. Every provider is tested against a recorded transcript.
   reads as working in strokes rather than as a loading wheel. It zooms in from small when
   the answer starts and shrinks away when it is in; under Reduce Motion it breathes in
   opacity and does not turn. Under the pointer it is the stop button — the whole slot is
-  the button, so a click on the star stops too. File ▸ New Tile Pane ▸ Chat is ⌥⌘C.
+  the button, so a click on the star stops too. Pane ▸ New Pane ▸ Chat is ⌥⌘C.
 - Each pane can show its chat light: the sun in the footer, or Pane ▸ Chat ▸ Toggle Light
   Chat (⌃⌘L — the browser's key for the same thing; the two share it, and the menu fires
   whichever is enabled). It works the way a browser pane's page mode does: the choice is
@@ -509,7 +519,7 @@ link worth keeping open.
   Browser Tab (⌃⌘] and ⌃⌘[), Close Browser Tab, Reload Page (⌘R), Back (⌘[), Forward (⌘]),
   Show Web Inspector (⌥⌘I), Empty Caches, Open in Default Browser. They act on the focused
   browser pane, or the first one in the layout, and on the tab it is showing. Open Location
-  and New Browser Tab open a browser pane when there is none. File ▸ New Tile Pane ▸
+  and New Browser Tab open a browser pane when there is none. Pane ▸ New Pane ▸
   Browser is ⌥⌘B. In the address field, Return loads the page and gives it the keyboard,
   and Escape puts the address back.
 - The agent's `browse` verb — `{"verb":"browse","url":"localhost:3000"}` on the control
@@ -593,7 +603,7 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
 - **Screenshot** writes a PNG to the project's `.ultra/screenshots/` and types its path at
   the shell's prompt: what is on screen, in front of the agent, in one press.
 - Commands: Pane ▸ Simulator ▸ Home (⇧⌘H), Lock, Boot Device, Shut Down Device, Take
-  Screenshot, Toggle Dark Appearance. The footer adds Open URL on Device…. File ▸ New Tile
+  Screenshot, Toggle Dark Appearance. The footer adds Open URL on Device…. Pane ▸ New
   Pane ▸ Simulator is ⌥⌘P. A focused pane on a live device gives the keyboard to the screen.
 - **The agent's verb.** `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}`
   on the control socket shows that device — the pane already on it, else the focused
