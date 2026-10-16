@@ -32,7 +32,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.32.0</string>
+	<string>0.33.0</string>
 	<key>CFBundleVersion</key>
 	<string>26</string>
 	<key>LSMinimumSystemVersion</key>
@@ -48,33 +48,6 @@
 	<string>NSApplication</string>
 	<key>SUPublicEDKey</key>
 	<string>SribIcG3bOjhcAnl9uSgRmlTpXg4txE8gGCGSP05LX4=</string>
-	<key>UTImportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.plain-text</string>
-			</array>
-			<key>UTTypeDescription</key>
-			<string>Markdown Document</string>
-			<key>UTTypeIdentifier</key>
-			<string>net.daringfireball.markdown</string>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>md</string>
-					<string>markdown</string>
-					<string>mdown</string>
-					<string>mkd</string>
-				</array>
-				<key>public.mime-type</key>
-				<array>
-					<string>text/markdown</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -100,6 +73,33 @@
 			<string>com.ultra.pane</string>
 			<key>UTTypeTagSpecification</key>
 			<dict/>
+		</dict>
+	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Markdown Document</string>
+			<key>UTTypeIdentifier</key>
+			<string>net.daringfireball.markdown</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>md</string>
+					<string>markdown</string>
+					<string>mdown</string>
+					<string>mkd</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>text/markdown</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>
