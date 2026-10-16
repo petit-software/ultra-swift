@@ -366,8 +366,13 @@ private struct AgentSettings: View {
 
             Section {
                 Toggle("Notify me when an agent finishes or waits for me",
-                       isOn: prefs.flag({ Preferences.notifiesOnAgentCompletion },
-                                        { Preferences.notifiesOnAgentCompletion = $0 }))
+                       isOn: prefs.flag({ Preferences.notifiesOnAgentCompletion }, { on in
+                           Preferences.notifiesOnAgentCompletion = on
+                           // The footer says switching this on asks macOS. It must, here:
+                           // asking only when the first notification was due meant someone
+                           // who switched it on and waited for the prompt never saw one.
+                           if on { AgentCompletionNotifier.shared.requestAuthorization() }
+                       }))
             } header: {
                 Text("Notifications")
             } footer: {

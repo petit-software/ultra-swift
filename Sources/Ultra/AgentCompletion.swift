@@ -6,9 +6,16 @@ import UserNotifications
 
 /// Posts the notifications, and takes them back once they have been read.
 ///
-/// Authorization is requested the first time the preference is ON and something is worth
-/// saying — never at launch. macOS only ever asks once, so spending that prompt on a feature
-/// the user has not opted into is spending it badly.
+/// Authorization is requested when the preference is switched ON, and at launch when it
+/// already is — never before the user has opted in. macOS only ever asks once, so spending
+/// that prompt on a feature the user has not opted into is spending it badly.
+///
+/// It used to be requested later still: by the first notification, which came only after an
+/// agent had worked for half a minute while the user was away. Someone who switched the
+/// setting on and watched for the prompt never saw one, and when it did come the
+/// notification that raised it had already been posted and refused, because a request made
+/// while the answer is still "not determined" is not delivered. The prompt arrived with
+/// nothing behind it.
 @MainActor
 final class AgentCompletionNotifier {
     static let shared = AgentCompletionNotifier()
@@ -34,7 +41,6 @@ final class AgentCompletionNotifier {
     /// go there. Read on the notification centre's queue, hence `nonisolated`.
     nonisolated static let workspaceKey = "workspaceID"
 
-    private var hasRequestedAuthorization = false
     private var activationObserver: NSObjectProtocol?
     /// Held for as long as the app runs: the centre keeps only a weak reference.
     private let clicks = NotificationClicks()
@@ -47,16 +53,26 @@ final class AgentCompletionNotifier {
     private init() {
         deliver = { title, body, workspaceID in
             guard Self.canNotify else { return }
-            let content = UNMutableNotificationContent()
-            content.title = title
-            content.body = body
-            if let workspaceID {
-                content.userInfo = [Self.workspaceKey: workspaceID.uuidString]
-            }
-            let request = UNNotificationRequest(
-                identifier: Self.identifierPrefix + UUID().uuidString,
-                content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(request)
+            // Posted from inside the authorization callback, not beside it. Once the user has
+            // answered, this completes at once with the stored answer; before they have, it
+            // puts the question up and waits, and the notification follows the answer
+            // instead of being refused while it is pending. The content is built in the
+            // callback too: a `UNNotificationRequest` is not Sendable, three strings are.
+            let workspace = workspaceID?.uuidString
+            UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                    guard granted else { return }
+                    let content = UNMutableNotificationContent()
+                    content.title = title
+                    content.body = body
+                    if let workspace {
+                        content.userInfo = [Self.workspaceKey: workspace]
+                    }
+                    let request = UNNotificationRequest(
+                        identifier: Self.identifierPrefix + UUID().uuidString,
+                        content: content, trigger: nil)
+                    UNUserNotificationCenter.current().add(request)
+                }
         }
         clearDelivered = {
             guard Self.canNotify else { return }
@@ -74,8 +90,19 @@ final class AgentCompletionNotifier {
     }
 
     func notify(title: String, body: String, workspaceID: UUID? = nil) {
-        requestAuthorizationIfNeeded()
         deliver(title, body, workspaceID)
+    }
+
+    /// Put the system's permission prompt up, if it has not been answered yet.
+    ///
+    /// Called when the setting is switched on — the moment the footer under it promises the
+    /// question — and at launch when it is already on, for everyone who switched it on
+    /// before this asked. Once answered, macOS completes at once without asking again, so
+    /// calling it on every launch costs nothing.
+    func requestAuthorization() {
+        guard Self.canNotify else { return }
+        UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     /// Take the notifications back whenever the user comes to look.
@@ -106,13 +133,6 @@ final class AgentCompletionNotifier {
         // gone. Waiting for the next one would leave a backlog sitting through the whole
         // first session.
         if NSApp?.isActive == true { clearDelivered() }
-    }
-
-    private func requestAuthorizationIfNeeded() {
-        guard !hasRequestedAuthorization, Self.canNotify else { return }
-        hasRequestedAuthorization = true
-        UNUserNotificationCenter.current()
-            .requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 }
 

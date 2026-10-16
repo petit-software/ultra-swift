@@ -40,3 +40,14 @@ hangs off that transition rather than a new detector.
 - [x] Drop the finished-agent badges from the sidebar; a system notification is the only word on a finished turn
 - [x] A new user's first window is one shell pane (already so: no saved document and no default layout opens `LayoutTree(single:)`; nothing to change)
 - [ ] Commit, push main, GitHub release
+
+## Notification permission
+
+The settings footer says switching notifications on asks macOS for permission, but nothing
+asked until the first notification was due, and that one was posted before the answer came
+and refused. Ultra never appeared in System Settings ▸ Notifications.
+
+- [x] Ask for permission when the toggle turns on, and at launch when it is already on
+- [x] Post each notification from inside the authorization callback so the first is not dropped
+- [x] Build and test
+- [ ] Ultra 0.35.0: bump, commit, push, GitHub release

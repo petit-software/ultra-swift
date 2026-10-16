@@ -109,6 +109,11 @@ struct WorkspaceWindow: View {
                 // delivered before the last quit is still on screen, and this is the first
                 // moment the app can take it back.
                 AgentCompletionNotifier.shared.startClearingWhenActive()
+                // Anyone who switched notifications on before the switch asked — every
+                // build before 0.35 — gets the permission prompt now rather than never.
+                if Preferences.notifiesOnAgentCompletion {
+                    AgentCompletionNotifier.shared.requestAuthorization()
+                }
                 // Settings only reach panes that already exist because of this.
                 PreferenceBridge.start()
                 MenuBarItem.shared.syncWithPreference()
