@@ -55,16 +55,32 @@ public final class SimulatorSession {
     @ObservationIgnored private var connectedUDID: String?
     @ObservationIgnored private var poll: Task<Void, Never>?
     @ObservationIgnored private var pendingApp: String?
+    /// A still is a screenshot, upright; only a preview's drawn screen is on its side.
+    @ObservationIgnored private var stillAngle: Double = 0
 
     /// How large the device is drawn, as a multiple of the size that fits the pane. 1 fits.
     /// Saved with the pane, so a restored workspace shows the device the same size.
     public private(set) var zoom: CGFloat = 1
 
-    /// The zoom changed: the pane's saved record follows.
-    @ObservationIgnored public var onZoomChange: ((CGFloat) -> Void)?
+    /// Whether the device is drawn in its enclosure — body, bezel and side buttons, from
+    /// Xcode's own artwork — or as the bare screen with its rounded corners. Saved with the
+    /// pane.
+    public private(set) var showsFrame = true
 
-    public init(udid: String? = nil, zoom: CGFloat = 1) {
+    /// The zoom or the frame changed: the pane's saved record follows.
+    @ObservationIgnored public var onStateChange: ((_ zoom: CGFloat, _ showsFrame: Bool) -> Void)?
+
+    /// Which of the device's own screens is lit, for a phone that folds: its cover closed,
+    /// its inner screen open. Nil until the device has said, and for every other device,
+    /// which has the one.
+    public private(set) var activeScreenID: UInt32?
+    /// A fold or a turn asked for and not yet done: the controls that would collide dim.
+    public private(set) var isMoving = false
+    @ObservationIgnored private var connectedScreenID: UInt32?
+
+    public init(udid: String? = nil, zoom: CGFloat = 1, showsFrame: Bool = true) {
         self.zoom = SimulatorDisplayView.clampZoom(zoom)
+        self.showsFrame = showsFrame
         if let udid {
             // A restored pane knows its device before the list is in: a placeholder with
             // the id, replaced by the real entry on the first refresh.
@@ -76,6 +92,20 @@ public final class SimulatorSession {
     public var udid: String? { device?.udid }
     public var isBooted: Bool { device?.state.isBooted ?? false }
     public var hasXcode: Bool { SimulatorControl.hasXcode }
+
+    /// What the device type says about its screens, from Xcode's files.
+    public var profile: DeviceProfile? {
+        device.flatMap { DeviceProfile.load(deviceType: $0.deviceType) }
+    }
+
+    /// A phone with a second screen inside, like iPhone Duo.
+    public var isFoldable: Bool { profile?.isFoldable ?? false }
+
+    /// Open: a foldable phone showing its inner screen.
+    public var isOpen: Bool {
+        guard let profile, profile.isFoldable, let activeScreenID else { return false }
+        return activeScreenID != profile.primary.id
+    }
 
     // MARK: - The view
 
@@ -144,7 +174,21 @@ public final class SimulatorSession {
         } catch {
             self.error = "\(error)"
         }
+        await readActiveScreen()
         await syncConnection()
+    }
+
+    /// Ask a foldable device which of its screens is lit. Cheap — `devicectl` answers in
+    /// a few milliseconds — and asked on every poll, because the device can fold itself:
+    /// an agent's UI test, or SpringBoard after a reboot.
+    private func readActiveScreen() async {
+        guard let device, device.state.isBooted, isFoldable else {
+            activeScreenID = nil
+            return
+        }
+        guard let displays = await SimulatorControl.displays(of: device.udid),
+              let lit = displays.first(where: \.isActive) else { return }
+        activeScreenID = lit.id
     }
 
     /// Connect to a booted device's screen, or let go of one that went down.
@@ -155,7 +199,7 @@ public final class SimulatorSession {
             applyContents()
             return
         }
-        if connectedUDID == device.udid, let display {
+        if connectedUDID == device.udid, connectedScreenID == activeScreenID, let display {
             // Connected, but not showing the live screen — the device had no framebuffer
             // yet when it connected, say. Look again rather than wait on a callback.
             if madeView?.contents == nil || madeView?.input == nil { display.refresh() }
@@ -163,11 +207,12 @@ public final class SimulatorSession {
         }
         disconnect()
         connectedUDID = device.udid
+        connectedScreenID = activeScreenID
         let frameworks = SimulatorFrameworks.shared
         if frameworks.isAvailable {
             do {
                 let handle = try frameworks.device(udid: device.udid)
-                if let found = SimulatorDisplay.find(for: handle) {
+                if let found = SimulatorDisplay.find(for: handle, screenID: activeScreenID) {
                     display = found
                     found.onFrame = { [weak self] in self?.frameArrived() }
                     found.start()
@@ -206,6 +251,7 @@ public final class SimulatorSession {
         display = nil
         input = nil
         connectedUDID = nil
+        connectedScreenID = nil
         isLive = false
     }
 
@@ -236,7 +282,7 @@ public final class SimulatorSession {
         } else if let still {
             view.contents = still
             view.pixelSize = CGSize(width: still.width, height: still.height)
-            view.angle = 0
+            view.angle = stillAngle
             view.input = nil
             view.chrome = chrome
             view.cornerMask = cornerMask
@@ -250,20 +296,19 @@ public final class SimulatorSession {
         view.frameDidChange()
     }
 
-    /// Whether the device's enclosure is drawn round its screen. Off while the enclosure
-    /// renders wrongly: the pane shows the bare screen, clipped to the device's own rounded
-    /// corners (`cornerMask`). `DeviceChrome` and its tests stay, ready to turn back on.
-    static let showsEnclosure = false
+    /// The screen being shown: the lit one of a foldable, else the device's only one.
+    private var shownScreenID: UInt32? { connectedScreenID ?? activeScreenID }
 
     /// The device's screen corners, from the same Xcode artwork: every device its own radius.
     private var cornerMask: CGImage? {
-        device.flatMap { DeviceChrome.cornerMask(deviceType: $0.deviceType) }
+        device.flatMap { DeviceChrome.cornerMask(deviceType: $0.deviceType, screenID: shownScreenID) }
     }
 
-    /// The device's enclosure, from Xcode's own artwork for its type.
+    /// The enclosure of the screen being shown, from Xcode's own artwork for its type. A
+    /// foldable's inner screen has a body of its own, wider than the cover's.
     private var chrome: DeviceChrome? {
-        guard Self.showsEnclosure else { return nil }
-        return device.flatMap { DeviceChrome.load(deviceType: $0.deviceType) }
+        guard showsFrame else { return nil }
+        return device.flatMap { DeviceChrome.load(deviceType: $0.deviceType, screenID: shownScreenID) }
     }
 
     /// A screenshot through `simctl`, for a pane that cannot be live.
@@ -285,8 +330,12 @@ public final class SimulatorSession {
         error = nil
         guard chosen.udid != device?.udid else { return }
         device = chosen
+        activeScreenID = nil
         onChange?(chosen)
-        Task { await syncConnection() }
+        Task {
+            await readActiveScreen()
+            await syncConnection()
+        }
     }
 
     /// The agent's verb: this device, booted if it is not, with an app launched once it is.
@@ -341,6 +390,65 @@ public final class SimulatorSession {
     public func pressHome() { input?.press(.home) }
     public func pressLock() { input?.press(.lock) }
     public var canPress: Bool { input != nil }
+
+    // MARK: - Turning and folding
+
+    /// Whether the device can be turned or folded now: up, and not mid-way through either.
+    public var canMove: Bool { isBooted && !isBusy && !isMoving }
+
+    public func rotateLeft() { rotate(.left) }
+    public func rotateRight() { rotate(.right) }
+
+    /// A quarter turn. The screen follows when the device redraws its interface on its
+    /// side — the display port says so — and is looked at again shortly after, for an
+    /// app that took its time.
+    private func rotate(_ direction: SimulatorControl.Rotation) {
+        guard let device, canMove else { return }
+        error = nil
+        isMoving = true
+        Task {
+            defer { isMoving = false }
+            do {
+                try await SimulatorControl.rotate(device.udid, direction)
+            } catch {
+                self.error = "\(error)"
+                return
+            }
+            for delay in [200, 600] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                if display?.refresh() == true { applyContents() }
+            }
+        }
+    }
+
+    /// Open a closed foldable, or close an open one, and show whichever screen it lands on.
+    public func toggleFold() {
+        guard let device, isFoldable, canMove else { return }
+        error = nil
+        isMoving = true
+        let target: SimulatorFold.Position = isOpen ? .closed : .open
+        Task {
+            defer { isMoving = false }
+            do {
+                try await SimulatorFold.move(device.udid, to: target)
+            } catch {
+                self.error = "\(error)"
+                return
+            }
+            await readActiveScreen()
+            await syncConnection()
+            if (target == .open) != isOpen {
+                self.error = "The device did not \(target == .open ? "open" : "close")"
+            }
+        }
+    }
+
+    /// Draw the device in its enclosure, or as the bare screen.
+    public func toggleFrame() {
+        showsFrame.toggle()
+        applyContents()
+        onStateChange?(zoom, showsFrame)
+    }
 
     /// Launch an app by bundle id. Returns, and shows, why not.
     @discardableResult
@@ -429,14 +537,17 @@ public final class SimulatorSession {
         guard next != zoom else { return }
         zoom = next
         madeView?.zoom = next
-        onZoomChange?(next)
+        onStateChange?(next, showsFrame)
     }
 
     /// A preview's fixture: devices and a still, with no Xcode asked and no poll started.
-    func adoptForPreview(devices: [SimulatorDevice], device: SimulatorDevice?, still: CGImage?) {
+    func adoptForPreview(devices: [SimulatorDevice], device: SimulatorDevice?, still: CGImage?,
+                         activeScreenID: UInt32? = nil, angle: Double = 0) {
         self.devices = devices
         self.device = device
+        self.activeScreenID = activeScreenID
         self.still = still
+        stillAngle = angle
         liveError = still == nil ? nil : "preview"
         applyContents()
     }

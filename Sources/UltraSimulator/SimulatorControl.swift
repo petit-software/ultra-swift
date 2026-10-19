@@ -1,7 +1,8 @@
 import Foundation
 
-/// `xcrun simctl`, for the verbs that do not need a live connection to the device: listing,
-/// booting, shutting down, opening a URL, switching appearance.
+/// `xcrun simctl` and `xcrun devicectl`, for the verbs that do not need a live connection
+/// to the device: listing, booting, shutting down, opening a URL, switching appearance,
+/// turning it, and asking which of its screens is lit.
 ///
 /// A subprocess rather than CoreSimulator's own calls on purpose. `simctl` is Apple's
 /// supported surface and it does not change shape between Xcodes; the private framework is
@@ -71,6 +72,62 @@ public enum SimulatorControl {
         try await check(["simctl", "io", udid, "screenshot", "--type=png", file.path], timeout: 20)
     }
 
+    // MARK: - devicectl
+
+    // `simctl` cannot turn a device or say which of its screens is lit. Xcode 27's
+    // `devicectl` can, for a simulator as for a phone on a cable, and it is just as much
+    // Apple's supported surface — the Simulator window's own Rotate goes through the same
+    // CoreDevice call.
+
+    public enum Rotation: String, Sendable { case left, right }
+
+    /// A quarter turn, the way Simulator's Rotate Left and Rotate Right do it. An app that
+    /// does not support the new orientation stays as it is, as on a real device.
+    public static func rotate(_ udid: String, _ direction: Rotation) async throws {
+        try await check(["devicectl", "device", "orientation", "rotate", "--device", udid,
+                         direction.rawValue, "--quiet"], timeout: 15)
+    }
+
+    /// One built-in screen as the device reports it: whether it is the one lit.
+    public struct DisplayState: Equatable, Sendable {
+        public var id: UInt32
+        public var isActive: Bool
+        public init(id: UInt32, isActive: Bool) {
+            self.id = id
+            self.isActive = isActive
+        }
+    }
+
+    /// The device's screens and which of them is in use — for a phone that folds, whether
+    /// it is open. Nil when the device did not answer.
+    public static func displays(of udid: String) async -> [DisplayState]? {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("ultra-displays-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let result = await run(["devicectl", "device", "info", "displays", "--device", udid,
+                                "--quiet", "--json-output", file.path], timeout: 15)
+        guard result.status == 0, let data = try? Data(contentsOf: file) else { return nil }
+        return parseDisplays(data)
+    }
+
+    /// `devicectl device info displays --json-output`, decoded: only the integrated
+    /// screens, in the order given. Pure, so it is tested against a fixture.
+    public static func parseDisplays(_ data: Data) -> [DisplayState]? {
+        struct Output: Decodable {
+            struct Result: Decodable { var displays: [Display] }
+            struct Display: Decodable {
+                var displayId: UInt32
+                var active: Bool?
+                var type: [String: EmptyValue]?
+            }
+            struct EmptyValue: Decodable {}
+            var result: Result
+        }
+        guard let output = try? JSONDecoder().decode(Output.self, from: data) else { return nil }
+        return output.result.displays
+            .filter { $0.type == nil || $0.type?["integrated"] != nil }
+            .map { DisplayState(id: $0.displayId, isActive: $0.active ?? false) }
+    }
+
     // MARK: - Running xcrun
 
     public struct Result: Sendable {
@@ -105,6 +162,12 @@ public enum SimulatorControl {
         let out = Pipe(), err = Pipe()
         process.standardOutput = out
         process.standardError = err
+        // Waited for on a semaphore, not `waitUntilExit`, which runs the current run loop
+        // while it waits: called from the main thread — the first ask for Xcode's folder
+        // comes from a view's body — it let SwiftUI lay the view out again in the middle,
+        // and the second layout asked for the folder whose first ask had not returned.
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch {
             return Result(status: -1, output: "", error: "\(error)")
         }
@@ -120,7 +183,7 @@ public enum SimulatorControl {
             errorRead.leave()
         }
         let outputData = out.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        exited.wait()
         errorRead.wait()
         return Result(status: process.terminationStatus,
                       output: String(decoding: outputData, as: UTF8.self),

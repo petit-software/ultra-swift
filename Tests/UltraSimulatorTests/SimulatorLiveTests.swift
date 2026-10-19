@@ -199,6 +199,40 @@ struct SimulatorLiveTests {
         }
     }
 
+    /// A phone that folds opens onto its inner screen and closes back onto its cover.
+    /// Runs only on a booted foldable.
+    @Test("a foldable opens and closes")
+    @MainActor
+    func fold() async throws {
+        let (device, _) = try await bootedDevice()
+        guard let profile = DeviceProfile.load(deviceType: device.deviceType), profile.isFoldable else { return }
+        try await SimulatorFold.move(device.udid, to: .open)
+        let opened = try #require(await SimulatorControl.displays(of: device.udid))
+        #expect(opened.first(where: \.isActive)?.id == profile.screens[1].id)
+        try await SimulatorFold.move(device.udid, to: .closed)
+        let closed = try #require(await SimulatorControl.displays(of: device.udid))
+        #expect(closed.first(where: \.isActive)?.id == profile.primary.id)
+    }
+
+    /// A quarter turn reaches the screen's orientation, and turning back restores it. On a
+    /// tablet, whose home screen turns; a phone's stays upright whatever the device does.
+    @Test("a quarter turn turns the picture, and back")
+    @MainActor
+    func turn() async throws {
+        let (device, handle) = try await bootedDevice()
+        guard device.isTablet else { return }
+        let display = try #require(SimulatorDisplay.find(for: handle))
+        let before = display.angle
+        try await SimulatorControl.rotate(device.udid, .left)
+        try await Task.sleep(for: .seconds(1.5))
+        display.refresh()
+        #expect(display.angle != before)
+        try await SimulatorControl.rotate(device.udid, .right)
+        try await Task.sleep(for: .seconds(1.5))
+        display.refresh()
+        #expect(display.angle == before)
+    }
+
     private static func key(_ code: UInt16, _ character: String, _ type: NSEvent.EventType) -> NSEvent {
         NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
                          context: nil, characters: character, charactersIgnoringModifiers: character,

@@ -225,9 +225,10 @@ public final class TileFactory {
             return (view, record)
         case .simulator:
             // A staged device wins; a restored pane reopens the device it was on.
+            let saved = SimulatorPaneState.decode(records[paneID]?.tileState)
             let session = simulators[paneID] ?? SimulatorSession(
                 udid: pendingSimulator ?? records[paneID]?.command,
-                zoom: SimulatorPaneState.decode(records[paneID]?.tileState).zoom)
+                zoom: saved.zoom, showsFrame: saved.showsFrame)
             pendingSimulator = nil
             simulators[paneID] = session
             // Screenshots go beside the project's todo and chats, and their path is typed
@@ -235,16 +236,21 @@ public final class TileFactory {
             session.screenshotFolder = context.projectRoot.appendingPathComponent(".ultra", isDirectory: true)
             session.sendToShell = context.injectIntoShell
             session.onChange = { [weak self, weak session] device in
-                self?.noteSimulator(paneID, device: device, zoom: session?.zoom ?? 1, root: root)
+                self?.noteSimulator(paneID, device: device,
+                                    state: SimulatorPaneState(zoom: session?.zoom ?? 1,
+                                                              showsFrame: session?.showsFrame ?? true),
+                                    root: root)
             }
-            session.onZoomChange = { [weak self, weak session] zoom in
-                self?.noteSimulator(paneID, device: session?.device, zoom: zoom, root: root)
+            session.onStateChange = { [weak self, weak session] zoom, showsFrame in
+                self?.noteSimulator(paneID, device: session?.device,
+                                    state: SimulatorPaneState(zoom: zoom, showsFrame: showsFrame), root: root)
             }
             view = SimulatorHostingView(tile: SimulatorTile(context: paneContext, session: session),
                                         session: session)
             view.setAccessibilityLabel("Simulator")
             hosts[paneID] = view
-            let record = Self.simulatorRecord(device: session.device, zoom: session.zoom, root: root)
+            let record = Self.simulatorRecord(device: session.device, zoom: session.zoom,
+                                              showsFrame: session.showsFrame, root: root)
             records[paneID] = record
             return (view, record)
         default:
@@ -268,8 +274,8 @@ public final class TileFactory {
 
     /// Keep a simulator pane's header on its device, and its record on the device's UDID,
     /// so a restored workspace reopens on the same one.
-    private func noteSimulator(_ paneID: PaneID, device: SimulatorDevice?, zoom: CGFloat, root: URL) {
-        let record = Self.simulatorRecord(device: device, zoom: zoom, root: root)
+    private func noteSimulator(_ paneID: PaneID, device: SimulatorDevice?, state: SimulatorPaneState, root: URL) {
+        let record = Self.simulatorRecord(device: device, zoom: state.zoom, showsFrame: state.showsFrame, root: root)
         guard records[paneID] != record else { return }
         records[paneID] = record
         onRecordChange?(paneID, record)
@@ -277,15 +283,16 @@ public final class TileFactory {
 
     /// `command` carries the device's UDID, the way it carries a browser's URL. The title
     /// is the device's name, falling back to "Simulator"; the subtitle is its runtime. The
-    /// zoom rides in `tileState`, and only when it is not the fitted size.
-    public static func simulatorRecord(device: SimulatorDevice?, zoom: CGFloat = 1, root: URL) -> PaneRecord {
+    /// zoom and the frame ride in `tileState`, and only when they are not the defaults.
+    public static func simulatorRecord(device: SimulatorDevice?, zoom: CGFloat = 1, showsFrame: Bool = true,
+                                       root: URL) -> PaneRecord {
         PaneRecord(kind: .simulator,
                    title: device?.name ?? "Simulator",
                    subtitle: device.map(\.runtimeName).flatMap { $0.isEmpty ? nil : $0 },
                    icon: device?.isTablet == true ? "ipad" : icon(for: .simulator),
                    cwd: root.path,
                    command: device?.udid,
-                   tileState: SimulatorPaneState(zoom: zoom).encoded)
+                   tileState: SimulatorPaneState(zoom: zoom, showsFrame: showsFrame).encoded)
     }
 
     /// Keep a browser pane's header on the showing page's title and host, and its record
@@ -497,12 +504,23 @@ public final class TileFactory {
 /// A simulator pane's own saved state, in its record's `tileState`.
 public struct SimulatorPaneState: Codable, Equatable, Sendable {
     public var zoom: CGFloat
+    /// Stored as its opposite and only when set, so a record from before the frame existed
+    /// reads as showing it.
+    private var bareScreen: Bool?
 
-    public init(zoom: CGFloat = 1) { self.zoom = zoom }
+    public var showsFrame: Bool {
+        get { bareScreen != true }
+        set { bareScreen = newValue ? nil : true }
+    }
 
-    /// Nil for the fitted size, so a pane that was never zoomed saves no state at all.
+    public init(zoom: CGFloat = 1, showsFrame: Bool = true) {
+        self.zoom = zoom
+        self.showsFrame = showsFrame
+    }
+
+    /// Nil for the fitted size in its frame, so a pane left as it opened saves no state.
     public var encoded: Data? {
-        abs(zoom - 1) < 0.001 ? nil : try? JSONEncoder().encode(self)
+        abs(zoom - 1) < 0.001 && showsFrame ? nil : try? JSONEncoder().encode(self)
     }
 
     /// The state in `data`, or the fitted size when there is none or it does not read.

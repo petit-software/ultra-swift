@@ -19,7 +19,8 @@ public final class SimulatorDisplay {
     public private(set) var maskedSurface: IOSurface?
     /// Pixels, the size of the surface.
     public private(set) var pixelSize: CGSize = .zero
-    /// Degrees, clockwise; 0 is portrait.
+    /// Degrees, clockwise, that the picture has to turn to stand upright: 0 in portrait.
+    /// The framebuffer itself never turns — the device draws its interface on its side.
     public private(set) var angle: Double = 0
 
     /// The screen changed. Called on the main actor for every damaged frame and every
@@ -30,14 +31,14 @@ public final class SimulatorDisplay {
     private let uuid = UUID()
     private var registered = false
 
-    /// The display port of a device's own screen, or nil when it has none — a device that
-    /// is not booted has no ports at all.
+    /// The display port of a device's own screen — the one `screenID` names, or its main one
+    /// — or nil when it has none: a device that is not booted has no ports at all.
     ///
-    /// A device has more than one: an iPad also carries a TV-out screen, and a CarPlay one
-    /// can be attached. The port list is not ordered by importance, so the built-in screen is
-    /// picked by what it says about itself — see `isPrimary` — and only a runtime too old
-    /// to say anything falls back to the first.
-    public static func find(for device: AnyObject) -> SimulatorDisplay? {
+    /// A device has more than one: an iPad also carries a TV-out screen, a CarPlay one can
+    /// be attached, and a phone that folds has two of its own. The port list is not ordered
+    /// by importance, so the built-in screen is picked by what it says about itself — see
+    /// `isPrimary` — and only a runtime too old to say anything falls back to the first.
+    public static func find(for device: AnyObject, screenID: UInt32? = nil) -> SimulatorDisplay? {
         guard let io = ObjC.object(device, "io"),
               let ports = ObjC.object(io, "ioPorts") as? [AnyObject],
               let renderable = NSProtocolFromString("SimDisplayIOSurfaceRenderable") else { return nil }
@@ -45,7 +46,13 @@ public final class SimulatorDisplay {
             guard let descriptor = ObjC.object(port, "descriptor"), descriptor.conforms(to: renderable) else { return nil }
             return descriptor
         }
-        let primary = displays.first { isPrimary(screen(of: $0)) } ?? displays.first
+        if let screenID, let named = displays.first(where: { screen(of: $0)?.id == screenID }) {
+            return SimulatorDisplay(port: named)
+        }
+        // The main screen: built in, and the lowest id of those — a folding phone's cover is
+        // 1 and its inner screen 3, and the port list has been seen to give 3 first.
+        let builtIn = displays.filter { isPrimary(screen(of: $0)) }
+        let primary = builtIn.min { (screen(of: $0)?.id ?? .max) < (screen(of: $1)?.id ?? .max) } ?? displays.first
         return primary.map(SimulatorDisplay.init(port:))
     }
 
@@ -114,6 +121,11 @@ public final class SimulatorDisplay {
         let rotated: @convention(block) () -> Void = { [weak self] in
             DispatchQueue.main.async { self?.surfacesChanged() }
         }
+        // A rotation is a change of the screen's properties — its interface orientation —
+        // and nothing else: the framebuffer is the same surface, the same size.
+        let changed: @convention(block) () -> Void = { [weak self] in
+            DispatchQueue.main.async { self?.surfacesChanged() }
+        }
         typealias Register = @convention(c) (AnyObject, Selector, NSUUID, AnyObject) -> Void
         if ObjC.responds(port, "registerCallbackWithUUID:damageRectanglesCallback:") {
             ObjC.msgSend(Register.self)(port, NSSelectorFromString("registerCallbackWithUUID:damageRectanglesCallback:"),
@@ -127,6 +139,10 @@ public final class SimulatorDisplay {
             ObjC.msgSend(Register.self)(port, NSSelectorFromString("registerCallbackWithUUID:rotationAngleCallback:"),
                                         uuid, rotated as AnyObject)
         }
+        if ObjC.responds(port, "registerCallbackWithUUID:displayPropertiesChanged:") {
+            ObjC.msgSend(Register.self)(port, NSSelectorFromString("registerCallbackWithUUID:displayPropertiesChanged:"),
+                                        uuid, changed as AnyObject)
+        }
     }
 
     public func stop() {
@@ -136,21 +152,22 @@ public final class SimulatorDisplay {
         typealias Unregister = @convention(c) (AnyObject, Selector, NSUUID) -> Void
         for selector in ["unregisterDamageRectanglesCallbackWithUUID:",
                          "unregisterIOSurfacesChangeCallbackWithUUID:",
-                         "unregisterRotationAngleCallbackWithUUID:"]
+                         "unregisterRotationAngleCallbackWithUUID:",
+                         "unregisterDisplayPropertiesChangedCallbackWithUUID:"]
         where ObjC.responds(port, selector) {
             ObjC.msgSend(Unregister.self)(port, NSSelectorFromString(selector), uuid)
         }
     }
 
-    /// Read the surfaces again, for a holder that suspects it missed a swap. Returns
-    /// whether anything changed, and tells `onFrame` when it did.
+    /// Read the surfaces and the orientation again, for a holder that suspects it missed a
+    /// swap or a turn. Returns whether anything changed, and tells `onFrame` when it did.
     @discardableResult
     public func refresh() -> Bool {
         // By id: a read hands back a new wrapper for the same surface.
         func ids() -> [IOSurfaceID?] { [surface, maskedSurface].map { $0.map(IOSurfaceGetID) } }
-        let before = ids()
+        let before = ids(), angleBefore = angle
         readSurfaces()
-        guard ids() != before else { return false }
+        guard ids() != before || angle != angleBefore else { return false }
         onFrame?()
         return true
     }
@@ -173,6 +190,33 @@ public final class SimulatorDisplay {
         if ObjC.responds(port, "displayAngle") {
             typealias Angle = @convention(c) (AnyObject, Selector) -> Double
             angle = ObjC.msgSend(Angle.self)(port, NSSelectorFromString("displayAngle"))
+        } else if let orientation = Self.interfaceOrientation(of: port) {
+            angle = Self.angle(forInterfaceOrientation: orientation)
+        }
+    }
+
+    /// The screen's interface orientation, `UIInterfaceOrientation`'s number, from its
+    /// properties. Asked afresh each time: the properties are a snapshot, not a live object.
+    private static func interfaceOrientation(of port: AnyObject) -> UInt32? {
+        guard let properties = ObjC.object(port, "screenProperties"),
+              ObjC.responds(properties, "uiOrientation") else { return nil }
+        typealias Getter = @convention(c) (AnyObject, Selector) -> UInt32
+        return ObjC.msgSend(Getter.self)(properties, NSSelectorFromString("uiOrientation"))
+    }
+
+    /// How far to turn the picture for an interface orientation. Xcode 27's ports have no
+    /// display angle; they say which way up the interface is drawn, and the framebuffer
+    /// stays as the hardware is built.
+    ///
+    /// Landscape left (3) is the device turned clockwise, its interface drawn running up the
+    /// framebuffer, so the picture turns a quarter clockwise to stand it up; landscape right
+    /// (4) the other way. Unknown (0) is portrait.
+    nonisolated static func angle(forInterfaceOrientation orientation: UInt32) -> Double {
+        switch orientation {
+        case 2: 180
+        case 3: 90
+        case 4: 270
+        default: 0
         }
     }
 

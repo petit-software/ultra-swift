@@ -113,6 +113,41 @@ struct SimulatorRecordTests {
         #expect(changed?.title == "iPhone 17")
     }
 
+    @Test("a pane shown without its frame saves that, and an old record reads as framed")
+    @MainActor
+    func frameRoundTrip() throws {
+        #expect(SimulatorPaneState().showsFrame)
+        #expect(SimulatorPaneState().encoded == nil)
+        let bare = TileFactory.simulatorRecord(device: phone, showsFrame: false, root: root)
+        #expect(!SimulatorPaneState.decode(bare.tileState).showsFrame)
+        // A record saved before the frame existed: zoom only.
+        let old = try JSONSerialization.data(withJSONObject: ["zoom": 1.5])
+        #expect(SimulatorPaneState.decode(old) == SimulatorPaneState(zoom: 1.5, showsFrame: true))
+        let paneID = PaneID()
+        let factory = TileFactory(context: .inert(root: root), restoring: [paneID: bare])
+        _ = factory.makeContent(for: paneID)
+        let session = try #require(factory.simulatorSession(for: paneID))
+        #expect(!session.showsFrame)
+        var changed: PaneRecord?
+        factory.onRecordChange = { _, record in changed = record }
+        session.toggleFrame()
+        #expect(session.showsFrame)
+        #expect(changed?.tileState == nil)
+        factory.release(paneID)
+    }
+
+    @Test("a foldable is open when its inner screen is the lit one, and nothing else folds")
+    @MainActor
+    func foldState() {
+        let folded = SimulatorSession.previewDuo(open: false)
+        let opened = SimulatorSession.previewDuo(open: true)
+        guard folded.isFoldable else { return }   // no iPhone Duo device type on this Mac
+        #expect(!folded.isOpen)
+        #expect(opened.isOpen)
+        let phone = SimulatorSession.preview(booted: true)
+        #expect(!phone.isFoldable && !phone.isOpen)
+    }
+
     @Test("the kind round-trips through the workspace document")
     func documentRoundTrip() throws {
         let record = TileFactory.simulatorRecord(device: phone, root: root)

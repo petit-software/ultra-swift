@@ -225,9 +225,9 @@ enum PaneCommands {
     /// A simulator pane's verbs. They act on the simulator pane a device would open in —
     /// the focused one, else the first — and dim when there is none.
     ///
-    /// ⇧⌘H is Home, the key the Simulator app has always used, and ⌃⌘=, ⌃⌘- and ⌃⌘0 zoom.
-    /// The rest have no chord: a pane's worth of device buttons is found in the palette,
-    /// not memorised.
+    /// ⇧⌘H is Home, the key the Simulator app has always used; ⌃⌘=, ⌃⌘- and ⌃⌘0 zoom;
+    /// ⌃⌥⌘← and ⌃⌥⌘→ turn the device and ⌃⌥⌘F folds one that folds. The rest have no
+    /// chord: a pane's worth of device buttons is found in the palette, not memorised.
     static let simulator: [AppCommand] = [
         AppCommand(id: "simulator.home", title: "Home", symbol: "house",
                    menuPath: ["Pane", "Simulator"],
@@ -255,6 +255,37 @@ enum PaneCommands {
                        return session.isBooted && !session.isBusy
                    }) {
             ShellWorkspace.simulatorSession(in: $0)?.shutdown()
+        },
+        // ⌃⌥⌘ and an arrow: ⌥⌘ moves focus between panes and ⌃⌘ grows one, so the one
+        // arrow chord left is the one that turns the device. Simulator's own ⌘← is a
+        // shell's start-of-line and an editor's.
+        AppCommand(id: "simulator.rotateLeft", title: "Rotate Left", symbol: "rotate.left",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding(.leftArrow, [.command, .option, .control]),
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canMove ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.rotateLeft()
+        },
+        AppCommand(id: "simulator.rotateRight", title: "Rotate Right", symbol: "rotate.right",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding(.rightArrow, [.command, .option, .control]),
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canMove ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.rotateRight()
+        },
+        AppCommand(id: "simulator.fold", title: "Fold or Unfold Device", symbol: "book",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("f", [.command, .option, .control]),
+                   keywords: ["Open Device", "Close Device", "Flip", "iPhone Duo"],
+                   isEnabled: { store in
+                       guard let session = ShellWorkspace.simulatorSession(in: store) else { return false }
+                       return session.isFoldable && session.canMove
+                   }) {
+            ShellWorkspace.simulatorSession(in: $0)?.toggleFold()
+        },
+        AppCommand(id: "simulator.frame", title: "Toggle Device Frame", symbol: "iphone.gen3",
+                   menuPath: ["Pane", "Simulator"],
+                   keywords: ["Bezel", "Enclosure", "Chrome"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.device != nil }) {
+            ShellWorkspace.simulatorSession(in: $0)?.toggleFrame()
         },
         AppCommand(id: "simulator.screenshot", title: "Take Screenshot", symbol: "camera",
                    menuPath: ["Pane", "Simulator"],

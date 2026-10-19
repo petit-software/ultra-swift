@@ -551,8 +551,29 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   `screenType`, not by its place in the list — hands over the `IOSurface` its compositor
   renders into; `SimulatorDisplayView` sets it
   as a layer's contents and re-sets it on every damage callback. No copy, no permission
-  prompt, and it works for a device booted with no window at all. Rotation is a layer
-  transform on the port's `displayAngle`.
+  prompt, and it works for a device booted with no window at all.
+- **Rotation.** Rotate Left and Rotate Right are `devicectl device orientation rotate`,
+  Xcode 27's supported verb, for a simulator as for a phone on a cable. The framebuffer
+  never turns: the device draws its interface on its side, and the screen port's
+  `screenProperties.uiOrientation` says which way — Xcode 27's ports have no
+  `displayAngle`, which is what the pane used to read, so a turned device showed sideways.
+  `SimulatorDisplay` maps the orientation to a turn of the whole device layer, enclosure
+  and all, animated unless Reduce Motion is on, and re-reads it on the port's
+  properties-changed callback. Touches follow, since they are mapped through the layer. An
+  app that does not support the new orientation stays put, as an iPhone's home screen does.
+- **A phone that folds.** iPhone Duo has two built-in screens — a cover (id 1) and an inner
+  one (id 3) mounted on its side, each with its own enclosure — listed in the device type's
+  `capabilities.plist` (`DeviceProfile`). Which is lit comes from `devicectl device info
+  displays`, asked on every poll for a foldable (it answers in milliseconds), and the pane
+  connects to that screen's port; touches need nothing, since the digitizer follows the lit
+  screen. Folding has no host-side verb at all: the hinge belongs to the device's
+  SpringBoard, behind `SBSDisplayToolService`, which sweeps the hinge and swaps the screens
+  as a hand would. `SimulatorFold` asks for it from inside the device — a few lines of
+  Objective-C, compiled on first use by the user's own Xcode for the simulator SDK, kept in
+  Caches and run with `simctl spawn … -position=open|closed -wait`. SpringBoard serves only a
+  client entitled to `com.apple.springboard.sbdisplay.service`; a simulator process reads
+  its entitlements from a `__TEXT,__entitlements` section, as Xcode builds simulator apps (a
+  signature carrying them is refused at launch), so that is where it goes.
 - **Touches, keys and buttons are Indigo messages** built by SimulatorKit's exported C
   functions and sent through `SimDeviceLegacyHIDClient`. A click is a finger: down, dragged,
   up, as ratios of the screen. Keys go through `IndigoHIDMessageForKeyboardNSEvent`, which
@@ -580,10 +601,20 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   sent to an Xcode 27 device brings its home screen down until SpringBoard restarts. A hardware button held down swallows every later press, touch and key, so a
   press builds its lift first and always sends it — `pressAndRelease` for a caller about
   to exit, `releaseAll` when a pane lets go mid-press.
-- **Corners.** Each device type names a framebuffer mask in its profile — the PDF Simulator
-  clips the screen with — and the pane clips the live screen to it, every device its own
-  radius (`DeviceChrome.cornerMask`). The drawn enclosure is off for now
-  (`SimulatorSession.showsEnclosure`); the corners do not depend on it.
+- **The frame.** The device is drawn in its enclosure — body, bezel and side buttons — from
+  Xcode's own artwork in `/Library/Developer/DeviceKit/Chrome` (`DeviceChrome`), per screen,
+  so an opened Duo wears its wide inner body. Newer chrome bundles draw the body as ONE
+  composite PDF, sized for one device and fitted to others by stretching only the straight
+  runs between its corners; their nine pieces are placeholders that say "unused" in red.
+  Older bundles are nine pieces, drawn by hand rather than with `NSDrawNinePartImage`,
+  which tiles the edges: a one-point slice tiled down a tablet's side landed a hair off the
+  pixel grid every row and came out as faded bands. Each edge is stretched once and tucked
+  a point under its corners so no seam shows. Pane ▸ Simulator ▸ Toggle Device Frame, or
+  the footer's device menu, shows the bare screen instead; the choice is saved in the
+  pane's `tileState`.
+- **Corners.** Each screen names a framebuffer mask — the PDF Simulator clips the screen
+  with — and the pane clips the live screen to it, every device its own radius
+  (`DeviceChrome.cornerMask`), framed or not.
 - **Zoom.** The device is drawn at a multiple of the size that fits the pane — 25% to 400%,
   Fit being 100% — through Pane ▸ Simulator ▸ Zoom In on Device (⌃⌘=), Zoom Out on Device
   (⌃⌘-) and Fit Device to Pane (⌃⌘0), the same three in the footer, or a pinch. ⌃⌘ because
@@ -602,9 +633,21 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   when that device has since been deleted.
 - **Screenshot** writes a PNG to the project's `.ultra/screenshots/` and types its path at
   the shell's prompt: what is on screen, in front of the agent, in one press.
-- Commands: Pane ▸ Simulator ▸ Home (⇧⌘H), Lock, Boot Device, Shut Down Device, Take
-  Screenshot, Toggle Dark Appearance. The footer adds Open URL on Device…. Pane ▸ New
-  Pane ▸ Simulator is ⌥⌘P. A focused pane on a live device gives the keyboard to the screen.
+- **Where the controls are.** What the device IS — which one, power, a URL to open, zoom,
+  light or dark — is the pane's business and sits in the footer, the device picker first.
+  What you do TO a running device — Home, Lock, Screenshot, and Fold on a foldable — floats
+  in a pill of glass at the pane's trailing edge while the pointer is over it (beside a
+  portrait device, never across the bottom of the screen, where the home indicator takes its
+  swipes). Hovering shows "⌥ Rotate" in the bottom-right corner; holding ⌥ adds Rotate Left
+  and Rotate Right to the pill, and ⌥ with the keyboard on the screen shows the pill without
+  the pointer. ⌥ is read with a local event monitor, since a focused screen takes
+  `flagsChanged` itself to hand the key to the device. A shut-down device shows no pill.
+- Commands: Pane ▸ Simulator ▸ Home (⇧⌘H), Lock, Rotate Left (⌃⌥⌘←), Rotate Right
+  (⌃⌥⌘→), Fold or Unfold Device (⌃⌥⌘F), Toggle Device Frame, Boot Device, Shut Down
+  Device, Take Screenshot, Toggle Dark Appearance. ⌃⌥⌘ for the turns because ⌥⌘-arrows
+  move focus and ⌃⌘-arrows resize panes, and Simulator's own ⌘← is a shell's and an
+  editor's start-of-line. The footer adds Open URL on Device…. Pane ▸ New Pane ▸ Simulator
+  is ⌥⌘P. A focused pane on a live device gives the keyboard to the screen.
 - **The agent's verb.** `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}`
   on the control socket shows that device — the pane already on it, else the focused
   simulator pane, else a new one — boots it if it is shut down, and launches the app once it
@@ -627,9 +670,10 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   private-API bridge against whatever device is booted (`ULTRA_SIM_UDID` picks one), on
   Settings and the home screen, checking what `simctl io screenshot` shows afterwards: the
   built-in screen is the one shown, Home leaves an app, a swipe up from the bottom edge does
-  too, a tap selects a row, a drag opens Spotlight and typing searches Settings. Off by
-  default, since it touches a real device. A new Xcode that changes the wire format fails
-  here first.
+  too, a tap selects a row, a drag opens Spotlight and typing searches Settings; on a
+  foldable, it opens and closes; on a tablet, a quarter turn changes the screen's angle and
+  turning back restores it. Off by default, since it touches a real device. A new Xcode that
+  changes the wire format fails here first.
 
 ## Sandboxing consequence
 

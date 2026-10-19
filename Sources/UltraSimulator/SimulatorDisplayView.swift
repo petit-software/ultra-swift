@@ -24,8 +24,16 @@ public final class SimulatorDisplayView: NSView {
     /// Degrees clockwise: the device's orientation. The framebuffer is always portrait; the
     /// view turns it.
     public var angle: Double = 0 {
-        didSet { if angle != oldValue { needsLayout = true } }
+        didSet {
+            guard angle != oldValue else { return }
+            // A device on screen turns into its new orientation; one being set up does not.
+            isTurning = window != nil && !fitted.isEmpty
+            needsLayout = true
+        }
     }
+
+    /// The next layout is a turn, and is animated.
+    private var isTurning = false
 
     /// The enclosure drawn round the screen. Nil shows the bare screen.
     public var chrome: DeviceChrome? {
@@ -205,7 +213,14 @@ public final class SimulatorDisplayView: NSView {
     public override func layout() {
         super.layout()
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        if isTurning, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            // The device turns as a hand turns it, as Simulator's own window does.
+            CATransaction.setAnimationDuration(0.35)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
+        isTurning = false
         let box = fitted
         let (size, screenInDevice) = unrotated
         // The layer keeps the device's own proportions and is rotated into the box, so a
