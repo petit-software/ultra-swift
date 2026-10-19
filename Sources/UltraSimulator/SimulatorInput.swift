@@ -1,5 +1,17 @@
 import AppKit
 import Foundation
+import os
+
+/// What the simulator pane does with the device, for `log show`: connections, touches that
+/// went nowhere, sends the device refused. The pane has frozen in ways nobody could repeat
+/// on demand, and this is what is read afterwards.
+///
+///     log show --last 30m --predicate 'subsystem == "software.petit.ultra.simulator"'
+public enum SimulatorLog {
+    public static let input = Logger(subsystem: "software.petit.ultra.simulator", category: "input")
+    public static let screen = Logger(subsystem: "software.petit.ultra.simulator", category: "screen")
+    public static let session = Logger(subsystem: "software.petit.ultra.simulator", category: "session")
+}
 
 /// Touches, hardware buttons and keys, delivered to one device.
 ///
@@ -64,7 +76,6 @@ public final class SimulatorInput {
     private let button: MessageForButton
     private let keyboard: MessageForKeyboard
     private let keyEvent: MessageForKeyEvent
-    private let queue = DispatchQueue(label: "com.ultra.simulator-hid")
 
     /// The HID service of the device's screen — its digitizer — and the one older
     /// SimulatorKit took hardware buttons on. Constants of the protocol; see
@@ -142,9 +153,40 @@ public final class SimulatorInput {
     ///
     /// Every phase of one gesture carries the edge it started from.
     public func touch(_ phase: Phase, at ratio: CGPoint, from edge: Edge = .none) {
-        guard let message = touchMessage(phase: phase, ratio: ratio, edge: edge.rawValue) else { return }
+        if phase == .down, let held = finger {
+            // A finger still down from a gesture whose lift never came: iOS takes the new one
+            // as a SECOND finger and the tap does nothing, and every tap after it the same.
+            SimulatorLog.input.error("touch down with a finger still held — lifting it first")
+            if let lift = touchMessage(phase: .up, ratio: held.ratio, edge: held.edge.rawValue) { send(lift) }
+            finger = nil
+        }
+        switch phase {
+        case .down, .moved: finger = (ratio, edge)
+        case .up: finger = nil
+        }
+        if phase != .moved {
+            SimulatorLog.input.debug("touch \(phase == .down ? "down" : "up") at \(ratio.x, format: .fixed(precision: 3)), \(ratio.y, format: .fixed(precision: 3))")
+        }
+        guard let message = touchMessage(phase: phase, ratio: ratio, edge: edge.rawValue) else {
+            if phase != .moved { SimulatorLog.input.error("the touch builder made nothing for a \(phase == .down ? "down" : "up")") }
+            return
+        }
         send(message)
     }
+
+    /// The finger on the glass, where it last was, between a down and its up.
+    private var finger: (ratio: CGPoint, edge: Edge)?
+
+    /// Lift a finger left down — the pane lost the mouse-up, or is going away mid-drag.
+    public func liftFinger() {
+        guard let held = finger else { return }
+        SimulatorLog.input.notice("lifting a finger the pane let go of mid-gesture")
+        touch(.up, at: held.ratio, from: held.edge)
+    }
+
+    /// Called on the main thread when the device refuses a message: the connection to its
+    /// HID service is gone, and every touch after it would vanish without a word.
+    public var onFailure: ((String) -> Void)?
 
     /// A hardware button pressed and let go, held for a tenth of a second as a finger
     /// would hold it.
@@ -195,6 +237,7 @@ public final class SimulatorInput {
     /// it next, and the device would otherwise type the key, hold Shift, or hold Home until
     /// the next press of the same one.
     public func releaseAll() {
+        liftFinger()
         for code in heldKeys {
             guard let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
                                             windowNumber: 0, context: nil, characters: "",
@@ -355,10 +398,18 @@ public final class SimulatorInput {
     /// Hand a message to the client, which frees it once delivered. Every message here is
     /// malloc'd — by SimulatorKit's builders or by `calloc` above — so `freeWhenDone` is
     /// the right owner and nothing is copied.
+    ///
+    /// The completion comes back on the main queue so a refusal can reach `onFailure`: it
+    /// used to be thrown away, and a client whose connection had died swallowed every touch
+    /// after it while the pane went on looking live.
     private func send(_ message: UnsafeMutableRawPointer) {
-        let completion: @convention(block) (NSError?) -> Void = { _ in }
+        let completion: @convention(block) (NSError?) -> Void = { [weak self] error in
+            guard let error else { return }
+            SimulatorLog.input.error("the device refused a message: \(error.localizedDescription, privacy: .public)")
+            MainActor.assumeIsolated { self?.onFailure?(error.localizedDescription) }
+        }
         typealias Send = @convention(c) (AnyObject, Selector, UnsafeMutableRawPointer, Bool, DispatchQueue, AnyObject) -> Void
         ObjC.msgSend(Send.self)(client, NSSelectorFromString("sendWithMessage:freeWhenDone:completionQueue:completion:"),
-                                message, true, queue, completion as AnyObject)
+                                message, true, DispatchQueue.main, completion as AnyObject)
     }
 }

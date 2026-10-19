@@ -101,9 +101,36 @@ public final class SimulatorDisplayView: NSView {
 
     /// The frame changed: re-set the contents so Core Animation picks up the new pixels.
     /// A layer does not watch an IOSurface; it draws what it had when the contents were set.
+    ///
+    /// With implicit actions off. The screen is a plain sublayer, and a plain sublayer
+    /// animates a change of contents: every frame started a quarter-second crossfade, so
+    /// while anything moved the pane showed a blend trailing the device, never the device.
     public func frameDidChange() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         screen.contents = nil
         screen.contents = contents
+        CATransaction.commit()
+        lastFrame = CACurrentMediaTime()
+    }
+
+    /// When the screen last changed, for telling a tap the device ignored from one it took.
+    public private(set) var lastFrame: CFTimeInterval = 0
+
+    /// A tap went to the device: the session watches whether the screen answers.
+    public var onTap: (() -> Void)?
+
+    /// A view leaving its window mid-gesture never hears the mouse-up — AppKit sends it to
+    /// the view that took the down, and that view is gone — so the finger is lifted here,
+    /// or the device holds it and takes every later tap as a second finger.
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if dragging, newWindow !== window {
+            SimulatorLog.input.notice("the screen left its window mid-gesture")
+            input?.liftFinger()
+            dragging = false
+            dragEdge = .none
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     // MARK: - Layout
@@ -269,6 +296,10 @@ public final class SimulatorDisplayView: NSView {
         onClick?()
         let point = convert(event.locationInWindow, from: nil)
         let edge = startEdge(for: point)
+        guard input != nil else {
+            SimulatorLog.input.notice("a click on a screen with no input connection")
+            return
+        }
         // A swipe from the bottom may start on the letterbox just below the screen, as a
         // thumb starts off the glass; it lands on the edge.
         guard let ratio = ratio(for: point) ?? (edge == .bottom ? edgeRatio(for: point) : nil) else { return }
@@ -292,6 +323,7 @@ public final class SimulatorDisplayView: NSView {
         // A finger lifted outside the screen still lifts: clamp rather than lose the up.
         input?.touch(.up, at: ratio(for: point) ?? edgeRatio(for: point), from: dragEdge)
         dragEdge = .none
+        onTap?()
     }
 
     /// How close to the screen's bottom edge, in the pane's points, a touch has to start

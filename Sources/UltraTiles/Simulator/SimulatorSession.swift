@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import QuartzCore
 import UltraSimulator
 
 /// One simulator pane's device: which one, whether it is up, its live screen, and the
@@ -117,6 +118,7 @@ public final class SimulatorSession {
         view.zoom = zoom
         // A pinch on the screen: kept here, so the menu, the footer and the record follow.
         view.onZoom = { [weak self] in self?.setZoom($0) }
+        view.onTap = { [weak self] in self?.watchTap() }
         madeView = view
         applyContents()
         return view
@@ -135,12 +137,65 @@ public final class SimulatorSession {
                 await TilePolling.tick(2)
             }
         }
+        watchMainThread()
     }
 
     public func stop() {
         poll?.cancel()
         poll = nil
+        stallWatch?.invalidate()
+        stallWatch = nil
     }
+
+    // MARK: - Diagnostics
+
+    @ObservationIgnored private var stallWatch: Timer?
+    @ObservationIgnored private var lastWatchTick: CFTimeInterval = 0
+
+    /// A tenth-of-a-second timer on the main thread that logs when it fires late: a pane
+    /// that "freezes" while the main thread is held looks the same as one whose device
+    /// stopped answering, and the log tells the two apart.
+    private func watchMainThread() {
+        guard stallWatch == nil else { return }
+        lastWatchTick = CACurrentMediaTime()
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let now = CACurrentMediaTime()
+                let late = now - self.lastWatchTick - 0.1
+                if late > 0.25 { SimulatorLog.session.error("main thread held for \(Int(late * 1000))ms") }
+                self.lastWatchTick = now
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        stallWatch = timer
+    }
+
+    /// After a tap, whether the screen changed at all within a second and a half. A tap on
+    /// a static spot can rightly change nothing, so this only logs; a run of them while the
+    /// device is busy is a pane whose touches are not arriving.
+    private func watchTap() {
+        guard let view = madeView else { return }
+        let tapped = CACurrentMediaTime()
+        Task { [weak self, weak view] in
+            try? await Task.sleep(for: .milliseconds(1500))
+            guard let self, let view, view.lastFrame < tapped else { return }
+            SimulatorLog.screen.notice("no new frame within 1.5s of a tap (live: \(self.isLive), connected to screen \(self.connectedScreenID.map(String.init) ?? "main", privacy: .public))")
+        }
+    }
+
+    /// The device refused a touch or a key: its HID connection is gone. Reconnect — at most
+    /// once every few seconds, so a device that keeps refusing does not spin.
+    private func inputFailed(_ why: String) {
+        let now = CACurrentMediaTime()
+        guard now - lastReconnect > 3 else { return }
+        lastReconnect = now
+        SimulatorLog.session.error("reconnecting after the device refused input: \(why, privacy: .public)")
+        disconnect()
+        Task { await syncConnection() }
+    }
+
+    @ObservationIgnored private var lastReconnect: CFTimeInterval = 0
 
     /// Let go of the device: the display callbacks, the touch client, the poll.
     public func close() {
@@ -222,10 +277,14 @@ public final class SimulatorSession {
                     still = nil
                     liveError = nil
                     do {
-                        input = try SimulatorInput(device: handle)
+                        let made = try SimulatorInput(device: handle)
+                        made.onFailure = { [weak self] why in self?.inputFailed(why) }
+                        input = made
                     } catch {
+                        SimulatorLog.session.error("no input connection: \(String(describing: error), privacy: .public)")
                         liveError = "\(error)"
                     }
+                    SimulatorLog.session.notice("connected to \(device.name, privacy: .public) screen \(self.activeScreenID.map(String.init) ?? "main", privacy: .public)")
                 } else {
                     liveError = "The device has no display yet — it may still be starting"
                     isLive = false
@@ -247,6 +306,8 @@ public final class SimulatorSession {
     }
 
     private func disconnect() {
+        if connectedUDID != nil { SimulatorLog.session.notice("disconnected") }
+        input?.releaseAll()
         display?.stop()
         display = nil
         input = nil
