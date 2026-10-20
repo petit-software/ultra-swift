@@ -68,8 +68,23 @@ public final class SimulatorSession {
     /// pane.
     public private(set) var showsFrame = true
 
-    /// The zoom or the frame changed: the pane's saved record follows.
-    @ObservationIgnored public var onStateChange: ((_ zoom: CGFloat, _ showsFrame: Bool) -> Void)?
+    /// The finish the enclosure is drawn in, by id. Nil until one is chosen: the model's
+    /// first. Saved with the pane, and kept across a change of device — a finish the new
+    /// model does not come in falls back to its first.
+    public private(set) var finishID: String?
+
+    /// Edit — clicks and keys go to the device — or Preview, where nothing reaches it:
+    /// for looking at the app, or showing it, without pressing anything. Saved with the
+    /// pane.
+    public private(set) var mode: SimulatorDisplayView.Mode = .edit
+
+    /// The zoom, the frame, the finish or the mode changed: the pane's saved record follows.
+    @ObservationIgnored public var onStateChange: ((SimulatorPaneState) -> Void)?
+
+    /// What the pane's record carries of this session.
+    public var paneState: SimulatorPaneState {
+        SimulatorPaneState(zoom: zoom, showsFrame: showsFrame, finish: finishID, isPreview: mode == .preview)
+    }
 
     /// Which of the device's own screens is lit, for a phone that folds: its cover closed,
     /// its inner screen open. Nil until the device has said, and for every other device,
@@ -79,9 +94,12 @@ public final class SimulatorSession {
     public private(set) var isMoving = false
     @ObservationIgnored private var connectedScreenID: UInt32?
 
-    public init(udid: String? = nil, zoom: CGFloat = 1, showsFrame: Bool = true) {
+    public init(udid: String? = nil, zoom: CGFloat = 1, showsFrame: Bool = true, finish: String? = nil,
+                isPreview: Bool = false) {
         self.zoom = SimulatorDisplayView.clampZoom(zoom)
         self.showsFrame = showsFrame
+        self.finishID = finish
+        self.mode = isPreview ? .preview : .edit
         if let udid {
             // A restored pane knows its device before the list is in: a placeholder with
             // the id, replaced by the real entry on the first refresh.
@@ -116,6 +134,7 @@ public final class SimulatorSession {
         if let madeView { return madeView }
         let view = SimulatorDisplayView(frame: .zero)
         view.zoom = zoom
+        view.mode = mode
         // A pinch on the screen: kept here, so the menu, the footer and the record follow.
         view.onZoom = { [weak self] in self?.setZoom($0) }
         view.onTap = { [weak self] in self?.watchTap() }
@@ -191,6 +210,10 @@ public final class SimulatorSession {
         guard now - lastReconnect > 3 else { return }
         lastReconnect = now
         SimulatorLog.session.error("reconnecting after the device refused input: \(why, privacy: .public)")
+        // Refused means the connection is dead, so a new one is made. Only then: a new
+        // connection to a device that is up deafens whatever runs on it — see
+        // `SimulatorInput`'s connection notes.
+        forgetConnection()
         disconnect()
         Task { await syncConnection() }
     }
@@ -249,6 +272,9 @@ public final class SimulatorSession {
     /// Connect to a booted device's screen, or let go of one that went down.
     private func syncConnection() async {
         guard let device, device.state.isBooted else {
+            // A device going down takes its connection with it; the one made when it is up
+            // again is the first for that boot, and deafens nothing.
+            if device?.state == .shutdown { forgetConnection() }
             disconnect()
             still = nil
             applyContents()
@@ -303,6 +329,13 @@ public final class SimulatorSession {
             pendingApp = nil
             await launch(app)
         }
+    }
+
+    /// Let go of the app's shared connection to this device. See `SimulatorInput`.
+    private func forgetConnection() {
+        guard let udid = device?.udid, SimulatorFrameworks.shared.isAvailable,
+              let handle = try? SimulatorFrameworks.shared.device(udid: udid) else { return }
+        SimulatorInput.forgetConnection(to: handle)
     }
 
     private func disconnect() {
@@ -368,9 +401,58 @@ public final class SimulatorSession {
     /// The enclosure of the screen being shown, from Xcode's own artwork for its type. A
     /// foldable's inner screen has a body of its own, wider than the cover's.
     private var chrome: DeviceChrome? {
-        guard showsFrame else { return nil }
-        return device.flatMap { DeviceChrome.load(deviceType: $0.deviceType, screenID: shownScreenID) }
+        guard showsFrame, let device else { return nil }
+        return DeviceChrome.load(deviceType: device.deviceType, screenID: shownScreenID, finish: finish)
     }
+
+    // MARK: - Finish
+
+    /// The finishes the device comes in; none without a device.
+    public var finishes: [DeviceFinish] {
+        device.map { DeviceFinish.palette(for: $0.deviceType) } ?? []
+    }
+
+    /// The finish the enclosure wears: the chosen one, or the model's first.
+    public var finish: DeviceFinish? {
+        device.map { DeviceFinish.finish(finishID, for: $0.deviceType) }
+    }
+
+    /// Whether there is a finish to switch to: an enclosure on screen, and more than one
+    /// colour the model is sold in.
+    public var canChangeFinish: Bool { showsFrame && finishes.count > 1 }
+
+    public func setFinish(_ id: String) {
+        guard finishes.contains(where: { $0.id == id }), id != finish?.id else { return }
+        finishID = id
+        applyContents()
+        onStateChange?(paneState)
+    }
+
+    public func nextFinish() { stepFinish(by: 1) }
+    public func previousFinish() { stepFinish(by: -1) }
+
+    /// Round the palette, wrapping, like every other row of choices here.
+    private func stepFinish(by offset: Int) {
+        let palette = finishes
+        guard palette.count > 1, let current = finish,
+              let index = palette.firstIndex(where: { $0.id == current.id }) else { return }
+        setFinish(palette[(index + offset + palette.count) % palette.count].id)
+    }
+
+    // MARK: - Edit and Preview
+
+    public var isPreview: Bool { mode == .preview }
+
+    public func setMode(_ value: SimulatorDisplayView.Mode) {
+        guard value != mode else { return }
+        mode = value
+        madeView?.mode = value
+        // Into Edit, the keyboard goes to the device; out of it, the pane keeps it.
+        if value == .edit { focusRequest += 1 }
+        onStateChange?(paneState)
+    }
+
+    public func toggleMode() { setMode(mode == .edit ? .preview : .edit) }
 
     /// A screenshot through `simctl`, for a pane that cannot be live.
     private func refreshStill() async {
@@ -508,7 +590,7 @@ public final class SimulatorSession {
     public func toggleFrame() {
         showsFrame.toggle()
         applyContents()
-        onStateChange?(zoom, showsFrame)
+        onStateChange?(paneState)
     }
 
     /// Launch an app by bundle id. Returns, and shows, why not.
@@ -598,7 +680,7 @@ public final class SimulatorSession {
         guard next != zoom else { return }
         zoom = next
         madeView?.zoom = next
-        onStateChange?(next, showsFrame)
+        onStateChange?(paneState)
     }
 
     /// A preview's fixture: devices and a still, with no Xcode asked and no poll started.

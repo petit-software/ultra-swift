@@ -8,6 +8,10 @@ import Testing
 @Suite("Simulator pane record")
 @MainActor
 struct SimulatorRecordTests {
+    /// The pane is switched off in the app (`TileFactory.offersSimulator`); these test it as
+    /// it would be with the switch on.
+    init() { TileFactory.offersSimulator = true }
+
     private let root = URL(fileURLWithPath: "/tmp/project")
     private let phone = SimulatorDevice(udid: "D4136A4E-00B3-4D7A-9665-DAE6060AA8A1", name: "iPhone 17",
                                         runtime: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
@@ -133,6 +137,52 @@ struct SimulatorRecordTests {
         session.toggleFrame()
         #expect(session.showsFrame)
         #expect(changed?.tileState == nil)
+        factory.release(paneID)
+    }
+
+    @Test("a finish is saved with the pane, stepped round the palette, and an old record reads as the first")
+    @MainActor
+    func finishRoundTrip() throws {
+        let session = SimulatorSession.preview(booted: true, deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+        #expect(session.finish?.name == "Cosmic Orange")
+        #expect(session.finishes.count == 3)
+        var states: [SimulatorPaneState] = []
+        session.onStateChange = { states.append($0) }
+        session.nextFinish()
+        #expect(session.finish?.name == "Deep Blue")
+        session.previousFinish()
+        session.previousFinish()
+        #expect(session.finish?.name == "Silver", "wraps round the end")
+        #expect(states.last?.finish == "silver")
+        // Saved only when it is not the default, and read back.
+        let saved = TileFactory.simulatorRecord(device: phone, state: SimulatorPaneState(finish: "silver"), root: root)
+        #expect(SimulatorPaneState.decode(saved.tileState).finish == "silver")
+        #expect(TileFactory.simulatorRecord(device: phone, state: SimulatorPaneState(), root: root).tileState == nil)
+        let old = try JSONSerialization.data(withJSONObject: ["zoom": 1.5])
+        #expect(SimulatorPaneState.decode(old).finish == nil)
+        let paneID = PaneID()
+        let factory = TileFactory(context: .inert(root: root), restoring: [paneID: saved])
+        _ = factory.makeContent(for: paneID)
+        #expect(factory.simulatorSession(for: paneID)?.finishID == "silver")
+        factory.release(paneID)
+    }
+
+    @Test("Preview is saved with the pane, and Edit is the default")
+    @MainActor
+    func modeRoundTrip() {
+        let session = SimulatorSession.preview(booted: true)
+        #expect(!session.isPreview)
+        var states: [SimulatorPaneState] = []
+        session.onStateChange = { states.append($0) }
+        session.toggleMode()
+        #expect(session.isPreview && states.last?.isPreview == true)
+        let saved = TileFactory.simulatorRecord(device: phone, state: SimulatorPaneState(isPreview: true), root: root)
+        #expect(SimulatorPaneState.decode(saved.tileState).isPreview)
+        #expect(!SimulatorPaneState.decode(nil).isPreview)
+        let paneID = PaneID()
+        let factory = TileFactory(context: .inert(root: root), restoring: [paneID: saved])
+        _ = factory.makeContent(for: paneID)
+        #expect(factory.simulatorSession(for: paneID)?.isPreview == true)
         factory.release(paneID)
     }
 

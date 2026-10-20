@@ -50,11 +50,17 @@ public struct AgentPaneSample: Equatable, Sendable {
     public var lastOutputAt: Date?
     /// When this pane last rang `BEL`.
     public var lastBellAt: Date?
+    /// The bottom of the screen, a line each, while an agent owns the tty: what tells an
+    /// agent asking a question from one that has finished (`AgentPrompt`). Empty for a
+    /// plain shell, which is not read.
+    public var screen: [String]
 
-    public init(agent: String? = nil, lastOutputAt: Date? = nil, lastBellAt: Date? = nil) {
+    public init(agent: String? = nil, lastOutputAt: Date? = nil, lastBellAt: Date? = nil,
+                screen: [String] = []) {
         self.agent = agent
         self.lastOutputAt = lastOutputAt
         self.lastBellAt = lastBellAt
+        self.screen = screen
     }
 }
 

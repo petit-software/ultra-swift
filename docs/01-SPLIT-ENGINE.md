@@ -418,6 +418,14 @@ Written atomically (`Data.write(to:options:.atomic)`) and debounced 500 ms after
 A `PaneDescriptor` is `{ kind, title, cwd, command?, tileState }` — enough to rebuild the pane,
 never a serialized process.
 
+**Pane windows.** A pane moved to a window of its own (⇧⌘M) is still in its workspace: the
+document carries `paneWindows: [{ tree, frame }]` beside the main tree, and those panes'
+records sit in `panes` with the rest. The window's canvas is a `LayoutStore` owned by the
+session's store (`owner`), with no storage of its own — it persists through its owner. The
+move hands the live surface from one `PaneSurfaceStore` to the other and registers an undo
+that hands it back, so ⌘Z restores the exact tree. Closing the window returns its panes;
+closing the session stops them; quitting leaves them in place for the next launch.
+
 **One document per project.** A project is matched to its document by directory
 (`WorkspaceDocument.belongs(to:)`), and there is one: a project is open in one place and persists
 to one id. Should a folder have several — a new window used to open the start project unrestored

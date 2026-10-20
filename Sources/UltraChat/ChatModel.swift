@@ -35,6 +35,23 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Sendable {
     /// Whether there is anything here to send back to a service. An assistant turn with
     /// neither text nor calls is a placeholder for an answer that never came.
     public var isEmpty: Bool { text.isEmpty && (toolCalls ?? []).isEmpty }
+
+    /// What the answer ending at `index` said, for Copy: the text of every assistant turn
+    /// since the question, one paragraph apart, without the tool calls between them. Nil
+    /// when that message does not end an answer — the next message goes on with it — or
+    /// when the answer said nothing.
+    public static func answerText(endingAt index: Int, in messages: [ChatMessage]) -> String? {
+        guard messages.indices.contains(index), messages[index].role == .assistant else { return nil }
+        let next = index + 1
+        if messages.indices.contains(next), messages[next].role == .assistant { return nil }
+        var start = index
+        while start > 0, messages[start - 1].role == .assistant { start -= 1 }
+        let text = messages[start...index]
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        return text.isEmpty ? nil : text
+    }
 }
 
 /// A conversation with one provider and one model, as a file on disk.

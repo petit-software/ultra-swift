@@ -49,6 +49,19 @@ final class AgentMonitor {
     private(set) var statuses = AgentStatusTracker()
     private(set) var statusBySession: [UUID: AgentStatus] = [:]
 
+    /// What each session's agent work comes to for a glance: working, needs you, done
+    /// unread, done, inactive — see `AgentState`. What the sidebar's rows show.
+    private(set) var states = AgentStateTracker()
+    private(set) var stateBySession: [UUID: AgentState] = [:]
+
+    /// The time, to the minute, for the rows' "4m". Moves once a minute, so a row that
+    /// reads it redraws once a minute and no oftener — the rows hold no timers of their own.
+    private(set) var minute = Date()
+
+    /// The sessions someone is looking at: the one on screen in the window with the
+    /// keyboard, or one of its pane windows. Looking at a finished turn is what reads it.
+    var viewedSessions: () -> Set<UUID> = { SessionList.viewedSessions }
+
     /// The turns, for the notification that an agent has stopped and is waiting. The
     /// transition logic lives in UltraTerminal beside the other two trackers, and for the
     /// same reason: so it can be tested without a tty.
@@ -117,6 +130,7 @@ final class AgentMonitor {
         for end in turns.observe(flattened, statuses: statuses.statusByPane, at: timestamp) {
             announceIfWorthIt(end, in: workspaceOfPane[end.paneID])
         }
+        observeStates(byWorkspace, at: timestamp)
         // Rebuilt rather than updated in place, so a session that has closed takes its entry
         // with it instead of leaving a badge behind for a row that no longer exists.
         let rolled = byWorkspace.mapValues { samples in
@@ -128,6 +142,27 @@ final class AgentMonitor {
         // not happened. `runningCount` above has always been guarded for the same reason.
         guard rolled != statusBySession else { return }
         statusBySession = rolled
+    }
+
+    /// The sidebar's states, from the same samples. Published only when they moved, and
+    /// the minute only when it turned: this runs every second.
+    private func observeStates(_ byWorkspace: [UUID: [PaneID: AgentPaneSample]], at timestamp: Date) {
+        var readings: [UUID: [PaneID: AgentPaneReading]] = [:]
+        for (workspaceID, samples) in byWorkspace {
+            var panes: [PaneID: AgentPaneReading] = [:]
+            for (paneID, sample) in samples {
+                let status = statuses.status(for: paneID)
+                // The screen is read for a question only while the agent is quiet: a
+                // working agent's screen is a spinner, and asking it is wasted work.
+                let asking = status == .needsInput && AgentPrompt.isAsking(sample.screen)
+                panes[paneID] = AgentPaneReading(sample: sample, status: status, asking: asking)
+            }
+            readings[workspaceID] = panes
+        }
+        let next = states.observe(readings, viewed: viewedSessions(), at: timestamp)
+        if next != stateBySession { stateBySession = next }
+        let turned = Calendar.current.dateInterval(of: .minute, for: timestamp)?.start ?? timestamp
+        if turned != Calendar.current.dateInterval(of: .minute, for: minute)?.start { minute = turned }
     }
 
     /// Fold one sample into the running set, announcing whatever finished.

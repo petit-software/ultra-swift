@@ -252,6 +252,9 @@ public enum Token {
         public static let agentWorking = Color(nsColor: .systemBlue)
         /// Something that went wrong, in the one place the app says so in colour.
         public static let agentFailed = Color(nsColor: .systemRed)
+        /// An agent asking for its person: the one status in colour, so it is the one the
+        /// eye finds in a column of grey.
+        public static let agentNeedsYou = Color(nsColor: .systemOrange)
 
         /// Divider hairline. Under Increase Contrast this becomes an opaque separator.
         public static var divider: Color {

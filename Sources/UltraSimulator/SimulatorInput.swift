@@ -85,9 +85,10 @@ public final class SimulatorInput {
     private static let opDown: Int32 = 1
     private static let opUp: Int32 = 2
 
+    /// Talk to a device, over the connection this app already has to it if there is one.
     public init(device: AnyObject) throws {
         let frameworks = SimulatorFrameworks.shared
-        client = try Self.connect(to: device)
+        client = try Self.client(for: device)
         guard let mouseSymbol = frameworks.symbol("IndigoHIDMessageForMouseNSEvent") else {
             throw Failure.noBuilder("IndigoHIDMessageForMouseNSEvent")
         }
@@ -124,6 +125,51 @@ public final class SimulatorInput {
         for hardware in [Button.home, .lock] {
             if let lift = buttonMessage(hardware, op: Self.opUp) { send(lift) }
         }
+    }
+
+    // MARK: - The connection
+
+    /// One connection per device for the life of the app, whoever asks.
+    ///
+    /// Making a connection DEAFENS THE DEVICE. Measured on an Xcode 27 iPhone: the moment
+    /// a second `SimDeviceLegacyHIDClient` is made for a device, every app running on it
+    /// stops taking touches — from the new connection and the old one alike — and so,
+    /// once enough have been made, does SpringBoard and its Home button. Bringing the app
+    /// forward again does not cure it; relaunching it does, and a reboot clears it all. A
+    /// connection is never let go of either: there is no disconnect, and one made by a
+    /// process that has exited still counts until the device reboots.
+    ///
+    /// The pane used to make a new connection on every reconnect — a fold, a refused
+    /// message, a device chosen again — and every Ultra launch made another. Each one
+    /// deafened whatever was on screen: the pane drew the device perfectly and nothing a
+    /// click did landed. So connections are kept here, by device, and handed to every
+    /// `SimulatorInput` for it; a new one is made only after `forgetConnection`, when the
+    /// device has refused a message and the connection is dead — after a reboot, which
+    /// deafened nothing because it cleared everything.
+    @MainActor private static var connections: [String: AnyObject] = [:]
+
+    private static func client(for device: AnyObject) throws -> AnyObject {
+        let key = Self.key(for: device)
+        if let key, let held = connections[key] { return held }
+        let made = try connect(to: device)
+        if let key { connections[key] = made }
+        return made
+    }
+
+    private static func key(for device: AnyObject) -> String? {
+        (ObjC.object(device, "UDID") as? UUID)?.uuidString
+    }
+
+    /// Let go of the connection to a device that has refused a message: it is dead, and
+    /// the next `SimulatorInput` for the device makes a new one.
+    public static func forgetConnection(to device: AnyObject) {
+        guard let key = key(for: device) else { return }
+        connections[key] = nil
+    }
+
+    /// Whether this app already holds a connection to the device.
+    static func hasConnection(to device: AnyObject) -> Bool {
+        key(for: device).map { connections[$0] != nil } ?? false
     }
 
     /// A new connection to the device's HID service.

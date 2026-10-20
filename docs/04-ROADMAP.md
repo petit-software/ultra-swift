@@ -257,6 +257,17 @@ can be sent into a fresh shell.
   until the user went to look — were dropped with this: a notification reaches someone who
   has looked away, and a badge in a sidebar they are not looking at did not. The row
   keeps its pulsing dot while an agent is printing, which is the live state.
+- **Agent states in the session list — DONE.** The pulsing dot grew into five states, each
+  with how long it has held, in the row's trailing slot: working (a turning arc), needs you
+  (an orange ringed dot), done and not read yet (a filled check, the name in bold), done (a
+  small grey check), inactive (a moon, the name dimmed). `AgentStateTracker` (UltraTerminal)
+  folds the tty's status into them and is stricter than it where a glance would be misled:
+  quiet becomes done only after the turn tracker's 15 s or a bell; "needs you" is read from
+  the bottom of the agent's screen (`AgentPrompt`: a question over a numbered menu, a y/n),
+  because a finished agent and one waiting on a permission prompt are the same to a tty;
+  done is unread until its session is on screen in the key window, and an hour after that
+  it is inactive. One poll for the app, as before, and the ages advance off the monitor's
+  once-a-minute clock rather than a timer per row.
 - **An `AGENTS.md` in every project Ultra creates — DONE.** The tiles' whole argument for
   keeping files rather than app state is that the agent next door can use them, and it
   cannot use what it has not been told about. `AgentInstructions` (UltraCore) writes a short

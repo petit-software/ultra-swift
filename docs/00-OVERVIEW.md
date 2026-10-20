@@ -100,7 +100,10 @@ work will rescue it — and debugging layout through a live PTY is miserable.
 ## Open questions
 
 - **Tabs vs. windows.** M1 assumes one canvas per window with an in-window tab strip.
-  Detaching a pane into its own window is deferred to post-M8.
+  Settled for panes: Pane ▸ Move Pane to New Window (⇧⌘M) gives a pane a window of its own
+  in the same session — a second `LayoutStore` with the session's workspace id, its factories
+  and its document — and hands the live surface across (`PaneSurfaceStore.handOver`), so
+  property 1 holds: nothing is rebuilt. Closing that window brings its panes back.
 - **Agent transcripts.** The Electron app has `transcripts.ts` / `chat-agent.ts`. This plan
   treats the agent as a CLI in a PTY only (the `ultra` app's own documented default). If a
   native SDK loop is wanted later it is an additional tile kind, not a change to the engine.

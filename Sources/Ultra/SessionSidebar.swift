@@ -292,11 +292,12 @@ private struct SessionRow: View {
     let close: () -> Void
     @State private var isHovering = false
     /// Read straight off the monitor, which is `@Observable`, so a row redraws when its own
-    /// session's status changes and not when another's does. There is no per-row timer here
+    /// session's state changes and not when another's does. There is no per-row timer here
     /// and there must never be: one poll for the whole app is the rule `AgentMonitor` was
-    /// written to hold.
-    private var status: AgentStatus {
-        AgentMonitor.shared.statusBySession[store.workspaceID] ?? .idle
+    /// written to hold. The age beside it reads the monitor's `minute`, which moves once a
+    /// minute.
+    private var state: AgentState? {
+        AgentMonitor.shared.stateBySession[store.workspaceID]
     }
     /// Seeded from disk at the row's first appearance, so a customised session is already
     /// wearing its icon on the frame it is drawn in rather than flashing the default first.
@@ -359,9 +360,27 @@ private struct SessionRow: View {
                 // the primary navigation read as smaller print than the panes it navigates
                 // to. One token, so they cannot drift apart again.
                 .font(Token.Type_.tileTitle)
+                // Bold while a finished turn waits to be looked at, as an unread mail is —
+                // against the regular weight of every other row, or bold would not show
+                // beside the title token's own medium. Dimmed once the session has gone
+                // quiet for good.
+                .fontWeight(state?.isUnread == true ? .bold : .regular)
+                .foregroundStyle(state.map { if case .inactive = $0 { true } else { false } } == true
+                                 ? AnyShapeStyle(Token.Colour.tertiaryLabel) : AnyShapeStyle(Token.Colour.label))
                 .lineLimit(1)
 
             Spacer(minLength: 0)
+
+            // How long the state has held: "now", "4m", "2d". Fixed width and trailing, so
+            // the symbol beside it does not move as the minutes turn.
+            if let state {
+                Text(state.age(at: AgentMonitor.shared.minute))
+                    .font(Token.Type_.tileSubtitle)
+                    .monospacedDigit()
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+                    .fixedSize()
+                    .frame(minWidth: 30, alignment: .trailing)
+            }
 
             // ONE trailing slot, of a fixed width, holding whichever of two things the row
             // currently has to say. Two slots side by side was the obvious layout and it is
@@ -388,14 +407,9 @@ private struct SessionRow: View {
                     .foregroundStyle(isHovering ? AnyShapeStyle(Token.Colour.label)
                                                 : AnyShapeStyle(.secondary))
                     .help("Close session")
-                } else if let badge = status.badge {
-                    Image(systemName: badge.symbol)
-                        .font(Token.Type_.tileTitle)
-                        .foregroundStyle(badge.colour)
-                        // Free, and correct: SwiftUI drops a symbol effect under Reduce
-                        // Motion without this view having to ask.
-                        .symbolEffect(.pulse, isActive: status == .working)
-                        .help(badge.help)
+                } else if let state {
+                    AgentStateSymbol(state: state)
+                        .help(state.title)
                 }
             }
             // Reserved whether or not anything is in it. Without the frame the name beside
@@ -438,7 +452,7 @@ private struct SessionRow: View {
         // row that says nothing to a VoiceOver user and half of one to anybody who cannot
         // separate the green from the red — which is why the badge carries a distinct glyph
         // as well, rather than four dots in four colours.
-        .accessibilityLabel(status.badge.map { "Session, \(store.workspaceTitle), \($0.help)" }
+        .accessibilityLabel(state.map { "Session, \(store.workspaceTitle), \($0.title), \($0.spokenAge(at: AgentMonitor.shared.minute))" }
                             ?? "Session, \(store.workspaceTitle)")
     }
 
@@ -546,36 +560,129 @@ extension View {
     }
 }
 
-/// How a session's agent status looks in the sidebar: a pulsing dot while an agent is
-/// printing, and nothing otherwise.
+/// How a session's agent work looks in the sidebar: a turning arc while it works, an
+/// orange ringed dot when it asks, a filled check for a finish nobody has looked at, a
+/// small grey check once someone has, and a moon when the session has been quiet a while.
 ///
-/// The mapping lives HERE rather than on `AgentStatus` itself: the status is a fact the
+/// The mapping lives HERE rather than on `AgentState` itself: the state is a fact the
 /// terminal layer derives from a tty, and a type in `UltraTerminal` that knows about SF
 /// Symbols and sidebar colours is a layer boundary that has stopped meaning anything.
 ///
-/// Only the live state. The row used to carry a question mark for an agent gone quiet
-/// and a tick or a triangle for one that had exited, sticky until the user went to look.
-/// They are gone: a system notification says "waiting" or "finished" where someone who
-/// has looked away will see it, and a row in a sidebar they are not looking at cannot.
-extension AgentStatus {
-    struct Badge {
-        let symbol: String
-        let colour: Color
-        /// The tooltip AND the accessibility label — one string, so what is read aloud and
-        /// what is shown on hover cannot drift apart.
-        let help: String
-    }
+/// Each state has its own SHAPE as well as its weight, so the column reads without colour:
+/// only "needs you" is in colour at all.
+struct AgentStateSymbol: View {
+    let state: AgentState
 
-    /// Nil for anything but `working`. An always-present grey dot was tried in the head and
-    /// rejected: a sidebar of six projects would carry six pieces of punctuation reporting
-    /// that nothing is happening in any of them.
-    var badge: Badge? {
+    var body: some View {
+        Group {
+            switch state {
+            case .working:
+                AgentSpinner()
+            case .needsYou:
+                Image(systemName: "circle.inset.filled")
+                    .foregroundStyle(Token.Colour.agentNeedsYou)
+            case .done(_, read: false):
+                // The disc in the label colour, the check cut out of it in the background's:
+                // white with a dark tick on a dark sidebar, the reverse on a light one.
+                Image(systemName: "checkmark.circle.fill")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Color(nsColor: .textBackgroundColor), Token.Colour.label)
+            case .done:
+                Image(systemName: "checkmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Token.Colour.secondaryLabel)
+            case .inactive:
+                Image(systemName: "moon.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+            }
+        }
+        .font(.system(size: 13))
+        .frame(width: 16, height: 16)
+        .accessibilityHidden(true)   // the row says the state in words
+    }
+}
+
+/// An arc going round: the working state. Not a `ProgressView`, whose spinner is the
+/// system's "loading" and the wrong weight beside a row's text. Under Reduce Motion it
+/// stands still — an arc with a gap still reads as "in progress".
+private struct AgentSpinner: View {
+    @State private var turning = false
+
+    var body: some View {
+        Circle()
+            .trim(from: 0.08, to: 0.82)
+            .stroke(Token.Colour.label, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+            .frame(width: 12, height: 12)
+            .rotationEffect(.degrees(turning ? 360 : 0))
+            .animation(Token.Environment_.reduceMotion ? nil
+                       : .linear(duration: 1).repeatForever(autoreverses: false), value: turning)
+            .onAppear { turning = true }
+    }
+}
+
+extension AgentState {
+    /// What the state is called, on hover and to VoiceOver.
+    var title: String {
         switch self {
-        case .idle, .needsInput:
-            nil
-        case .working:
-            Badge(symbol: "circle.fill", colour: Token.Colour.agentWorking,
-                  help: "Agent working")
+        case .working: "Agent is working"
+        case .needsYou: "Needs you"
+        case .done(_, read: false): "Done, not read yet"
+        case .done: "Done"
+        case .inactive: "Inactive"
         }
     }
+
+    /// The age in words, for VoiceOver: "4m" is read as "4 metres".
+    func spokenAge(at now: Date) -> String {
+        let seconds = max(0, now.timeIntervalSince(since))
+        if seconds < 60 { return "just now" }
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .full
+        formatter.maximumUnitCount = 1
+        formatter.allowedUnits = seconds < 3600 ? [.minute] : seconds < 86_400 ? [.hour] : [.day]
+        return (formatter.string(from: seconds) ?? "") + " ago"
+    }
+}
+
+/// The five states, the way a column of sessions shows them.
+struct AgentStateGallery: View {
+    let now = Date()
+
+    private var rows: [(String, AgentState)] {
+        [("ultra-swift", .working(since: now.addingTimeInterval(-70))),
+         ("checkout-api", .needsYou(since: now)),
+         ("design-system", .done(at: now.addingTimeInterval(-240), read: false)),
+         ("docs", .done(at: now.addingTimeInterval(-720), read: true)),
+         ("old-prototype", .inactive(since: now.addingTimeInterval(-86_400 * 2)))]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(rows, id: \.0) { name, state in
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(Token.Type_.tileTitle)
+                        .fontWeight(state.isUnread ? .bold : .regular)
+                        .foregroundStyle({ if case .inactive = state { Token.Colour.tertiaryLabel } else { Token.Colour.label } }())
+                    Spacer(minLength: 0)
+                    Text(state.age(at: now))
+                        .font(Token.Type_.tileSubtitle)
+                        .monospacedDigit()
+                        .foregroundStyle(Token.Colour.tertiaryLabel)
+                        .fixedSize()
+                        .frame(minWidth: 30, alignment: .trailing)
+                    AgentStateSymbol(state: state)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+            }
+        }
+        .padding(8)
+        .frame(width: 260)
+    }
+}
+
+#Preview("Agent states", traits: .fixedLayout(width: 280, height: 190)) {
+    AgentStateGallery()
 }

@@ -2,12 +2,15 @@ import AppKit
 import IOSurface
 import QuartzCore
 
-/// The device in a view: its enclosure, when Xcode has one for it, and the framebuffer as
-/// a layer's contents inside it — aspect-fit, with the pointer as a finger and the keyboard
-/// as the device's keyboard.
+/// The device in a view: its enclosure, when Xcode has geometry for it, and the
+/// framebuffer as a layer's contents inside it — aspect-fit, with the pointer as a finger
+/// and the keyboard as the device's keyboard.
 ///
 /// The enclosure and screen are one layer turned together, so a landscape device is the
 /// whole phone on its side, not a screen in an upright bezel.
+///
+/// Two modes. In `edit` a click is a touch on the device; in `preview` nothing reaches
+/// it — for looking at the app, and for showing it, without pressing anything.
 public final class SimulatorDisplayView: NSView {
 
     /// What to draw. An `IOSurface` from a live display, or a `CGImage` for a preview or a
@@ -34,6 +37,30 @@ public final class SimulatorDisplayView: NSView {
 
     /// The next layout is a turn, and is animated.
     private var isTurning = false
+
+    /// Whether a click touches the device.
+    public enum Mode: String, Sendable {
+        /// Clicks and keys go to the device.
+        case edit
+        /// Nothing reaches the device; the pane is for looking.
+        case preview
+    }
+
+    public var mode: Mode = .edit {
+        didSet {
+            guard mode != oldValue else { return }
+            // Leaving edit mid-touch: the finger is lifted, or the device holds it.
+            if mode == .preview, dragging {
+                input?.liftFinger()
+                dragging = false
+                dragEdge = .none
+            }
+            window?.invalidateCursorRects(for: self)
+        }
+    }
+
+    /// Whether a click is a touch, from the mode.
+    static func touches(in mode: Mode) -> Bool { mode == .edit }
 
     /// The enclosure drawn round the screen. Nil shows the bare screen.
     public var chrome: DeviceChrome? {
@@ -148,7 +175,7 @@ public final class SimulatorDisplayView: NSView {
         let size = unrotated.size
         guard size.width > 0, size.height > 0, bounds.width > 0, bounds.height > 0 else { return .zero }
         let rotated = isLandscape ? CGSize(width: size.height, height: size.width) : size
-        // A little air round an enclosure, so the buttons do not touch the pane's edge.
+        // A little air round an enclosure, so it does not touch the pane's edge.
         let room = chrome == nil ? bounds : bounds.insetBy(dx: 8, dy: 8)
         let scale = min(room.width / rotated.width, room.height / rotated.height) * zoom
         let fit = CGSize(width: rotated.width * scale, height: rotated.height * scale)
@@ -294,6 +321,8 @@ public final class SimulatorDisplayView: NSView {
 
     public override func mouseDown(with event: NSEvent) {
         onClick?()
+        // In Preview the device is for looking at: a click lands on nothing.
+        guard Self.touches(in: mode) else { return }
         let point = convert(event.locationInWindow, from: nil)
         let edge = startEdge(for: point)
         guard input != nil else {
@@ -350,7 +379,7 @@ public final class SimulatorDisplayView: NSView {
 
     // MARK: - Keys
 
-    public override var acceptsFirstResponder: Bool { input != nil }
+    public override var acceptsFirstResponder: Bool { input != nil && mode == .edit }
 
     /// A click on a window in the background is still a tap, as it is in Simulator: the
     /// device is the thing being pointed at, not the window around it.
@@ -362,23 +391,23 @@ public final class SimulatorDisplayView: NSView {
     }
 
     public override func keyDown(with event: NSEvent) {
-        guard let input else { super.keyDown(with: event); return }
+        guard let input, mode == .edit else { super.keyDown(with: event); return }
         input.key(event)
     }
 
     public override func keyUp(with event: NSEvent) {
-        guard let input else { super.keyUp(with: event); return }
+        guard let input, mode == .edit else { super.keyUp(with: event); return }
         input.key(event)
     }
 
     public override func flagsChanged(with event: NSEvent) {
-        guard let input, let flag = SimulatorInput.modifierFlag(for: event.keyCode) else {
+        guard let input, mode == .edit, let flag = SimulatorInput.modifierFlag(for: event.keyCode) else {
             super.flagsChanged(with: event); return
         }
         input.modifier(event.keyCode, down: event.modifierFlags.contains(flag))
     }
 
     public override func resetCursorRects() {
-        addCursorRect(screenRect, cursor: .pointingHand)
+        if mode == .edit { addCursorRect(screenRect, cursor: .pointingHand) }
     }
 }

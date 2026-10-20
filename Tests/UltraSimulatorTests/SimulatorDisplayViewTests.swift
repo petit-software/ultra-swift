@@ -223,3 +223,19 @@ struct DeviceChromeTests {
         #expect(chrome.screenMask != nil)
     }
 }
+
+/// Edit and Preview: what a click does.
+@Suite("Simulator modes")
+@MainActor
+struct SimulatorModeTests {
+
+    @Test("a click touches the device in Edit and nothing in Preview")
+    func clicks() {
+        #expect(SimulatorDisplayView.touches(in: .edit))
+        #expect(!SimulatorDisplayView.touches(in: .preview))
+        let view = SimulatorDisplayView(frame: NSRect(x: 0, y: 0, width: 300, height: 400))
+        view.pixelSize = CGSize(width: 1206, height: 2622)
+        view.mode = .preview
+        #expect(!view.acceptsFirstResponder, "a device in Preview takes no keys either")
+    }
+}

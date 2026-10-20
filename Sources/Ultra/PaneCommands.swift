@@ -14,7 +14,8 @@ import UltraTiles
 enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
-                                 + layouts + chat + editor + browser + simulator + todo + paneKinds + folders
+                                 + layouts + chat + editor + browser
+                                 + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
                                  + [newShell, closeSession, whatsNew]
 
     /// The running version's release list, on request (`WhatsNewChecker`). The only way
@@ -78,6 +79,15 @@ enum PaneCommands {
                    binding: KeyBinding(".", [.command]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0)?.isStreaming ?? false }) { store in
             ShellWorkspace.chatStore(in: store)?.stop()
+        },
+        // The keyboard half of the copy icon under every answer. ⇧⌥⌘C beside ⌥⌘C, which
+        // makes a chat pane; a terminal sees neither.
+        AppCommand(id: "chat.copyLastAnswer", title: "Copy Last Answer", symbol: "square.filled.on.square",
+                   menuPath: ["Pane", "Chat"],
+                   binding: KeyBinding("c", [.command, .option, .shift]),
+                   keywords: ["Copy Answer", "Copy Response"],
+                   isEnabled: { ShellWorkspace.chatStore(in: $0)?.lastAnswerText != nil }) { store in
+            ShellWorkspace.chatStore(in: store)?.copyLastAnswer()
         },
         // Along the pane's row of chats, and off it. No keys: ⇧⌘] and ⌃⌘] are the
         // editor's and the browser's rows, and the browser's are live whenever a browser
@@ -281,6 +291,26 @@ enum PaneCommands {
                    }) {
             ShellWorkspace.simulatorSession(in: $0)?.toggleFold()
         },
+        // Whether a click uses the device or turns it. ⌃⌘E: ⌘E is the shell's and the
+        // editor's, ⌥⌘E is taken, and ⌃⌘ is this pane's own row (⌃⌘L, ⌃⌘0).
+        AppCommand(id: "simulator.toggleMode", title: "Toggle Edit / Preview", symbol: "eye",
+                   menuPath: ["Pane", "Simulator"],
+                   binding: KeyBinding("e", [.command, .control]),
+                   keywords: ["Preview Mode", "Edit Mode", "Interact", "Operate", "Turn Device"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.device != nil }) {
+            ShellWorkspace.simulatorSession(in: $0)?.toggleMode()
+        },
+        // The finish, round the palette. The dots over the device are the pointer's way.
+        AppCommand(id: "simulator.nextFinish", title: "Next Finish", symbol: "paintpalette",
+                   menuPath: ["Pane", "Simulator"], keywords: ["Colour", "Color", "Device Colour"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canChangeFinish ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.nextFinish()
+        },
+        AppCommand(id: "simulator.previousFinish", title: "Previous Finish", symbol: "paintpalette",
+                   menuPath: ["Pane", "Simulator"], keywords: ["Colour", "Color", "Device Colour"],
+                   isEnabled: { ShellWorkspace.simulatorSession(in: $0)?.canChangeFinish ?? false }) {
+            ShellWorkspace.simulatorSession(in: $0)?.previousFinish()
+        },
         AppCommand(id: "simulator.frame", title: "Toggle Device Frame", symbol: "iphone.gen3",
                    menuPath: ["Pane", "Simulator"],
                    keywords: ["Bezel", "Enclosure", "Chrome"],
@@ -389,7 +419,7 @@ enum PaneCommands {
     /// it on the menu item instead (`TileShortcut`). On the menu they are Pane ▸ New Pane
     /// and Pane ▸ Change Pane To, where the title is just the kind.
     static let paneKinds: [AppCommand] =
-        PaneKind.all.filter { $0.kind != .shell }.map { entry in
+        PaneKind.offered.filter { $0.kind != .shell }.map { entry in
             AppCommand(id: "pane.new.\(entry.kind.rawValue)",
                        title: "New \(entry.title) Pane",
                        symbol: entry.symbol,
@@ -399,7 +429,7 @@ enum PaneCommands {
                 ShellWorkspace.openTile(entry.kind, in: store)
             }
         }
-        + PaneKind.all.map { entry in
+        + PaneKind.offered.map { entry in
             AppCommand(id: "pane.change.\(entry.kind.rawValue)",
                        title: "Change Pane to \(entry.title)",
                        symbol: entry.symbol,
@@ -544,6 +574,16 @@ enum PaneCommands {
         AppCommand(id: "pane.close", title: "Close Pane", symbol: "xmark", menuPath: ["Pane"],
                    binding: KeyBinding("w", [.command])) { store in
             guard store.tree.paneCount > 1 else {
+                // A pane window's last pane: the window closes, and the pane goes back to
+                // the main window still running — closing a pane window stops nothing.
+                if store.isPaneWindow {
+                    if let window = PaneWindows.window(for: store) {
+                        window.performClose(nil)
+                    } else {
+                        store.returnAllPanes()
+                    }
+                    return
+                }
                 if let sessions = SessionList.holding(store), sessions.canCloseSelected {
                     sessions.close(store.workspaceID)
                 } else {
@@ -562,6 +602,19 @@ enum PaneCommands {
                    isEnabled: { ShellWorkspace.dismissNotice(in: $0) != nil }) { store in
             ShellWorkspace.dismissNotice(in: store)?()
         },
+        // A pane in a window of its own, still in its session: same shell, same project.
+        // ⇧⌘M both ways — out from the main window, back from a pane window — because only
+        // one of the two is ever enabled, the way ⌃⌘L is shared by the chat and the browser.
+        AppCommand(id: "pane.moveToNewWindow", title: "Move Pane to New Window",
+                   symbol: "macwindow.badge.plus", menuPath: ["Pane"],
+                   binding: KeyBinding("m", [.command, .shift]),
+                   keywords: ["Detach Pane", "Pop Out Pane", "Tear Off Pane"],
+                   isEnabled: { $0.canMoveToNewWindow() }) { $0.moveToNewWindow() },
+        AppCommand(id: "pane.moveBackToMainWindow", title: "Move Pane Back to Main Window",
+                   symbol: "macwindow", menuPath: ["Pane"],
+                   binding: KeyBinding("m", [.command, .shift]),
+                   keywords: ["Attach Pane", "Return Pane"],
+                   isEnabled: { $0.isPaneWindow }) { $0.moveBackToMainWindow() },
         AppCommand(id: "pane.zoom", title: "Toggle Zoom",
                    symbol: "arrow.up.left.and.arrow.down.right", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),
@@ -661,7 +714,7 @@ struct PaneMenuCommands: Commands {
 
                 // Every tile kind, from one list — a new kind must not need three separate
                 // edits to become openable.
-                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
+                ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
                     Button(entry.title) {
                         guard let store else { return }
                         ShellWorkspace.openTile(entry.kind, in: store)
@@ -677,7 +730,7 @@ struct PaneMenuCommands: Commands {
             // Pane: the agents by name are for a project with more than one — "Agent"
             // alone would take the default.
             Menu("Change Pane To") {
-                ForEach(PaneKind.all.filter { $0.kind != .agent }) { entry in
+                ForEach(PaneKind.offered.filter { $0.kind != .agent }) { entry in
                     Button(entry.title) {
                         guard let store else { return }
                         ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
@@ -720,8 +773,10 @@ struct PaneMenuCommands: Commands {
             Menu("Browser") {
                 ForEach(PaneCommands.browser) { item($0) }
             }
-            Menu("Simulator") {
-                ForEach(PaneCommands.simulator) { item($0) }
+            if TileFactory.offersSimulator {
+                Menu("Simulator") {
+                    ForEach(PaneCommands.simulator) { item($0) }
+                }
             }
             Menu("Todo") {
                 ForEach(PaneCommands.todo) { item($0) }

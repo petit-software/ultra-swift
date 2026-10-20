@@ -132,3 +132,49 @@ command": the phone has a shell for that.
 
 - [ ] Phone build on the real device from Xcode, then TestFlight from an archive step added to `scripts/release.sh`
 - [ ] Ultra release with Remote in it; the phone and Mac check protocol versions in `hello` and say which one to update
+
+## Chat: copy an answer
+
+- [x] A copy icon under every finished answer copies the whole answer, every turn of it, and ticks for a moment
+- [x] Pane ▸ Chat ▸ Copy Last Answer (⇧⌥⌘C), dimmed while an answer is arriving or before there is one
+- [x] Tests for what an answer's text is
+
+## Move a pane to its own window
+
+- [x] A pane can leave the canvas for a window of its own, in the same session: same project, same shell, same agent socket — only its view moves
+- [x] Pane ▸ Move Pane to New Window, with a key, and the same item on the pane's header menu
+- [x] The window closes back: closing it returns the pane to the canvas rather than killing it; Pane ▸ Move Pane Back to Main Window (⇧⌘M in a pane window) does the same from the keyboard
+- [x] Persisted: a detached pane and its window frame come back on the next launch
+- [x] Tests, build, previews
+
+## Simulator: a soft enclosure, a finish, and Edit / Preview
+
+Xcode's chrome is a flat slab with an outline, and one body serves whole generations
+(17, 17 Pro and 18 Pro all draw `phone11`). Its GEOMETRY is right — screen inset, corner
+radius — so that is kept and the artwork is replaced. A 3D body (first in Core Animation,
+then in Metal with a studio light and a shadow) was built, looked at, and taken out: a
+drawing of a phone round a phone, when the pane is for the app.
+
+- [x] `DeviceFamily` from the device type, and `DeviceFinish`: the real finishes of each generation, with a fallback for a device newer than the list
+- [x] `DeviceEnclosure`: a soft body in the finish's colour with black glass set into it, from Xcode's geometry; no cameras, buttons or ports, no shadow
+- [x] Colour dots over the top of the device switch the finish; Next/Previous Finish in the palette; the finish is saved with the pane
+- [x] Edit / Preview: ⌃⌘E, the pill's first control, the footer; in Preview nothing reaches the device; saved with the pane
+- [x] Tests, previews, docs
+
+## Agent states in the session list
+
+Five states, a glance each, each with how long it has held: working (a turning arc),
+needs you (an orange ringed dot), done and not read yet (a filled check, the name in bold),
+done (a small check), inactive (a moon, the name dimmed). Rows with no agent history stay
+clean.
+
+- [x] `AgentState` + `AgentStateTracker` in UltraTerminal: quiet becomes done only after the turn tracker's silence or a bell; done is unread until its session is looked at; an hour after that it is inactive
+- [x] `AgentPrompt`: "needs you" read from the bottom of the agent's screen — a question over a numbered menu, a y/n — so a finished agent and an asking one are told apart
+- [x] Each agent sample carries the screen's last lines; `AgentMonitor` folds readings and the viewed sessions (key window's selected session, or its pane window) into states, and a once-a-minute clock for the ages
+- [x] Sidebar row: age column and symbol in the trailing slot, bold name while unread, dimmed when inactive, the state spoken to VoiceOver
+- [x] Tests for prompts (Claude Code's box, Codex's "Allow command?", y/n, a finished screen) and every transition; a preview of the five states
+
+## Simulator pane switched off
+
+- [x] `TileFactory.offersSimulator` off: no pane kind, no Pane ▸ Simulator menu or palette commands, the agent `simulator` verb refuses, AGENTS.md stops advertising it, a saved Simulator pane opens as a shell
+- [ ] Bring it back when a touch reliably reaches a device that was already running when the pane connected

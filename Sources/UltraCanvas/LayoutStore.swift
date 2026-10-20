@@ -22,6 +22,8 @@ public final class LayoutStore {
         didSet {
             guard theme != oldValue else { return }
             surfaces.apply(theme: theme)
+            // A pane moved to a window of its own is still this session's, and wears its look.
+            for window in paneWindows { window.theme = theme }
         }
     }
     /// What this window is. Shown in the window bar.
@@ -64,6 +66,21 @@ public final class LayoutStore {
     }
 
     @ObservationIgnored public let surfaces: PaneSurfaceStore
+    /// How a pane's content is built. Kept so a canvas in a pane window builds through
+    /// exactly the factories this one does.
+    @ObservationIgnored private let makeSurface: (PaneID) -> PaneContent
+
+    /// The session this canvas is a pane window of; nil for the session's own canvas. See
+    /// "Pane windows" below.
+    @ObservationIgnored public private(set) weak var owner: LayoutStore?
+    /// The canvases this session has in windows of their own, held by the session's own
+    /// store so they live and die with the session.
+    @ObservationIgnored public private(set) var paneWindows: [LayoutStore] = []
+    /// A pane window has been made: the app opens a window for it.
+    @ObservationIgnored public var onPaneWindowCreated: ((LayoutStore) -> Void)?
+    /// This pane window is finished with — its panes went back, or its session closed —
+    /// and its window should close.
+    @ObservationIgnored public var onDismiss: (() -> Void)?
     @ObservationIgnored public let undoManager = UndoManager()
     @ObservationIgnored private var navigation = NavigationMemory()
     @ObservationIgnored private var nextPaneNumber = 0
@@ -111,6 +128,7 @@ public final class LayoutStore {
         self.tree = tree
         self.metrics = metrics
         self.theme = theme
+        self.makeSurface = makeSurface
         self.surfaces = PaneSurfaceStore(make: makeSurface)
         // `didSet` does not run during init, and a pane built before the first theme change
         // would otherwise wear the store's default rather than this window's.
@@ -119,6 +137,7 @@ public final class LayoutStore {
         surfaces.actions.split = { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) }
         surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }
         surfaces.actions.focus = { [weak self] paneID in self?.focus(paneID) }
+        surfaces.actions.windowMove = { [weak self] paneID in self?.windowMove(for: paneID) }
     }
 
     /// Teach the pane headers what a pane can become. The canvas has no idea what a "Todo"
@@ -155,6 +174,16 @@ public final class LayoutStore {
         persist()
         onGeometrySettled?()
         onChange?(candidate)
+    }
+
+    /// An undo entry whose undoing is a verb rather than a tree: moving a pane between
+    /// windows cannot be undone by restoring a tree, because the pane's view went with it.
+    /// `undo` registers its own opposite, so redo works the same way back.
+    private func registerUndo(_ name: String, _ undo: @escaping (LayoutStore) -> Void) {
+        undoManager.setActionName(name)
+        undoManager.registerUndo(withTarget: self) { store in
+            MainActor.assumeIsolated { undo(store) }
+        }
     }
 
     private func registerUndo(from previous: LayoutTree, name: String) {
@@ -398,11 +427,21 @@ extension LayoutStore {
                                          tree: tree,
                                          panes: [:],
                                          windowFrame: windowFrame,
-                                         themeID: theme.id)
+                                         themeID: theme.id,
+                                         paneWindows: paneWindows.map {
+                                             PaneWindowLayout(tree: $0.tree, frame: $0.windowFrame)
+                                         })
         // Ensure every pane in the tree has a record, even one never yet materialised.
         for paneID in tree.paneIDs {
             document.setRecord(surfaces.records[paneID] ?? surfaces.surfaceRecord(for: paneID),
                                for: paneID)
+        }
+        for window in paneWindows {
+            for paneID in window.tree.paneIDs {
+                document.setRecord(window.surfaces.records[paneID]
+                                       ?? window.surfaces.surfaceRecord(for: paneID),
+                                   for: paneID)
+            }
         }
         return document
     }
@@ -410,6 +449,8 @@ extension LayoutStore {
     /// Debounced write. Structural changes and focus changes both persist; divider drags
     /// persist once, on commit, because that is where the model is written.
     public func persist(_ reason: String = #function) {
+        // A pane window has no document of its own: it is a part of its session's.
+        if let owner { owner.persist(reason); return }
         guard let storage else { return }
         let document = document
         trace("persist \(document.tree.paneCount) panes (from \(reason))")
@@ -418,6 +459,7 @@ extension LayoutStore {
 
     /// Write immediately. Called on termination, where a debounce would lose the last edit.
     public func persistNow() {
+        if let owner { owner.persistNow(); return }
         guard let storage else { return }
         storage.flush()
         try? storage.saveNow(document)
@@ -440,5 +482,214 @@ extension Edge {
         case .top: "Up"
         case .bottom: "Down"
         }
+    }
+}
+
+// MARK: - Pane windows
+
+/// A pane moved out of its window into one of its own.
+///
+/// It stays in its SESSION. The window holds a canvas of its own — a `LayoutStore` with the
+/// same workspace id, building through the same factories, persisting into the same
+/// document — so the pane keeps its shell, its project, its agent socket and every
+/// Registry lookup that goes by workspace. What moves is the view: the live surface is
+/// handed from one `PaneSurfaceStore` to the other (`handOver`), never released and never
+/// rebuilt, which is the one rule this app does not bend — a pane's process outlives every
+/// layout change, and a window is a layout change.
+///
+/// Only the session's own canvas sends panes out, and it holds every pane window it made.
+/// Closing a pane window brings its panes back rather than stopping them; closing the
+/// SESSION stops them with the rest.
+extension LayoutStore {
+    public var isPaneWindow: Bool { owner != nil }
+
+    /// The session's own store, whichever canvas this is.
+    public var session: LayoutStore { owner ?? self }
+
+    /// The canvas that has this pane — the session's or one of its pane windows'.
+    public func holder(of paneID: PaneID) -> LayoutStore? {
+        let session = session
+        return ([session] + session.paneWindows).first {
+            $0.tree.contains(paneID) || $0.surfaces.existingSurface(for: paneID) != nil
+        }
+    }
+
+    /// Whether this pane can go to a window of its own: it is on the session's canvas, and
+    /// it is not the last pane there — a canvas with nothing on it is a window with
+    /// nothing in it.
+    public func canMoveToNewWindow(_ paneID: PaneID? = nil) -> Bool {
+        let paneID = paneID ?? tree.focused
+        return !isPaneWindow && tree.contains(paneID) && tree.paneCount > 1
+    }
+
+    /// Move a pane into a new window of its own. Undoable: ⌘Z in the main window brings
+    /// it back to where it was, while it is still in that window.
+    @discardableResult
+    public func moveToNewWindow(_ paneID: PaneID? = nil) -> LayoutStore? {
+        let paneID = paneID ?? tree.focused
+        guard canMoveToNewWindow(paneID) else { NSSound.beep(); return nil }
+        let previous = tree
+        trace("MOVE TO WINDOW \(paneID.uuidString.prefix(8))")
+        guard let window = sendToNewWindow([paneID]) else { return nil }
+        registerUndo("Move Pane to New Window") { store in
+            guard let window = store.paneWindows.first(where: { $0.tree.contains(paneID) })
+            else { return }
+            store.takeBack([paneID], from: window, restoring: previous)
+        }
+        return window
+    }
+
+    /// Bring a pane in a pane window back to the session's canvas, beside the pane that
+    /// has focus there. The window closes when it has nothing left.
+    public func moveBackToMainWindow(_ paneID: PaneID? = nil) {
+        let paneID = paneID ?? tree.focused
+        guard let owner, tree.contains(paneID) else { NSSound.beep(); return }
+        owner.takeBack([paneID], from: self)
+    }
+
+    /// Every pane of a pane window back to the session's canvas: what closing the window
+    /// does. Nothing stops.
+    public func returnAllPanes() {
+        owner?.takeBack(tree.paneIDs, from: self)
+    }
+
+    /// The pane's window entry for its header menu: out to a window of its own, or back.
+    func windowMove(for paneID: PaneID) -> (title: String, run: () -> Void)? {
+        if isPaneWindow {
+            return ("Move Pane Back to Main Window", { [weak self] in
+                self?.moveBackToMainWindow(paneID)
+            })
+        }
+        guard canMoveToNewWindow(paneID) else { return nil }
+        return ("Move Pane to New Window", { [weak self] in self?.moveToNewWindow(paneID) })
+    }
+
+    /// Pane windows from a saved document, before any of their panes is built: the panes
+    /// come up through the factories when each window's canvas first lays them out. A
+    /// layout naming a pane the main canvas already has is skipped — one pane, one place.
+    public func restorePaneWindows(_ layouts: [PaneWindowLayout]) {
+        var placed = Set(tree.paneIDs)
+        for layout in layouts where placed.isDisjoint(with: layout.tree.paneIDs) {
+            placed.formUnion(layout.tree.paneIDs)
+            onPaneWindowCreated?(makePaneWindow(tree: layout.tree, frame: layout.frame?.rect))
+        }
+    }
+
+    /// The session is closing: every pane in its pane windows stops with it, and the
+    /// windows close.
+    public func closePaneWindows() {
+        for window in paneWindows {
+            window.surfaces.prune(keeping: [])
+            dissolve(window)
+        }
+    }
+
+    // MARK: Moving panes between canvases
+
+    /// A pane window of this session, on `tree`. Not announced: the caller does that once
+    /// the panes are in it, or a canvas laid out at once would build them a second time.
+    private func makePaneWindow(tree: LayoutTree, frame: CGRect?) -> LayoutStore {
+        let window = LayoutStore(tree: tree, metrics: metrics, theme: theme,
+                                 workspaceID: workspaceID, storage: nil,
+                                 makeSurface: makeSurface)
+        window.owner = self
+        window.windowFrame = frame
+        window.workspaceTitle = workspaceTitle
+        window.workspaceSubtitle = workspaceSubtitle
+        window.workspaceDirectory = workspaceDirectory
+        // The same process teardown and the same settled-size commit as the session's own
+        // panes: a pane closed in a pane window stops its shell like any other.
+        window.surfaces.onRelease = surfaces.onRelease
+        window.onGeometrySettled = onGeometrySettled
+        window.surfaces.actions.kinds = surfaces.actions.kinds
+        paneWindows.append(window)
+        return window
+    }
+
+    /// Panes of this canvas into one new pane window, side by side. No undo entry: the
+    /// callers register their own.
+    private func sendToNewWindow(_ panes: [PaneID]) -> LayoutStore? {
+        let moving = panes.filter(tree.contains)
+        guard let first = moving.first, moving.count < tree.paneCount else { return nil }
+        var windowTree = LayoutTree(single: first)
+        var candidate = tree
+        for paneID in moving {
+            // Built now if it never has been, so there is a live surface to hand over
+            // rather than a pane the new window would build a second time.
+            _ = surfaces.surface(for: paneID)
+            if paneID != first { windowTree.split(windowTree.focused, edge: .right, newPane: paneID) }
+            candidate.close(paneID)
+        }
+        let window = makePaneWindow(tree: windowTree, frame: nil)
+        for paneID in moving { surfaces.handOver(paneID, to: window.surfaces) }
+        commitWithoutUndo(candidate)
+        onPaneWindowCreated?(window)
+        return window
+    }
+
+    /// Take panes from a pane window into this canvas.
+    ///
+    /// Into `restoring` when given — the tree as it was before the pane left, which is how
+    /// an undo puts it back exactly — and otherwise each beside the focused pane.
+    fileprivate func takeBack(_ panes: [PaneID], from window: LayoutStore,
+                              restoring: LayoutTree? = nil) {
+        guard window.owner === self else { return }
+        let moving = panes.filter(window.tree.contains)
+        guard !moving.isEmpty else { return }
+        var candidate = restoring ?? tree
+        for paneID in moving {
+            // A pane the window never built has no surface to hand over; this canvas
+            // builds it when it lays it out, as a restore would.
+            window.surfaces.handOver(paneID, to: surfaces)
+            if restoring == nil { candidate.split(candidate.focused, edge: .right, newPane: paneID) }
+        }
+        if let last = moving.last { candidate.focused = last }
+        let remaining = window.tree.paneIDs.filter { !moving.contains($0) }
+        if remaining.isEmpty {
+            dissolve(window)
+        } else {
+            var shrunk = window.tree
+            for paneID in moving { shrunk.close(paneID) }
+            // The window's own history names the panes that just left it, and undoing
+            // into one of them would build a second shell on the same id.
+            window.undoManager.removeAllActions()
+            window.commitWithoutUndo(shrunk)
+        }
+        commitWithoutUndo(candidate)
+        if restoring == nil {
+            registerUndo("Move Pane Back to Main Window") { store in
+                guard let window = store.sendToNewWindow(moving) else { return }
+                store.registerUndo("Move Pane Back to Main Window") { store in
+                    store.takeBack(moving, from: window)
+                }
+            }
+        } else {
+            registerUndo("Move Pane to New Window") { store in
+                guard let window = store.sendToNewWindow(moving) else { return }
+                store.registerUndo("Move Pane to New Window") { store in
+                    store.takeBack(moving, from: window, restoring: restoring)
+                }
+            }
+        }
+        reclaimKeyboardFocus()
+    }
+
+    /// Forget a pane window and close it. Its panes have gone elsewhere, or the caller
+    /// has released them.
+    private func dissolve(_ window: LayoutStore) {
+        paneWindows.removeAll { $0 === window }
+        window.owner = nil
+        window.onDismiss?()
+    }
+
+    /// Replace the tree without an undo entry: for a move whose undo is a verb.
+    private func commitWithoutUndo(_ candidate: LayoutTree) {
+        guard candidate != tree else { return }
+        tree = candidate
+        surfaces.prune(keeping: Set(candidate.paneIDs))
+        refreshWindowTitle()
+        persist()
+        onGeometrySettled?()
+        onChange?(candidate)
     }
 }

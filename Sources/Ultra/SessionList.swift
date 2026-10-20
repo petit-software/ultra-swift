@@ -237,6 +237,19 @@ final class SessionList {
         return true
     }
 
+    /// The sessions someone is looking at right now: the one on screen in the window with
+    /// the keyboard, or the session a key pane window belongs to. None while the app is in
+    /// the background — a session behind another app's window has not been seen.
+    static var viewedSessions: Set<UUID> {
+        guard NSApp?.isActive == true, let key = NSApp?.keyWindow else { return [] }
+        var viewed: Set<UUID> = []
+        for list in lists.allObjects where list.window === key {
+            if let id = list.selectedID { viewed.insert(id) }
+        }
+        if let store = PaneWindows.store(in: key) { viewed.insert(store.session.workspaceID) }
+        return viewed
+    }
+
     /// Bring forward the window that has this session, and the session in it. What a click
     /// on "claude is waiting" does.
     static func raise(workspaceID: UUID) -> Bool {

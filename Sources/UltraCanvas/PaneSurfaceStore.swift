@@ -109,6 +109,24 @@ public final class PaneSurfaceStore {
         onRelease?(paneID)
     }
 
+    /// Give a live pane to another store, as it is: the same view, the same process, its
+    /// record with it. The one way a surface leaves a store WITHOUT being released — a pane
+    /// moving to a canvas in another window of the same session. Taken out of the view
+    /// tree here; the receiving canvas adopts it on its next `reconcile()`, as a canvas
+    /// adopts every pane it finds unparented.
+    @discardableResult
+    public func handOver(_ paneID: PaneID, to other: PaneSurfaceStore) -> Bool {
+        guard other !== self, let container = containers.removeValue(forKey: paneID) else { return false }
+        let record = records.removeValue(forKey: paneID)
+        container.removeFromSuperview()
+        container.rewire(to: other.actions)
+        container.theme = other.theme
+        container.isFocused = false
+        other.containers[paneID] = container
+        if let record { other.records[paneID] = record }
+        return true
+    }
+
     /// Release every surface no longer present in the tree.
     public func prune(keeping live: Set<PaneID>) {
         for paneID in containers.keys where !live.contains(paneID) { release(paneID) }

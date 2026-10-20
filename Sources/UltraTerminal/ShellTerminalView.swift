@@ -108,15 +108,29 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// value whose whole purpose is to be self-consistent.
     public var agentSample: AgentPaneSample {
         let activity = activity
+        let isAgent = isRunningAgent(given: activity)
         return AgentPaneSample(
             // The `"agent"` fallback cannot currently be reached — a pane is only running an
             // agent because it was launched as one or because the tty named one — but a
             // sample that reported nil here would read as an agent EXITING, so the
             // unreachable branch is the one worth being explicit about.
-            agent: isRunningAgent(given: activity)
-                ? (activity?.command ?? spec.agentCommand ?? "agent") : nil,
+            agent: isAgent ? (activity?.command ?? spec.agentCommand ?? "agent") : nil,
             lastOutputAt: lastOutputAt,
-            lastBellAt: lastBellAt)
+            lastBellAt: lastBellAt,
+            screen: isAgent ? screenTail(AgentPrompt.lines) : [])
+    }
+
+    /// The last `count` rows of the screen as text. The rows on view: scrolled up into
+    /// the history, it is the history — and someone scrolled up there is reading the pane
+    /// already. Trailing blank rows are dropped, so the bottom is where the text ends.
+    func screenTail(_ count: Int) -> [String] {
+        let terminal = getTerminal()
+        var lines: [String] = []
+        for row in max(0, terminal.rows - count - 6)..<terminal.rows {
+            lines.append(terminal.getLine(row: row)?.translateToString(trimRight: true) ?? "")
+        }
+        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        return Array(lines.suffix(count))
     }
 
     /// Run once, from the first layout pass that gives the view a real size, then dropped.

@@ -35,11 +35,13 @@ struct AgentInstructionsTests {
         #expect(text.contains("`docs/TODO.md`"))
         #expect(text.contains("`.ultra/context.json`"))
         #expect(text.contains("`.ultra/chats/`"))
-        // The agent is told about the socket and every verb, or it will never use them.
+        // The agent is told about the socket and every verb it can use, or it will never use
+        // them — and not about the Simulator pane's, which is switched off in this build.
         #expect(text.contains("ULTRA_AGENT_SOCK"))
-        for verb in ["open", "reveal", "browse", "simulator"] {
+        for verb in ["open", "reveal", "browse"] {
             #expect(text.contains("\"verb\":\"\(verb)\""), "the section shows \(verb)")
         }
+        #expect(!text.contains("\"verb\":\"simulator\""))
     }
 
     /// An agent reads this on every prompt. Length is a cost, and one that creeps.

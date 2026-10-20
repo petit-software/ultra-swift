@@ -119,7 +119,23 @@ public final class TileFactory {
     public var onRecordChange: ((PaneID, PaneRecord) -> Void)?
 
     /// Kinds this factory can build. Everything else belongs to the shell factory.
-    public static let supported: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser, .simulator]
+    /// Whether the Simulator pane is offered at all. OFF: the pane draws the device but
+    /// touches do not reliably reach it on Xcode 27 — every connection to a device's HID
+    /// service deafens the apps already running on it (see `SimulatorInput`) — and a pane
+    /// that looks live and ignores clicks is worse than no pane. Off, it is offered nowhere
+    /// — no menu, no palette entry, no agent verb — and a saved layout's Simulator pane
+    /// opens as a shell in the same folder. The code stays, for when it works.
+    ///
+    /// Not isolated: the app's command lists are static constants built from it. A `var`
+    /// only for the tests that still exercise the pane, which set it before anything reads
+    /// it; nothing in the app writes it.
+    nonisolated(unsafe) public static var offersSimulator = false
+
+    nonisolated public static var supported: Set<PaneRecord.Kind> {
+        var kinds: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser]
+        if offersSimulator { kinds.insert(.simulator) }
+        return kinds
+    }
 
     public func makeContent(for paneID: PaneID) -> (view: NSView, record: PaneRecord)? {
         let kind = pendingKind ?? records[paneID]?.kind
@@ -223,12 +239,12 @@ public final class TileFactory {
             let record = Self.browserRecord(for: tabs, root: root)
             records[paneID] = record
             return (view, record)
-        case .simulator:
+        case .simulator where Self.offersSimulator:
             // A staged device wins; a restored pane reopens the device it was on.
             let saved = SimulatorPaneState.decode(records[paneID]?.tileState)
             let session = simulators[paneID] ?? SimulatorSession(
                 udid: pendingSimulator ?? records[paneID]?.command,
-                zoom: saved.zoom, showsFrame: saved.showsFrame)
+                zoom: saved.zoom, showsFrame: saved.showsFrame, finish: saved.finish, isPreview: saved.isPreview)
             pendingSimulator = nil
             simulators[paneID] = session
             // Screenshots go beside the project's todo and chats, and their path is typed
@@ -236,21 +252,17 @@ public final class TileFactory {
             session.screenshotFolder = context.projectRoot.appendingPathComponent(".ultra", isDirectory: true)
             session.sendToShell = context.injectIntoShell
             session.onChange = { [weak self, weak session] device in
-                self?.noteSimulator(paneID, device: device,
-                                    state: SimulatorPaneState(zoom: session?.zoom ?? 1,
-                                                              showsFrame: session?.showsFrame ?? true),
+                self?.noteSimulator(paneID, device: device, state: session?.paneState ?? SimulatorPaneState(),
                                     root: root)
             }
-            session.onStateChange = { [weak self, weak session] zoom, showsFrame in
-                self?.noteSimulator(paneID, device: session?.device,
-                                    state: SimulatorPaneState(zoom: zoom, showsFrame: showsFrame), root: root)
+            session.onStateChange = { [weak self, weak session] state in
+                self?.noteSimulator(paneID, device: session?.device, state: state, root: root)
             }
             view = SimulatorHostingView(tile: SimulatorTile(context: paneContext, session: session),
                                         session: session)
             view.setAccessibilityLabel("Simulator")
             hosts[paneID] = view
-            let record = Self.simulatorRecord(device: session.device, zoom: session.zoom,
-                                              showsFrame: session.showsFrame, root: root)
+            let record = Self.simulatorRecord(device: session.device, state: session.paneState, root: root)
             records[paneID] = record
             return (view, record)
         default:
@@ -275,7 +287,7 @@ public final class TileFactory {
     /// Keep a simulator pane's header on its device, and its record on the device's UDID,
     /// so a restored workspace reopens on the same one.
     private func noteSimulator(_ paneID: PaneID, device: SimulatorDevice?, state: SimulatorPaneState, root: URL) {
-        let record = Self.simulatorRecord(device: device, zoom: state.zoom, showsFrame: state.showsFrame, root: root)
+        let record = Self.simulatorRecord(device: device, state: state, root: root)
         guard records[paneID] != record else { return }
         records[paneID] = record
         onRecordChange?(paneID, record)
@@ -283,16 +295,21 @@ public final class TileFactory {
 
     /// `command` carries the device's UDID, the way it carries a browser's URL. The title
     /// is the device's name, falling back to "Simulator"; the subtitle is its runtime. The
-    /// zoom and the frame ride in `tileState`, and only when they are not the defaults.
+    /// zoom, the frame and the finish ride in `tileState`, and only when they are not the
+    /// defaults.
     public static func simulatorRecord(device: SimulatorDevice?, zoom: CGFloat = 1, showsFrame: Bool = true,
                                        root: URL) -> PaneRecord {
+        simulatorRecord(device: device, state: SimulatorPaneState(zoom: zoom, showsFrame: showsFrame), root: root)
+    }
+
+    public static func simulatorRecord(device: SimulatorDevice?, state: SimulatorPaneState, root: URL) -> PaneRecord {
         PaneRecord(kind: .simulator,
                    title: device?.name ?? "Simulator",
                    subtitle: device.map(\.runtimeName).flatMap { $0.isEmpty ? nil : $0 },
                    icon: device?.isTablet == true ? "ipad" : icon(for: .simulator),
                    cwd: root.path,
                    command: device?.udid,
-                   tileState: SimulatorPaneState(zoom: zoom, showsFrame: showsFrame).encoded)
+                   tileState: state.encoded)
     }
 
     /// Keep a browser pane's header on the showing page's title and host, and its record
@@ -507,20 +524,34 @@ public struct SimulatorPaneState: Codable, Equatable, Sendable {
     /// Stored as its opposite and only when set, so a record from before the frame existed
     /// reads as showing it.
     private var bareScreen: Bool?
+    /// The finish the enclosure is drawn in, by `DeviceFinish.id`; nil is the model's
+    /// first. Absent from every record written before finishes existed.
+    public var finish: String?
+    /// Stored only when set: a pane left in Preview — turning the device, touching
+    /// nothing — comes back that way. Absent, the pane is in Edit.
+    private var preview: Bool?
+
+    public var isPreview: Bool {
+        get { preview == true }
+        set { preview = newValue ? true : nil }
+    }
 
     public var showsFrame: Bool {
         get { bareScreen != true }
         set { bareScreen = newValue ? nil : true }
     }
 
-    public init(zoom: CGFloat = 1, showsFrame: Bool = true) {
+    public init(zoom: CGFloat = 1, showsFrame: Bool = true, finish: String? = nil, isPreview: Bool = false) {
         self.zoom = zoom
         self.showsFrame = showsFrame
+        self.finish = finish
+        self.isPreview = isPreview
     }
 
-    /// Nil for the fitted size in its frame, so a pane left as it opened saves no state.
+    /// Nil for the fitted size in its frame, its first finish and Edit, so a pane left as
+    /// it opened saves no state.
     public var encoded: Data? {
-        abs(zoom - 1) < 0.001 && showsFrame ? nil : try? JSONEncoder().encode(self)
+        abs(zoom - 1) < 0.001 && showsFrame && finish == nil && !isPreview ? nil : try? JSONEncoder().encode(self)
     }
 
     /// The state in `data`, or the fitted size when there is none or it does not read.

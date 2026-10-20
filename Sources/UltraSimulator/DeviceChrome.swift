@@ -1,19 +1,21 @@
 import AppKit
 import Foundation
 
-/// The device's enclosure — body, bezel and side buttons — as Xcode's Simulator draws it.
+/// The device's enclosure — body and bezel — round one screen.
 ///
-/// Read from the same files: each of a device type's screens (`DeviceProfile`) names a
-/// chrome bundle in `/Library/Developer/DeviceKit/Chrome`, whose `chrome.json` is the body —
-/// one composite PDF in newer bundles, a nine-part frame of PDF pieces in older ones — sized
-/// around the screen, and a list of buttons anchored to its edges. The device type also has
-/// the screen's own mask, the rounded corners and nothing else.
+/// The GEOMETRY is Xcode's: each of a device type's screens (`DeviceProfile`) names a
+/// chrome bundle in `/Library/Developer/DeviceKit/Chrome`, whose `chrome.json` says how far
+/// the body extends round the screen and how round its corners are. That is measured
+/// from the hardware and is kept. The PICTURE is not Xcode's: its artwork is a flat slab
+/// with a hairline, one per generation, so the body is drawn here from that geometry
+/// (`DeviceEnclosure`), in one of the finishes the model is sold in. Only a family the
+/// drawing does not know — a TV — keeps Xcode's own artwork, buttons and all.
 ///
 /// Drawn once, into one image; the view places the live screen on top at `screen`.
 @MainActor
 public struct DeviceChrome {
 
-    /// The enclosure, buttons included, drawn at `size` points times some scale.
+    /// The front, buttons included, drawn at `size` points times some scale.
     public let image: CGImage
     /// The whole enclosure in points, buttons included.
     public let size: CGSize
@@ -22,6 +24,25 @@ public struct DeviceChrome {
     /// The screen's shape, as alpha, at the framebuffer's aspect. Nil if the device type
     /// has none; the screen is then square-cornered.
     public let screenMask: CGImage?
+    /// The body's outline within `size`, and how round its corners are.
+    public let body: CGRect
+    public let cornerRadius: CGFloat
+    public let family: DeviceFamily
+    /// The finish the body is drawn in. Nil for Xcode's art.
+    public let finish: DeviceFinish?
+
+    public init(image: CGImage, size: CGSize, screen: CGRect, screenMask: CGImage?,
+                body: CGRect? = nil, cornerRadius: CGFloat = 0,
+                family: DeviceFamily = .other, finish: DeviceFinish? = nil) {
+        self.image = image
+        self.size = size
+        self.screen = screen
+        self.screenMask = screenMask
+        self.body = body ?? CGRect(origin: .zero, size: size)
+        self.cornerRadius = cornerRadius
+        self.family = family
+        self.finish = finish
+    }
 
     // MARK: - Geometry
 
@@ -93,14 +114,17 @@ public struct DeviceChrome {
     private static var cache: [String: DeviceChrome?] = [:]
 
     /// The chrome round one of a device type's screens — its main one unless `screenID`
-    /// names another — or nil when Xcode has none for it. Cached: the files are Xcode's and
-    /// do not change under a running app.
-    public static func load(deviceType: String, screenID: UInt32? = nil) -> DeviceChrome? {
+    /// names another — in `finish`, or the model's first finish when nil. Nil when Xcode
+    /// has no geometry for the device type. Cached: the files are Xcode's and do not
+    /// change under a running app, and a finish is a handful of images.
+    public static func load(deviceType: String, screenID: UInt32? = nil,
+                            finish: DeviceFinish? = nil) -> DeviceChrome? {
         guard let profile = DeviceProfile.load(deviceType: deviceType) else { return nil }
         let screen = profile.screen(screenID)
-        let key = "\(deviceType)#\(screen.id)"
+        let finish = finish ?? DeviceFinish.palette(for: deviceType)[0]
+        let key = "\(deviceType)#\(screen.id)#\(finish.id)"
         if let cached = cache[key] { return cached }
-        let made = make(deviceType: deviceType, screen: screen)
+        let made = make(deviceType: deviceType, screen: screen, finish: finish)
         cache[key] = made
         return made
     }
@@ -143,7 +167,7 @@ public struct DeviceChrome {
         }
     }
 
-    private static func make(deviceType: String, screen: DeviceProfile.Screen) -> DeviceChrome? {
+    private static func make(deviceType: String, screen: DeviceProfile.Screen, finish: DeviceFinish) -> DeviceChrome? {
         guard let chromeID = screen.chromeIdentifier,
               let chromeName = chromeID.split(separator: ".").last else { return nil }
         let chromeDir = chromeRoot.appendingPathComponent("\(chromeName).devicechrome/Contents/Resources")
@@ -195,6 +219,24 @@ public struct DeviceChrome {
 
         // Two pixels a point, less for a big tablet: the pane rarely shows it larger.
         let renderScale = min(2, 2400 / max(layout.size.width, layout.size.height))
+        let mask = maskPicture.flatMap { mask in
+            draw(size: screenPoints, scale: min(2, 1200 / max(screenPoints.width, screenPoints.height))) { rect in
+                mask.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            }
+        }
+
+        // The body drawn here, from the geometry, for every family the drawing knows. The
+        // buttons' room is dropped from the size: there are no buttons in the picture.
+        let family = DeviceFamily.of(deviceType: deviceType)
+        if family != .other {
+            let bodyOnly = geometry(screen: screenPoints, sizing: sizing, buttons: [])
+            let spec = DeviceEnclosure.Spec(family: family, finish: finish, size: bodyOnly.size, body: bodyOnly.body,
+                                            screen: bodyOnly.screen, cornerRadius: radius)
+            guard let front = DeviceEnclosure.front(spec, scale: renderScale) else { return nil }
+            return DeviceChrome(image: front, size: bodyOnly.size, screen: bodyOnly.screen, screenMask: mask,
+                                body: bodyOnly.body, cornerRadius: radius, family: family, finish: finish)
+        }
+
         guard let drawn = draw(size: layout.size, scale: renderScale, { _ in
             for (index, button) in buttonImages.enumerated() where !button.onTop {
                 button.0.draw(in: layout.buttons[index], from: .zero, operation: .sourceOver,
@@ -210,13 +252,8 @@ public struct DeviceChrome {
                               fraction: 1, respectFlipped: true, hints: nil)
             }
         }) else { return nil }
-
-        let mask = maskPicture.flatMap { mask in
-            draw(size: screenPoints, scale: min(2, 1200 / max(screenPoints.width, screenPoints.height))) { rect in
-                mask.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            }
-        }
-        return DeviceChrome(image: drawn, size: layout.size, screen: layout.screen, screenMask: mask)
+        return DeviceChrome(image: drawn, size: layout.size, screen: layout.screen, screenMask: mask,
+                            body: layout.body, cornerRadius: radius)
     }
 
     /// A composite body fitted to a body of another size — the same enclosure serves several

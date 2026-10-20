@@ -30,6 +30,10 @@ public final class SimulatorDisplay {
     private let port: AnyObject
     private let uuid = UUID()
     private var registered = false
+    /// Looks at the framebuffer's seed at display rate; see `watchSurface`.
+    private var watch: Timer?
+    private var lastSeed: UInt32?
+    private var ticks = 0
 
     /// The display port of a device's own screen — the one `screenID` names, or its main one
     /// — or nil when it has none: a device that is not booted has no ports at all.
@@ -106,6 +110,7 @@ public final class SimulatorDisplay {
     public func start() {
         guard !registered else { return }
         registered = true
+        watchSurface()
         let uuid = self.uuid as NSUUID
         // Blocks with NO parameters on purpose: the port calls the damage callback with an
         // array of rectangles and the surfaces callback with the new surface, but this
@@ -148,6 +153,8 @@ public final class SimulatorDisplay {
     public func stop() {
         guard registered else { return }
         registered = false
+        watch?.invalidate()
+        watch = nil
         let uuid = self.uuid as NSUUID
         typealias Unregister = @convention(c) (AnyObject, Selector, NSUUID) -> Void
         for selector in ["unregisterDamageRectanglesCallbackWithUUID:",
@@ -173,11 +180,52 @@ public final class SimulatorDisplay {
     }
 
     private func frameChanged() {
+        lastSeed = currentSeed
         onFrame?()
+    }
+
+    /// Notice a new frame by the framebuffer itself rather than by being told.
+    ///
+    /// Xcode 27's display ports take the damage callback and never call it — nor the
+    /// frame callback of the newer `registerScreenCallbacksWithUUID:…`, which reports the
+    /// surface once and then nothing. The pixels flow all the same: the surface's SEED,
+    /// which IOSurface bumps on every write, moved by hundreds across one page load while
+    /// not one callback came. Waiting on the callback is what froze the pane: it showed
+    /// its first frame forever while every tap and turn landed on the device unseen.
+    ///
+    /// So the seed is read sixty times a second — a load of one integer, no lock, no
+    /// copy — and a change is a frame. Every half second the surfaces are read again too,
+    /// for a swap the swap callback did not report: a rotation, a relaunch. The callbacks
+    /// stay registered for an Xcode that still sends them; the seed check makes a frame
+    /// they announce a no-op here.
+    private func watchSurface() {
+        watch?.invalidate()
+        lastSeed = currentSeed
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        watch = timer
+    }
+
+    private func tick() {
+        ticks &+= 1
+        if ticks % 30 == 0, refresh() { lastSeed = currentSeed; return }
+        let seed = currentSeed
+        guard seed != lastSeed else { return }
+        lastSeed = seed
+        onFrame?()
+    }
+
+    /// The seed of the surface on screen: the masked one when there is one, as the view
+    /// shows it.
+    private var currentSeed: UInt32? {
+        (maskedSurface ?? surface).map(IOSurfaceGetSeed)
     }
 
     private func surfacesChanged() {
         readSurfaces()
+        lastSeed = currentSeed
         onFrame?()
     }
 

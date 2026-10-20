@@ -34,9 +34,7 @@ project files you can read and edit directly.
 - `{"verb":"reveal","path":"docs"}` shows a path in Finder.
 - `{"verb":"browse","url":"localhost:3000"}` shows a page in a Browser pane —
   the dev server you just started, or the docs you are following.
-- `{"verb":"simulator","device":"iPhone 17","app":"com.example.App"}` shows that
-  simulator in a Simulator pane, booting it if needed, and launches the app (install
-  it with `xcrun simctl` first). A `{"ok":false,"error":…}` reply says why not.
+  A `{"ok":false,"error":…}` reply says why not.
 
 ### Committed and local
 - `.ultra/todo.md` is committed: it is the project's plan.

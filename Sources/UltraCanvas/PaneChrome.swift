@@ -30,6 +30,10 @@ public final class PaneActions {
     /// tile kinds — it lays out rectangles.
     public var kinds: () -> [PaneKindChoice]
     public var changeKind: (PaneID, PaneRecord.Kind) -> Void
+    /// The pane's way into a window of its own, or back out of one: a title for the pane's
+    /// menu and what it does. Nil when there is nowhere to go — the last pane of a window.
+    /// Supplied by the store, which is the one that knows which window the pane is in.
+    public var windowMove: (PaneID) -> (title: String, run: () -> Void)? = { _ in nil }
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
@@ -271,6 +275,15 @@ struct PaneIdentityButton: View {
     }
 
     private func entries() -> [ChromeMenuEntry] {
+        var entries = kindEntries()
+        if let move = actions.windowMove(paneID) {
+            entries.append(.separator)
+            entries.append(.item(title: move.title, symbol: "macwindow", action: move.run))
+        }
+        return entries
+    }
+
+    private func kindEntries() -> [ChromeMenuEntry] {
         actions.kinds().map { choice in
             // The pane's current kind is ticked and cannot be re-chosen: converting a pane
             // into what it already is would tear down a live tile to rebuild the same thing.
@@ -348,7 +361,15 @@ public final class PaneContainerView: NSView {
     private var descriptor: PaneDescriptor
     /// What this pane currently is, so its own kind is not offered as a change.
     private var kind: PaneRecord.Kind?
-    private let actions: PaneActions
+    private var actions: PaneActions
+
+    /// Hand the pane to another store's verbs: it has moved to a canvas in another window,
+    /// and its header's Split and Close must act there rather than on the one it left.
+    func rewire(to actions: PaneActions) {
+        guard actions !== self.actions else { return }
+        self.actions = actions
+        rebuildHeader()
+    }
 
     public var isFocused: Bool = false {
         didSet { guard isFocused != oldValue else { return }; refresh() }

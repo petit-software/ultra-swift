@@ -97,6 +97,15 @@ public struct SimulatorTile: View {
                         .transition(.opacity)
                 }
             }
+            // The finishes, over the top of the device: one dot each, the current one
+            // ringed, so the colour is one click away and the pane says which it is on.
+            .overlay(alignment: .top) {
+                if showsControls, session.canChangeFinish {
+                    FinishPicker(session: session)
+                        .padding(.top, 10)
+                        .transition(.opacity)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if showsHint {
                     optionHint
@@ -141,6 +150,18 @@ public struct SimulatorTile: View {
     /// the home indicator takes its swipes.
     private var deviceControls: some View {
         VStack(spacing: 2) {
+            // First, because it decides what every click below means: in Preview the
+            // device is a thing to look at and turn; in Edit it is a thing to use. The
+            // glyph says what pressing does, as the footer's sun and moon do.
+            floating(session.isPreview ? "hand.tap" : "eye",
+                     help: session.isPreview ? "Edit: clicks go to the device (⌃⌘E)"
+                                             : "Preview: nothing touches the device (⌃⌘E)",
+                     isEnabled: true) { session.toggleMode() }
+            Rectangle()
+                .fill(Token.Colour.separator)
+                .frame(width: 14, height: 1)
+                .padding(.vertical, 3)
+                .accessibilityHidden(true)
             if showsRotation {
                 floating("rotate.left", help: "Rotate Left (⌃⌥⌘←)", isEnabled: session.canMove) {
                     session.rotateLeft()
@@ -181,17 +202,24 @@ public struct SimulatorTile: View {
 
     private var optionHint: some View {
         HStack(spacing: 4) {
-            Text("⌥")
-                .font(.system(size: 12, weight: .semibold))
-            Text("Rotate")
-                .font(Token.Type_.monoSmall)
+            if session.isPreview {
+                Text("Preview")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("⌃⌘E to edit")
+                    .font(Token.Type_.monoSmall)
+            } else {
+                Text("⌥")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Rotate")
+                    .font(Token.Type_.monoSmall)
+            }
         }
         .foregroundStyle(Token.Colour.secondaryLabel)
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .tileHoverPill()
         .allowsHitTesting(false)
-        .accessibilityLabel("Hold Option to rotate the device")
+        .accessibilityLabel(session.isPreview ? "Preview: clicks do not reach the device" : "Hold Option to rotate the device")
     }
 
     // MARK: - Empty states
@@ -301,6 +329,15 @@ public struct SimulatorTile: View {
         entries.append(.item(title: "Show Device Frame", symbol: "iphone.gen3", isOn: session.showsFrame) {
             session.toggleFrame()
         })
+        // The finishes by name, for whoever would rather read "Cosmic Orange" than guess
+        // it from a dot.
+        if session.finishes.count > 1 {
+            entries.append(.submenu(title: "Finish", entries: session.finishes.map { finish in
+                .item(title: finish.name, isOn: finish.id == session.finish?.id, isEnabled: session.showsFrame) {
+                    session.setFinish(finish.id)
+                }
+            }))
+        }
         return entries
     }
 
@@ -317,6 +354,7 @@ public struct SimulatorTile: View {
             parts.append(session.isLive ? "live" : "screenshot")
         }
         if session.isFoldable, session.isBooted { parts.append(session.isOpen ? "open" : "folded") }
+        if session.isPreview { parts.append("preview") }
         if !session.isFitted { parts.append(session.zoomLabel) }
         return parts.joined(separator: " · ")
     }
@@ -335,6 +373,63 @@ public struct SimulatorTile: View {
               let url = URL(string: field.stringValue.trimmingCharacters(in: .whitespaces)),
               url.scheme != nil else { return }
         session.open(url)
+    }
+}
+
+/// The finishes a device comes in, as a row of dots over the top of it. The current one
+/// wears a ring; the others fill in on hover. Each is named in its tooltip, and the
+/// device menu lists them by name for the keyboard, with Next and Previous Finish in the
+/// palette.
+struct FinishPicker: View {
+    let session: SimulatorSession
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(session.finishes) { finish in
+                FinishDot(finish: finish, isCurrent: finish.id == session.finish?.id) {
+                    session.setFinish(finish.id)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .tileHoverPill()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Finish")
+    }
+}
+
+private struct FinishDot: View {
+    let finish: DeviceFinish
+    let isCurrent: Bool
+    let choose: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: choose) {
+            ZStack {
+                Circle()
+                    .fill(Color(cgColor: finish.rail.cgColor))
+                    .frame(width: 14, height: 14)
+                    // A hairline in the dot's own shade, so a white finish is a dot and
+                    // not a hole in the pill.
+                    .overlay(Circle().strokeBorder(Color(cgColor: finish.rail.lit(0.7).cgColor), lineWidth: 0.5))
+                Circle()
+                    .strokeBorder(Token.Colour.label, lineWidth: 1.5)
+                    .frame(width: 20, height: 20)
+                    .opacity(isCurrent ? 1 : (isHovering ? 0.35 : 0))
+            }
+            .frame(width: 22, height: 22)
+            .contentShape(Circle())
+            .scaleEffect(isHovering && !isCurrent ? 1.15 : 1)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .animation(Token.Environment_.reduceMotion ? nil : Token.Motion.chromeFade, value: isHovering)
+        .animation(Token.Environment_.reduceMotion ? nil : Token.Motion.chromeFade, value: isCurrent)
+        .help(finish.name)
+        .accessibilityLabel(finish.name)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 }
 
@@ -406,8 +501,9 @@ final class SimulatorHostingView: NSHostingView<SimulatorTile>, KeyboardTargetPr
     @available(*, unavailable)
     required init(rootView: SimulatorTile) { fatalError("use init(tile:session:)") }
 
+    /// In Preview the device takes no keys, so the pane keeps them.
     var preferredKeyboardTarget: NSView? {
-        session.isLive ? session.existingDisplayView : nil
+        session.isLive && !session.isPreview ? session.existingDisplayView : nil
     }
 }
 
@@ -438,6 +534,18 @@ final class SimulatorHostingView: NSHostingView<SimulatorTile>, KeyboardTargetPr
     SimulatorTile(context: .inert(), session: SimulatorSession.previewDuo(open: true), reveal: .rotation)
 }
 
+#Preview("Simulator — preview mode", traits: .fixedLayout(width: 420, height: 760)) {
+    let session = SimulatorSession.preview(booted: true)
+    session.setMode(.preview)
+    return SimulatorTile(context: .inert(), session: session, reveal: .controls)
+}
+
+#Preview("Simulator — another finish", traits: .fixedLayout(width: 420, height: 760)) {
+    let session = SimulatorSession.preview(booted: true, deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+    session.nextFinish()
+    return SimulatorTile(context: .inert(), session: session, reveal: .controls)
+}
+
 #Preview("Simulator — zoomed in", traits: .fixedLayout(width: 420, height: 760)) {
     let session = SimulatorSession.preview(booted: true)
     session.zoomIn(); session.zoomIn()
@@ -456,11 +564,12 @@ extension SimulatorSession {
     private static let previewRuntime = "com.apple.CoreSimulator.SimRuntime.iOS-27-1"
 
     /// A session on a made-up device with a drawn screen, for previews. No Xcode, no poll.
-    static func preview(booted: Bool, angle: Double = 0) -> SimulatorSession {
+    static func preview(booted: Bool, angle: Double = 0,
+                        deviceType: String = "com.apple.CoreSimulator.SimDeviceType.iPhone-17") -> SimulatorSession {
         let session = SimulatorSession()
         let device = SimulatorDevice(udid: "PREVIEW", name: "iPhone 17", runtime: previewRuntime,
                                      state: booted ? .booted : .shutdown,
-                                     deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17")
+                                     deviceType: deviceType)
         session.adoptForPreview(devices: [device,
                                           SimulatorDevice(udid: "PREVIEW-2", name: "iPad mini (A17 Pro)",
                                                           runtime: previewRuntime, state: .shutdown)],

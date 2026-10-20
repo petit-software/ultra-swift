@@ -69,6 +69,19 @@ public struct WindowFrame: Codable, Equatable, Sendable {
     public var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 }
 
+/// Panes of a workspace that were moved out of its window into one of their own: their
+/// arrangement there, and where that window was. The panes' records are in the document's
+/// `panes` like every other pane's, so a restore builds them through the same factories.
+public struct PaneWindowLayout: Codable, Equatable, Sendable {
+    public var tree: LayoutTree
+    public var frame: WindowFrame?
+
+    public init(tree: LayoutTree, frame: CGRect? = nil) {
+        self.tree = tree
+        self.frame = frame.map(WindowFrame.init)
+    }
+}
+
 /// One workspace, as written to disk.
 public struct WorkspaceDocument: Codable, Equatable, Sendable {
     /// Bumped whenever the shape changes. Migration is a pure function per version step,
@@ -90,11 +103,15 @@ public struct WorkspaceDocument: Codable, Equatable, Sendable {
     public var panes: [String: PaneRecord]
     public var windowFrame: WindowFrame?
     public var themeID: String?
+    /// The workspace's panes in windows of their own. Nil in every document written before
+    /// a pane could leave its window, and when none has.
+    public var paneWindows: [PaneWindowLayout]?
 
     public init(id: UUID = UUID(), directory: String? = nil,
                 title: String, subtitle: String? = nil,
                 tree: LayoutTree, panes: [PaneID: PaneRecord],
-                windowFrame: CGRect? = nil, themeID: String? = nil) {
+                windowFrame: CGRect? = nil, themeID: String? = nil,
+                paneWindows: [PaneWindowLayout]? = nil) {
         self.version = Self.currentVersion
         self.id = id
         self.directory = directory.map(WorkspaceDocument.canonical)
@@ -104,6 +121,12 @@ public struct WorkspaceDocument: Codable, Equatable, Sendable {
         self.panes = Dictionary(uniqueKeysWithValues: panes.map { ($0.key.uuidString, $0.value) })
         self.windowFrame = windowFrame.map(WindowFrame.init)
         self.themeID = themeID
+        self.paneWindows = paneWindows?.isEmpty == true ? nil : paneWindows
+    }
+
+    /// Every pane the workspace holds: the window's, then each pane window's.
+    public var allPaneIDs: [PaneID] {
+        tree.paneIDs + (paneWindows ?? []).flatMap(\.tree.paneIDs)
     }
 
     public func record(for paneID: PaneID) -> PaneRecord? { panes[paneID.uuidString] }
@@ -115,12 +138,16 @@ public struct WorkspaceDocument: Codable, Equatable, Sendable {
     /// Discard records for panes no longer in the tree, and refuse a tree whose panes have
     /// no records at all — a half-written document must not become the restored layout.
     public mutating func reconcile() {
-        let live = Set(tree.paneIDs.map(\.uuidString))
+        // A pane window whose tree does not hold together is dropped rather than refusing
+        // the whole document: the window's own layout is the one that must come back.
+        paneWindows = paneWindows?.filter { $0.tree.validate().isEmpty }
+        if paneWindows?.isEmpty == true { paneWindows = nil }
+        let live = Set(allPaneIDs.map(\.uuidString))
         panes = panes.filter { live.contains($0.key) }
     }
 
     public var isConsistent: Bool {
-        tree.validate().isEmpty && tree.paneIDs.allSatisfy { panes[$0.uuidString] != nil }
+        tree.validate().isEmpty && allPaneIDs.allSatisfy { panes[$0.uuidString] != nil }
     }
 
     /// Does this document belong to `path`?

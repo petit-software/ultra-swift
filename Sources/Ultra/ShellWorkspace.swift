@@ -137,7 +137,8 @@ enum ShellWorkspace {
             // still handling its own event is how a click ends up delivered to a
             // deallocated view.
             DispatchQueue.main.async {
-                guard let store else { return }
+                // The canvas that has the pane, which is this one or a pane window of it.
+                guard let store = store?.holder(of: paneID) else { return }
                 store.replaceContent(of: paneID)
                 // Build it now rather than waiting for the layout pass, so the pane header
                 // and the tab say the new folder immediately.
@@ -151,7 +152,7 @@ enum ShellWorkspace {
         // record change, NOT a rebuild — `onRootChange` tears the tile down and builds it
         // again, which for an editor would throw away every open tab to relabel one.
         tiles.onRecordChange = { [weak store] paneID, record in
-            guard let store else { return }
+            guard let store = store?.holder(of: paneID) else { return }
             store.surfaces.updateRecord(record, for: paneID)
             if store.tree.focused == paneID { store.refreshWindowTitle() }
             store.persist()
@@ -175,10 +176,22 @@ enum ShellWorkspace {
         // A shell renames its own pane as it runs; the header follows, and so does the tab
         // when the pane doing the renaming is the focused one.
         factory.onDescriptorChange = { [weak store] paneID, record in
-            store?.surfaces.updateRecord(record, for: paneID)
-            if store?.tree.focused == paneID { store?.refreshWindowTitle() }
-            store?.persist()
+            guard let store = store?.holder(of: paneID) else { return }
+            store.surfaces.updateRecord(record, for: paneID)
+            if store.tree.focused == paneID { store.refreshWindowTitle() }
+            store.persist()
         }
+        // A pane moved to a window of its own: the app opens one for it. Its pane menu
+        // converts in THAT canvas, which is the one holding the pane.
+        store.onPaneWindowCreated = { window in
+            window.setPaneKinds({ PaneKind.choices }) { [weak window] paneID, kind in
+                guard let window else { return }
+                convert(paneID, to: kind, in: window)
+            }
+            PaneWindows.show(window)
+        }
+        // And the ones it had when it was saved, which open with the session.
+        if let layouts = document?.paneWindows { store.restorePaneWindows(layouts) }
 
         // Keyed by workspace, not a singleton: with tabs there are several live factories
         // at once and a menu command must reach the one belonging to the focused tab.
@@ -232,6 +245,8 @@ enum ShellWorkspace {
         // Releasing every pane is what stops the PTYs — `PaneSurfaceStore.release` is the one
         // place a pane dies, and it calls back into both factories.
         store.surfaces.prune(keeping: [])
+        // Its pane windows' panes too, and the windows close.
+        store.closePaneWindows()
         Registry.channels[id]?.stop()
         Registry.channels[id] = nil
         Registry.factories[id] = nil
@@ -652,6 +667,9 @@ enum ShellWorkspace {
             guard let url = resolved.url else { return .failure("reveal needs a path") }
             NSWorkspace.shared.activateFileViewerSelecting([url])
         case .simulator:
+            guard TileFactory.offersSimulator else {
+                return .failure("the Simulator pane is turned off in this build")
+            }
             guard let query = resolved.device else { return .failure("simulator needs a device") }
             guard SimulatorControl.hasXcode else { return .failure("Xcode is not installed") }
             // The list is fetched before replying, because the reply has to say whether the
@@ -755,7 +773,7 @@ enum ShellWorkspace {
     }
 
     /// Every kind a pane can be, in menu order.
-    static var paneKinds: [PaneKind] { PaneKind.all }
+    static var paneKinds: [PaneKind] { PaneKind.offered }
 
     /// Make the next new pane a tile of this kind rather than a shell. Pass nil to clear a
     /// staging that never got used — a refused split must not leave one armed.
@@ -836,8 +854,14 @@ struct PaneKind: Identifiable, Sendable {
         PaneKind(kind: .simulator, title: "Simulator", symbol: "iphone"),
     ]
 
+    /// Every kind this build offers: the Simulator only while `TileFactory.offersSimulator`.
+    static var offered: [PaneKind] {
+        let simulator = TileFactory.offersSimulator
+        return all.filter { $0.kind != .simulator || simulator }
+    }
+
     /// Handed to the canvas so a pane's own icon can offer the list.
     static var choices: [PaneKindChoice] {
-        all.map { PaneKindChoice(kind: $0.kind, title: $0.title, symbol: $0.symbol) }
+        offered.map { PaneKindChoice(kind: $0.kind, title: $0.title, symbol: $0.symbol) }
     }
 }

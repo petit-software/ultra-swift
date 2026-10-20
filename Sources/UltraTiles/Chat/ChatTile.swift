@@ -86,9 +86,11 @@ private struct ChatTabStrip: View {
             VStack(alignment: .leading, spacing: 10) {
                 let messages = store.current.messages
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    let isArriving = store.isStreaming && index == messages.indices.last
                     ChatMessageView(message: message,
-                                    isArriving: store.isStreaming && index == messages.indices.last,
+                                    isArriving: isArriving,
                                     changedFiles: ChangedFile.answer(endingAt: index, in: messages).map(ChangedFile.rows) ?? [],
+                                    answerText: isArriving ? nil : ChatMessage.answerText(endingAt: index, in: messages),
                                     root: context.projectRoot,
                                     sendToShell: { context.injectIntoShell($0) },
                                     openFile: { context.openInEditor(.file($0)) })
@@ -317,13 +319,17 @@ private struct ChatMessageView: View, Equatable {
     let isArriving: Bool
     /// The files the answer this message ends changed; empty for any other message.
     let changedFiles: [ChangedFile]
+    /// The whole answer this message ends, for the copy button under it; nil for any other
+    /// message, and while the answer is still arriving.
+    let answerText: String?
     let root: URL
     let sendToShell: (String) -> Void
     let openFile: (URL) -> Void
 
     nonisolated static func == (lhs: ChatMessageView, rhs: ChatMessageView) -> Bool {
         lhs.message == rhs.message && lhs.isArriving == rhs.isArriving
-            && lhs.changedFiles == rhs.changedFiles && lhs.root == rhs.root
+            && lhs.changedFiles == rhs.changedFiles && lhs.answerText == rhs.answerText
+            && lhs.root == rhs.root
     }
 
     var body: some View {
@@ -391,10 +397,44 @@ private struct ChatMessageView: View, Equatable {
                         .font(Token.Type_.monoSmall)
                         .foregroundStyle(Token.Colour.tertiaryLabel)
                 }
+                // Under the answer's last turn, once it has all arrived: the whole answer,
+                // every turn of it, not just the paragraph the pointer happens to be over.
+                if let answerText {
+                    CopyAnswerButton(text: answerText)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.trailing, 20)
         }
+    }
+}
+
+/// The copy icon under a finished answer. Always shown rather than on hover, quiet enough
+/// not to compete with the answer, and a tick for a moment after a click so the copy is
+/// seen to have happened. The keyboard path is Pane ▸ Chat ▸ Copy Last Answer (⇧⌥⌘C).
+private struct CopyAnswerButton: View {
+    let text: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            ChatStore.copy(text)
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "square.filled.on.square")
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 11))
+        .foregroundStyle(copied ? Token.Colour.secondaryLabel : Token.Colour.tertiaryLabel)
+        .help("Copy Answer (⇧⌥⌘C for the last one)")
+        .accessibilityLabel(copied ? "Copied" : "Copy answer")
     }
 }
 

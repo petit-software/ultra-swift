@@ -11,7 +11,10 @@ import Testing
 ///
 ///     ULTRA_SIM_LIVE=1 swift test --filter SimulatorLiveTests
 ///
-/// With more than one device booted, `ULTRA_SIM_UDID` picks which.
+/// With more than one device booted, `ULTRA_SIM_UDID` picks which. Every run makes an input
+/// connection to the device, and connections pile up inside it until it reboots — enough of
+/// them and its apps stop taking touches (see `SimulatorInput`). Point these at a device you
+/// can reboot afterwards, not the one you are working on.
 ///
 /// They are the regression check for the private-API bridge: a new Xcode that moves a
 /// class or a selector fails here first.
@@ -52,6 +55,30 @@ struct SimulatorLiveTests {
         let shot = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
         #expect(frame.width == shot.width && frame.height == shot.height,
                 "framebuffer \(frame.width)×\(frame.height), screenshot \(shot.width)×\(shot.height)")
+    }
+
+    /// The regression check for a pane that froze on its first frame: Xcode 27's ports stopped
+    /// calling the damage callback, and the pane, which redrew only when told, showed one
+    /// picture forever while every tap landed unseen. A frame must reach `onFrame` when
+    /// the device draws — and not on every tick while it barely does: a settled screen
+    /// still redraws now and then (the status bar), but nowhere near the display's rate.
+    @Test("the screen reports new frames as the device draws them, and not every tick while it is settled")
+    @MainActor
+    func framesArrive() async throws {
+        let (device, handle) = try await bootedDevice()
+        let display = try #require(SimulatorDisplay.find(for: handle))
+        var frames = 0
+        display.onFrame = { frames += 1 }
+        display.start()
+        defer { display.stop() }
+        try await SimulatorControl.launch("com.apple.Preferences", on: device.udid)
+        _ = try await settled()
+        frames = 0
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(frames < 15, "\(frames) redraws in half a second of a settled screen")
+        try await SimulatorControl.openURL(URL(string: "https://www.apple.com")!, on: device.udid)
+        try await Task.sleep(for: .seconds(2))
+        #expect(frames > 5, "\(frames) frames while Safari opened")
     }
 
     /// The device, its screen, and its input, on a known screen: Settings at its root.

@@ -78,6 +78,15 @@ struct UltraApp: App {
             WorkspaceCommands()
         }
 
+        // A pane moved out of its window into one of its own. Never restored by SwiftUI:
+        // the session that owns the pane brings its windows back itself, with the pane in
+        // them, and a window SwiftUI restored on its own would have no pane to show.
+        WindowGroup(id: PaneWindows.sceneID, for: UUID.self) { $id in
+            PaneWindowView(id: id)
+        }
+        .defaultSize(width: 760, height: 520)
+        .restorationBehavior(.disabled)
+
         // ⌘, and the standard Settings window, for free.
         Settings { UltraSettings() }
     }
@@ -121,6 +130,11 @@ struct WorkspaceWindow: View {
                 // needs it to recreate a window every user has closed.
                 MenuBarItem.shared.openWorkspace = { openWindow(id: UltraApp.workspaceWindowID) }
                 WorkspaceModel.openNewWindow = { openWindow(id: UltraApp.workspaceWindowID) }
+                // Last of the three, because setting it opens the pane windows the
+                // sessions just restored brought with them.
+                if PaneWindows.open == nil {
+                    PaneWindows.open = { openWindow(id: PaneWindows.sceneID, value: $0) }
+                }
                 Updater.shared.startIfUpdatable()
                 // No What's New dialog here. Sparkle's own update prompt already lists
                 // what the release changed, from the same `whats-new.md`; a second
@@ -325,7 +339,7 @@ final class FileOpening: NSObject, NSApplicationDelegate {
 
 /// Reports the window a view is in, as soon as it is in one. `NSApp.keyWindow` is a guess
 /// — Settings can be key while a workspace window opens — and this is not.
-private struct WindowReader: NSViewRepresentable {
+struct WindowReader: NSViewRepresentable {
     let found: (NSWindow) -> Void
 
     func makeNSView(context: Context) -> NSView { Probe(found: found) }
@@ -927,7 +941,7 @@ struct RootView: View {
                                 Button("Shell") {
                                     if let store { ShellWorkspace.openShell(in: store) }
                                 }
-                                ForEach(PaneKind.all.filter { !$0.isShell }) { entry in
+                                ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
                                     Button(entry.title) {
                                         if let store { ShellWorkspace.openTile(entry.kind, in: store) }
                                     }

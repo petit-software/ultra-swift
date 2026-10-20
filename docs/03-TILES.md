@@ -531,6 +531,12 @@ link worth keeping open.
 
 ## 9. Simulator
 
+> **Status: switched off** (`TileFactory.offersSimulator`). The pane draws the device, but
+> on Xcode 27 every connection to a device's HID service deafens the apps already running
+> on it (see "One HID connection per device" below), and a pane that looks live and ignores
+> clicks is worse than none. It is offered nowhere — no menu, no palette entry, no agent
+> verb — and a saved layout's Simulator pane opens as a shell. The code and its tests stay.
+
 An Apple simulator in a pane, live: the screen, the pointer as a finger, the keyboard as
 the device's keyboard. For the app the agent just built — one device per pane, and a second
 device is a second pane. Not the Simulator app, which Xcode 27 no longer ships anyway.
@@ -550,7 +556,11 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   port for its BUILT-IN screen — an iPad also has a TV-out one, so the port is picked by its
   `screenType`, not by its place in the list — hands over the `IOSurface` its compositor
   renders into; `SimulatorDisplayView` sets it
-  as a layer's contents and re-sets it on every damage callback. No copy, no permission
+  as a layer's contents and re-sets it on every new frame. A new frame is noticed by the
+  surface's own seed, which IOSurface bumps on every write, read sixty times a second
+  (`SimulatorDisplay.watchSurface`): Xcode 27's ports accept the damage callback and never
+  call it, and a pane that waited on it showed its first frame forever while every tap
+  landed unseen. The live suite checks that frames arrive. No copy, no permission
   prompt, and it works for a device booted with no window at all.
 - **Rotation.** Rotate Left and Rotate Right are `devicectl device orientation rotate`,
   Xcode 27's supported verb, for a simulator as for a phone on a cable. The framebuffer
@@ -561,6 +571,23 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   and all, animated unless Reduce Motion is on, and re-reads it on the port's
   properties-changed callback. Touches follow, since they are mapped through the layer. An
   app that does not support the new orientation stays put, as an iPhone's home screen does.
+- **The enclosure is drawn, not Xcode's.** Xcode's chrome bundles give the geometry —
+  how far the body reaches round the screen and the corner radius (`chrome.json`, read by
+  `DeviceChrome.geometry`) — and that is kept. Their artwork is a flat slab with a
+  hairline, one for a whole generation (17, 17 Pro and 18 Pro all draw `phone11`), and
+  is not used. `DeviceEnclosure` draws a soft body from the geometry: the finish's colour
+  with a quiet top-to-bottom gradient, a soft edge, black glass set into it round the
+  screen — and nothing else, no cameras, buttons or ports, because the shape is the
+  outline, the radius and the colour. The finishes are the model's real ones
+  (`DeviceFinish.palette`, by family and generation from the device type's name, with
+  the newest palette for a model newer than the list), picked from a row of dots over
+  the top of the device or by name from the device menu, and saved in the pane's
+  `tileState`. A Metal body with a thickness, a studio light and a shadow was built and
+  taken out again: a drawing of a phone round a phone, when the pane is for the app.
+- **Edit and Preview.** A simulator pane is either used or looked at. In Edit, clicks and
+  keys go to the device; in Preview nothing reaches it — for showing the app without
+  pressing anything. The first control of the floating pill, Pane ▸ Simulator ▸ Toggle
+  Edit / Preview (⌃⌘E), and the footer says "preview" while it is. Saved with the pane.
 - **A phone that folds.** iPhone Duo has two built-in screens — a cover (id 1) and an inner
   one (id 3) mounted on its side, each with its own enclosure — listed in the device type's
   `capabilities.plist` (`DeviceProfile`). Which is lit comes from `devicectl device info
@@ -574,6 +601,18 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   client entitled to `com.apple.springboard.sbdisplay.service`; a simulator process reads
   its entitlements from a `__TEXT,__entitlements` section, as Xcode builds simulator apps (a
   signature carrying them is refused at launch), so that is where it goes.
+- **One HID connection per device, for the life of the app.** Making a
+  `SimDeviceLegacyHIDClient` deafens the device: measured on an Xcode 27 iPhone, once a few
+  have been made, every app running on it ignores touches from every connection — old and
+  new alike — and in the end SpringBoard and its Home button do too. Bringing an app
+  forward again does not cure it, relaunching it does, and a reboot clears it all. There is
+  no disconnect: a connection made by a process that has since exited still counts until
+  the device reboots. The pane used to make one on every reconnect, and every launch made
+  another, so after a while it drew the device perfectly and nothing a click did landed.
+  `SimulatorInput` now keeps one connection per device and hands it to every input for
+  it; a new one is made only after the device refuses a message (the old one is dead) or
+  shuts down. The live tests make connections too — run them against a device you can
+  reboot, not the one you are working on.
 - **Touches, keys and buttons are Indigo messages** built by SimulatorKit's exported C
   functions and sent through `SimDeviceLegacyHIDClient`. A click is a finger: down, dragged,
   up, as ratios of the screen. Keys go through `IndigoHIDMessageForKeyboardNSEvent`, which
@@ -601,17 +640,14 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   sent to an Xcode 27 device brings its home screen down until SpringBoard restarts. A hardware button held down swallows every later press, touch and key, so a
   press builds its lift first and always sends it — `pressAndRelease` for a caller about
   to exit, `releaseAll` when a pane lets go mid-press.
-- **The frame.** The device is drawn in its enclosure — body, bezel and side buttons — from
-  Xcode's own artwork in `/Library/Developer/DeviceKit/Chrome` (`DeviceChrome`), per screen,
-  so an opened Duo wears its wide inner body. Newer chrome bundles draw the body as ONE
-  composite PDF, sized for one device and fitted to others by stretching only the straight
-  runs between its corners; their nine pieces are placeholders that say "unused" in red.
-  Older bundles are nine pieces, drawn by hand rather than with `NSDrawNinePartImage`,
-  which tiles the edges: a one-point slice tiled down a tablet's side landed a hair off the
-  pixel grid every row and came out as faded bands. Each edge is stretched once and tucked
-  a point under its corners so no seam shows. Pane ▸ Simulator ▸ Toggle Device Frame, or
-  the footer's device menu, shows the bare screen instead; the choice is saved in the
-  pane's `tileState`.
+- **The frame's geometry is Xcode's.** Each screen's enclosure comes from a chrome bundle
+  in `/Library/Developer/DeviceKit/Chrome` (`DeviceChrome`), per screen, so an opened Duo
+  wears its wide inner body: `chrome.json` says how far the body reaches round the screen,
+  the corner radius, and where every button stands, and the device type's mask PDF is the
+  screen's own corners. Only the picture is not Xcode's — see "The enclosure is drawn"
+  above — except for a family the drawing does not know, a TV, which keeps the bundle's
+  artwork: a composite PDF fitted by stretching the straight runs between its corners, or
+  nine pieces drawn by hand rather than with `NSDrawNinePartImage`, which tiles the edges.
 - **Corners.** Each screen names a framebuffer mask — the PDF Simulator clips the screen
   with — and the pane clips the live screen to it, every device its own radius
   (`DeviceChrome.cornerMask`), framed or not.

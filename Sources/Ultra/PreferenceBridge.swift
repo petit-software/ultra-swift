@@ -101,6 +101,11 @@ enum PreferenceBridge {
             if !store.metrics.matchesSettings {
                 store.metrics.applySettings()
             }
+            // Its pane windows' gutters too; their theme follows the store's own.
+            for window in store.paneWindows where !window.metrics.matchesSettings {
+                window.metrics.applySettings()
+                window.surfaces.refreshChrome()
+            }
             // A CGColor on a layer, set once: the accent reaches a live pane only if it is
             // pushed. Cheap and idempotent, so it rides along with every write.
             store.surfaces.refreshChrome()

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import UltraChat
 
@@ -178,6 +179,27 @@ public final class ChatStore {
     }
 
     public func toggleLight() { setLight(!isLight) }
+
+    /// The last answer on screen, whole, for Pane ▸ Chat ▸ Copy Last Answer. Nil while it
+    /// is still arriving — half an answer on the clipboard is a paste that surprises — and
+    /// when nothing has been answered yet.
+    public var lastAnswerText: String? {
+        guard !isStreaming else { return nil }
+        let messages = current.messages
+        return messages.indices.last.flatMap { ChatMessage.answerText(endingAt: $0, in: messages) }
+    }
+
+    /// Put text on the general pasteboard. The one copy the pane does, so the button under
+    /// an answer and the menu item cannot copy two different things.
+    public static func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    public func copyLastAnswer() {
+        guard let text = lastAnswerText else { return }
+        Self.copy(text)
+    }
 
     /// Whether the conversation on screen can be sent right now.
     public var canSend: Bool {
