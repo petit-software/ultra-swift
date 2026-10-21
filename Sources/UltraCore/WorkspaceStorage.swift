@@ -94,16 +94,23 @@ public final class WorkspaceStorage: @unchecked Sendable {
         documents(for: directory).first?.document
     }
 
-    /// Whether this folder has been used as a project in Ultra: it has a saved workspace.
-    /// Never the home folder — it is where every scratch shell starts, and a question on
-    /// every new shell is noise. See `ProjectSetupOffers`.
+    /// Whether this folder is an Ultra project: it has a `.ultra/` folder AND a saved
+    /// workspace. Never the home folder — it is where every scratch shell starts, and a
+    /// question on every new shell is noise. See `ProjectSetupOffers`.
     ///
-    /// NOT a `.ultra` folder. That was the first test, and it asked about folders nobody
-    /// had opened: a Context, Todo or Chat pane writes `.ultra/` into whatever folder it is
-    /// looking at, so it marks where a pane once looked, not where a project lives.
+    /// Neither alone is enough. A `.ultra` folder was the first test, and it asked about
+    /// folders nobody had opened: a Context, Todo or Chat pane writes `.ultra/` into
+    /// whatever folder it is looking at, so it marks where a pane once looked. A saved
+    /// workspace alone was the second, and it asked about folders with no setup on disk at
+    /// all: every folder a session was ever opened on keeps one, a passing look included.
+    /// The `.ultra/` check goes first because it is one `stat`; the workspace check reads
+    /// every saved document.
     public func hasSetup(for folder: String, home: String = NSHomeDirectory()) -> Bool {
         let folder = WorkspaceDocument.canonical(folder)
         guard folder != WorkspaceDocument.canonical(home) else { return false }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder + "/.ultra", isDirectory: &isDirectory),
+              isDirectory.boolValue else { return false }
         return load(directory: folder) != nil
     }
 

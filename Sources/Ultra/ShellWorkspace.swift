@@ -177,11 +177,15 @@ enum ShellWorkspace {
         // when the pane doing the renaming is the focused one.
         factory.onDescriptorChange = { [weak store] paneID, record in
             guard let store = store?.holder(of: paneID) else { return }
+            let moved = store.surfaces.surfaceRecord(for: paneID).cwd != record.cwd
             store.surfaces.updateRecord(record, for: paneID)
             if store.tree.focused == paneID { store.refreshWindowTitle() }
             store.persist()
             // A scratch session's shell walking into a project Ultra knows is offered it.
-            if let cwd = record.cwd { ProjectSetupOffers.shared.note(cwd, in: store) }
+            // Only on a MOVE: a title changes on every prompt and every agent spinner tick,
+            // and a pane re-noting the folder it has sat in all along put back the question
+            // a `cd` in another pane — or deeper in this one — had just withdrawn.
+            if moved, let cwd = record.cwd { ProjectSetupOffers.shared.note(cwd, in: store) }
         }
         // A pane moved to a window of its own: the app opens one for it. Its pane menu
         // converts in THAT canvas, which is the one holding the pane.

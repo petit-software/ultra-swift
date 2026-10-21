@@ -9,6 +9,7 @@
 - [x] Pane window: named after its pane or file in the Dock and Window menus; main window is "Ultra"
 - [x] Test builds are Ultra Dev (`build-app.sh --dev`), with their own bundle id and Application Support folder
 - [x] Scratch shell that cds into a project with an Ultra setup is asked to open it
+- [x] Setup offer: only folders with `.ultra/` and a saved workspace; withdrawn when the shell moves on, not re-raised by title changes
 - [x] Sidebar toggle without the glass capsule
 - [x] Sidebar on the window's own surface, with a hairline on its right edge
 - [x] Selected session row drawn as a capsule

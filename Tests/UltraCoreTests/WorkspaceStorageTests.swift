@@ -171,7 +171,7 @@ struct DefaultLayoutTests {
         #expect(adopted.isConsistent)
     }
 
-    @Test("a folder has an Ultra setup when it has a saved workspace — not just a .ultra folder, never home")
+    @Test("a folder has an Ultra setup when it has a .ultra folder and a saved workspace — never home")
     @MainActor
     func hasSetup() throws {
         let storage = temporaryStorage()
@@ -180,21 +180,29 @@ struct DefaultLayoutTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let plain = root.appendingPathComponent("plain")
         let dotted = root.appendingPathComponent("dotted")
-        let saved = root.appendingPathComponent("saved")
-        for folder in [plain, saved] {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let savedOnly = root.appendingPathComponent("saved-only")
+        let project = root.appendingPathComponent("project")
+        try FileManager.default.createDirectory(at: plain, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: savedOnly, withIntermediateDirectories: true)
+        for folder in [dotted, project] {
+            try FileManager.default.createDirectory(at: folder.appendingPathComponent(".ultra"),
+                                                    withIntermediateDirectories: true)
         }
-        try FileManager.default.createDirectory(at: dotted.appendingPathComponent(".ultra"),
-                                                withIntermediateDirectories: true)
-        var document = makeDocument()
-        document.directory = WorkspaceDocument.canonical(saved.path)
-        try storage.saveNow(document)
+        for folder in [savedOnly, project] {
+            var document = makeDocument()
+            document.directory = WorkspaceDocument.canonical(folder.path)
+            try storage.saveNow(document)
+        }
 
         #expect(!storage.hasSetup(for: plain.path))
         #expect(!storage.hasSetup(for: dotted.path),
                 "a pane writes .ultra wherever it looks; that is not a project")
-        #expect(storage.hasSetup(for: saved.path + "/"), "spelled differently, still the project")
-        #expect(!storage.hasSetup(for: saved.path, home: saved.path),
+        #expect(!storage.hasSetup(for: savedOnly.path),
+                "a session once opened here, but there is no setup on disk")
+        #expect(!storage.hasSetup(for: project.appendingPathComponent(".ultra").path),
+                "inside a project is not the project")
+        #expect(storage.hasSetup(for: project.path + "/"), "spelled differently, still the project")
+        #expect(!storage.hasSetup(for: project.path, home: project.path),
                 "the home folder is where every scratch shell starts")
     }
 }

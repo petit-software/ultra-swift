@@ -10,7 +10,7 @@ import UltraCore
 /// it does is saved and none of a project's panes come with it. Someone who opens one and
 /// `cd`s into a project that has a layout is one step from the session they meant to open,
 /// and nothing said so. This says so — once per folder per session, and only for a folder
-/// that has been opened as a project before: one with a saved workspace.
+/// that is a project: a `.ultra/` folder and a saved workspace (`WorkspaceStorage.hasSetup`).
 ///
 /// Asked in a toast over the canvas rather than an alert. The question arrives while the
 /// user is typing into a shell, and a modal there would take the next Return as its answer.
