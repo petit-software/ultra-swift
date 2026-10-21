@@ -46,6 +46,8 @@ public final class PaneSurfaceStore {
     /// Called when a pane's surface is destroyed, so whoever owns the underlying resource
     /// — from M2, a PTY — can tear it down. This is the ONLY place a pane dies.
     public var onRelease: ((PaneID) -> Void)?
+    /// Called once a pane's surface has been built and its record is known.
+    public var onBuild: ((PaneID) -> Void)?
 
     /// The surface colour every pane wears. Held here as well as pushed, so a pane built
     /// AFTER a theme change does not open in the theme the window launched with.
@@ -70,6 +72,7 @@ public final class PaneSurfaceStore {
                                           theme: theme)
         container.paneAppearance = content.record.appearance
         containers[paneID] = container
+        onBuild?(paneID)
         return container
     }
 

@@ -170,4 +170,31 @@ struct DefaultLayoutTests {
         #expect(adopted.directory == "/Users/x/Repo/other")
         #expect(adopted.isConsistent)
     }
+
+    @Test("a folder has an Ultra setup when it has a saved workspace — not just a .ultra folder, never home")
+    @MainActor
+    func hasSetup() throws {
+        let storage = temporaryStorage()
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-setup-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let plain = root.appendingPathComponent("plain")
+        let dotted = root.appendingPathComponent("dotted")
+        let saved = root.appendingPathComponent("saved")
+        for folder in [plain, saved] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        try FileManager.default.createDirectory(at: dotted.appendingPathComponent(".ultra"),
+                                                withIntermediateDirectories: true)
+        var document = makeDocument()
+        document.directory = WorkspaceDocument.canonical(saved.path)
+        try storage.saveNow(document)
+
+        #expect(!storage.hasSetup(for: plain.path))
+        #expect(!storage.hasSetup(for: dotted.path),
+                "a pane writes .ultra wherever it looks; that is not a project")
+        #expect(storage.hasSetup(for: saved.path + "/"), "spelled differently, still the project")
+        #expect(!storage.hasSetup(for: saved.path, home: saved.path),
+                "the home folder is where every scratch shell starts")
+    }
 }

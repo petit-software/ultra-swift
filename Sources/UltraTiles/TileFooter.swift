@@ -12,23 +12,31 @@ import UltraDesign
 ///
 /// Controls lead, status trails. That order is the rule: the things you can press are always
 /// in the same corner, whichever tile you are looking at.
-public struct TileFooter<Controls: View>: View {
+public struct TileFooter<Controls: View, Trailing: View>: View {
     let summary: String
     /// Paths truncate from the head — the tail is the part that identifies the file. Counts
     /// and totals truncate from the tail, but they are short enough that it never shows.
     var truncation: Text.TruncationMode = .tail
     var summaryHelp: String?
     @ViewBuilder let controls: () -> Controls
+    /// Controls AFTER the status, for a verb about the thing the status names — Todo's
+    /// clear-the-list sits right of the list's path. Rare by design: the leading corner is
+    /// where controls live, and this is the exception that has to earn its place.
+    @ViewBuilder let trailing: () -> Trailing
 
     public init(summary: String,
                 truncation: Text.TruncationMode = .tail,
                 summaryHelp: String? = nil,
-                @ViewBuilder controls: @escaping () -> Controls) {
+                @ViewBuilder controls: @escaping () -> Controls,
+                @ViewBuilder trailing: @escaping () -> Trailing) {
         self.summary = summary
         self.truncation = truncation
         self.summaryHelp = summaryHelp
         self.controls = controls
+        self.trailing = trailing
     }
+
+    private var hasTrailing: Bool { Trailing.self != EmptyView.self }
 
     public var body: some View {
         HStack(spacing: 8) {
@@ -36,20 +44,25 @@ public struct TileFooter<Controls: View>: View {
             // own 28pt box, so anything wider double-counts the gap.
             HStack(spacing: 1) { controls() }
             Spacer(minLength: 8)
-            if !summary.isEmpty {
-                Text(summary)
-                    .font(Token.Type_.monoSmall)
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .lineLimit(1)
-                    .truncationMode(truncation)
-                    .help(summaryHelp ?? "")
+            HStack(spacing: 1) {
+                if !summary.isEmpty {
+                    Text(summary)
+                        .font(Token.Type_.monoSmall)
+                        .foregroundStyle(Token.Colour.tertiaryLabel)
+                        .lineLimit(1)
+                        .truncationMode(truncation)
+                        .help(summaryHelp ?? "")
+                }
+                trailing()
             }
         }
         .buttonStyle(.plain)
         .font(Token.Type_.monoSmall)
         .foregroundStyle(Token.Colour.secondaryLabel)
         .padding(.leading, 5)
-        .padding(.trailing, 10)
+        // A trailing icon brings its own box, the way the leading ones do, so the edge it
+        // sits against takes the same 5pt the leading edge does.
+        .padding(.trailing, hasTrailing ? 5 : 10)
         // The same height as a pane header, so the two ends of a tile are the same weight
         // and a column of tiles has one horizontal rhythm rather than several.
         .frame(height: Token.Space.tileHeaderHeight)
@@ -57,6 +70,16 @@ public struct TileFooter<Controls: View>: View {
         // so what sits behind it is the pane's own surface and nothing else. A material or
         // a fill here would be a second surface inside the pane; a see-through blur, which
         // is what was here, let the list scroll up through the status line.
+    }
+}
+
+public extension TileFooter where Trailing == EmptyView {
+    init(summary: String,
+         truncation: Text.TruncationMode = .tail,
+         summaryHelp: String? = nil,
+         @ViewBuilder controls: @escaping () -> Controls) {
+        self.init(summary: summary, truncation: truncation, summaryHelp: summaryHelp,
+                  controls: controls, trailing: { EmptyView() })
     }
 }
 

@@ -19,8 +19,7 @@ public final class WorkspaceStorage: @unchecked Sendable {
     }
 
     public static var defaultDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Ultra/workspaces", isDirectory: true)
+        AppSupport.directory.appendingPathComponent("workspaces", isDirectory: true)
     }
 
     public func url(for id: UUID) -> URL {
@@ -93,6 +92,19 @@ public final class WorkspaceStorage: @unchecked Sendable {
     /// behind long ago, panes pointed at other projects and all. See `retireDuplicates`.
     public func load(directory: String) -> WorkspaceDocument? {
         documents(for: directory).first?.document
+    }
+
+    /// Whether this folder has been used as a project in Ultra: it has a saved workspace.
+    /// Never the home folder — it is where every scratch shell starts, and a question on
+    /// every new shell is noise. See `ProjectSetupOffers`.
+    ///
+    /// NOT a `.ultra` folder. That was the first test, and it asked about folders nobody
+    /// had opened: a Context, Todo or Chat pane writes `.ultra/` into whatever folder it is
+    /// looking at, so it marks where a pane once looked, not where a project lives.
+    public func hasSetup(for folder: String, home: String = NSHomeDirectory()) -> Bool {
+        let folder = WorkspaceDocument.canonical(folder)
+        guard folder != WorkspaceDocument.canonical(home) else { return false }
+        return load(directory: folder) != nil
     }
 
     /// Put aside every document for a project but the one it is restoring from.

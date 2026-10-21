@@ -45,7 +45,11 @@ project files you can read and edit directly.
 ## Project notes
 
 - Build and test: `swift build && swift test`. The suite runs headless; no window server.
-- `./scripts/build-app.sh` produces `Ultra.app`.
+- Every app build made to test or try a change is **Ultra Dev**: `./scripts/build-app.sh --dev`
+  produces `Ultra Dev.app` (bundle id `software.petit.ultra.dev`), which runs beside the
+  user's Ultra instead of replacing it, with its own settings and its own
+  `~/Library/Application Support/Ultra Dev/`. Never build or overwrite `Ultra.app` for testing:
+  plain `./scripts/build-app.sh` is the user's own copy, and what `scripts/release.sh` packages.
 - Swift 6 with strict concurrency, macOS 26 only. Dependency direction between SPM targets
   is strictly downward: `UltraLayout` imports nothing of ours and nothing imports `Ultra`.
 - Read `docs/00-OVERVIEW.md` first. The non-negotiable properties there (a PTY survives every

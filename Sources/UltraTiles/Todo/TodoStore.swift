@@ -26,6 +26,10 @@ public final class TodoStore {
     /// remembered, like the list's location: closing it on the bar's own control is a
     /// choice about this list, and the footer's toggle brings it back.
     public private(set) var showsProgress: Bool
+    /// The sections folded down to their heading, by TITLE — the same handle the composer's
+    /// target uses, for the same reason: every edit renumbers the lines. Per project and
+    /// remembered, like the progress bar: a section folded away is meant to stay out of the way.
+    public private(set) var collapsedSections: Set<String>
 
     /// Held in a box so the sources are torn down by the box's own nonisolated deinit —
     /// a main-actor deinit cannot touch main-actor state. Same shape as `ObserverBox`.
@@ -39,6 +43,7 @@ public final class TodoStore {
         self.root = root
         self.url = Self.storedLocation(for: root) ?? Self.preferredLocation(in: root)
         self.showsProgress = UserDefaults.standard.object(forKey: Self.progressKey(for: root)) as? Bool ?? true
+        self.collapsedSections = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedKey(for: root)) ?? [])
         load()
         beginWatching()
     }
@@ -52,6 +57,45 @@ public final class TodoStore {
 
     static func progressKey(for root: URL) -> String {
         "ultra.todoProgress." + root.standardizedFileURL.path
+    }
+
+    // MARK: Collapsing
+
+    public func isCollapsed(_ section: String) -> Bool { collapsedSections.contains(section) }
+
+    public func toggleCollapsed(_ section: String) {
+        setCollapsed(!isCollapsed(section), for: section)
+    }
+
+    public func setCollapsed(_ collapsed: Bool, for section: String) {
+        var sections = collapsedSections
+        if collapsed { sections.insert(section) } else { sections.remove(section) }
+        setCollapsedSections(sections)
+    }
+
+    /// Every section the file has, folded. Only ones that exist, so the set never names a
+    /// heading that is not there.
+    public func collapseAll() { setCollapsedSections(Set(document.sections)) }
+    public func expandAll() { setCollapsedSections([]) }
+
+    /// Whether Collapse All would fold anything.
+    public var canCollapseAll: Bool { document.sections.contains { !isCollapsed($0) } }
+    /// Whether Expand All would open anything.
+    public var canExpandAll: Bool { document.sections.contains { isCollapsed($0) } }
+
+    private func setCollapsedSections(_ sections: Set<String>) {
+        guard sections != collapsedSections else { return }
+        collapsedSections = sections
+        let key = Self.collapsedKey(for: root)
+        if sections.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else {
+            UserDefaults.standard.set(sections.sorted(), forKey: key)
+        }
+    }
+
+    static func collapsedKey(for root: URL) -> String {
+        "ultra.todoCollapsed." + root.standardizedFileURL.path
     }
 
     /// Point this tile at a different file, and remember it.
@@ -180,8 +224,38 @@ public final class TodoStore {
         edit { $0.addSection(title, level: level) }
     }
 
-    public func setHeading(_ title: String, for id: Int) { edit { $0.setHeading(title, for: id) } }
-    public func removeHeading(_ id: Int) { edit { $0.removeHeading(id) } }
+    /// A renamed section stays folded or open as it was: the fold follows the section, not
+    /// the old spelling of its name.
+    public func setHeading(_ title: String, for id: Int) {
+        let old = heading(id)?.title
+        edit { $0.setHeading(title, for: id) }
+        if let old, isCollapsed(old), let new = heading(id)?.title, new != old {
+            var sections = collapsedSections
+            sections.remove(old)
+            sections.insert(new)
+            setCollapsedSections(sections)
+        }
+    }
+
+    /// A removed heading's tasks join the section above, which may be open — so the fold goes
+    /// with the heading, unless another section still answers to that name.
+    public func removeHeading(_ id: Int) {
+        let old = heading(id)?.title
+        edit { $0.removeHeading(id) }
+        if let old, !document.sections.contains(old) { setCollapsed(false, for: old) }
+    }
+
+    private func heading(_ id: Int) -> TodoDocument.Heading? {
+        document.grouped.lazy.compactMap(\.heading).first { $0.id == id }
+    }
+
+    /// The whole list, gone: an empty file in its place, and no folds left over.
+    /// Nothing to clear is a no-op that does not touch the file.
+    public func removeAll() {
+        guard !document.isBlank else { return }
+        edit { $0.removeAll() }
+        expandAll()
+    }
 
     private func edit(_ change: (inout TodoDocument) -> Void) {
         change(&document)

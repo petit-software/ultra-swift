@@ -16,7 +16,7 @@ enum PaneCommands {
     static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
                                  + layouts + chat + editor + browser
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
-                                 + [newShell, closeSession, whatsNew]
+                                 + [newShell, openSetup, closeSession, whatsNew]
 
     /// The running version's release list, on request (`WhatsNewChecker`). The only way
     /// to it: Sparkle's update prompt shows the same list before installing, so the app
@@ -44,6 +44,17 @@ enum PaneCommands {
         keywords: ["New Shell", "Scratch Shell"],
         isEnabled: { SessionList.holding($0) != nil }) { store in
             SessionList.holding(store)?.openShell()
+        }
+
+    /// Open the project a scratch session's shell has walked into — the keyboard answer to
+    /// the toast that asks (`ProjectSetupOffers`). Dimmed when nothing is being offered.
+    /// No chord: it answers a question on screen, and the palette is one ⌘K away.
+    static let openSetup = AppCommand(
+        id: "session.openSetup", title: "Open Ultra Setup", symbol: "folder",
+        menuPath: ["File"],
+        keywords: ["Open Project Here", "Open This Folder"],
+        isEnabled: { ProjectSetupOffers.shared.offer(for: $0) != nil }) { store in
+            ProjectSetupOffers.shared.accept(in: store)
         }
 
     /// Close the session on screen — the project, its shells and its agents.
@@ -229,6 +240,24 @@ enum PaneCommands {
                    menuPath: ["Pane", "Todo"],
                    isEnabled: { ShellWorkspace.todoStore(in: $0) != nil }) {
             ShellWorkspace.todoStore(in: $0)?.toggleProgress()
+        },
+        // The chevron on each heading folds one section; these are the key path, all at once.
+        AppCommand(id: "todo.collapseAll", title: "Collapse All Sections", symbol: "chevron.right",
+                   menuPath: ["Pane", "Todo"],
+                   isEnabled: { ShellWorkspace.todoStore(in: $0)?.canCollapseAll ?? false }) {
+            ShellWorkspace.todoStore(in: $0)?.collapseAll()
+        },
+        AppCommand(id: "todo.expandAll", title: "Expand All Sections", symbol: "chevron.down",
+                   menuPath: ["Pane", "Todo"],
+                   isEnabled: { ShellWorkspace.todoStore(in: $0)?.canExpandAll ?? false }) {
+            ShellWorkspace.todoStore(in: $0)?.expandAll()
+        },
+        // Asks first — see `removeAllAfterConfirming` — hence the ellipsis. The footer's z
+        // beside the list's path is the same verb.
+        AppCommand(id: "todo.clearAll", title: "Clear Todo List…", symbol: "z.circle.fill",
+                   menuPath: ["Pane", "Todo"], keywords: ["Delete All Tasks", "Empty List"],
+                   isEnabled: { !(ShellWorkspace.todoStore(in: $0)?.document.isBlank ?? true) }) {
+            ShellWorkspace.todoStore(in: $0)?.removeAllAfterConfirming()
         },
     ]
 
@@ -611,7 +640,7 @@ enum PaneCommands {
                    keywords: ["Detach Pane", "Pop Out Pane", "Tear Off Pane"],
                    isEnabled: { $0.canMoveToNewWindow() }) { $0.moveToNewWindow() },
         AppCommand(id: "pane.moveBackToMainWindow", title: "Move Pane Back to Main Window",
-                   symbol: "macwindow", menuPath: ["Pane"],
+                   symbol: "arrow.up.right.and.arrow.down.left", menuPath: ["Pane"],
                    binding: KeyBinding("m", [.command, .shift]),
                    keywords: ["Attach Pane", "Return Pane"],
                    isEnabled: { $0.isPaneWindow }) { $0.moveBackToMainWindow() },

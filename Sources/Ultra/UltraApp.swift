@@ -5,6 +5,7 @@ import UltraCore
 import UltraTerminal
 import UltraDesign
 import UltraLayout
+import UltraTiles
 
 /// The focused window's store and UI state.
 ///
@@ -474,6 +475,11 @@ struct WorkspaceCommands: Commands {
             Button(PaneCommands.newShell.title) { sessions?.openShell() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(sessions == nil)
+            // The answer to the toast a scratch shell gets in a project folder.
+            Button(PaneCommands.openSetup.title) {
+                if let store = sessions?.selected { PaneCommands.openSetup.run(store) }
+            }
+            .disabled(sessions?.selected.map { !PaneCommands.openSetup.isEnabled($0) } ?? true)
 
             // No "New Window" here: a `WindowGroup` already puts one at the top of File on
             // ⌘N, and this group is appended AFTER it. Two identical items sat in one menu,
@@ -729,6 +735,8 @@ struct RootView: View {
             // NO title of its own, either. A `navigationTitle` on this column names the
             // SIDEBAR; the window's own name comes from the detail column, below.
             SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
+                // Ours instead, without the glass — see the `.navigation` item below.
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             // The sessions, back on screen when the sidebar is not: a belt under the tiles,
             // inside the canvas's own padding. The canvas already leaves one padding under
@@ -743,6 +751,14 @@ struct RootView: View {
             ZStack(alignment: .bottom) {
                 if let store {
                     CanvasSurface(store: store, bottomInset: beltInset)
+                        // Over the canvas, above the belt when it is up: the question is the
+                        // session's, not any one pane's.
+                        .tileToast(setupNotice(for: store),
+                                   dismiss: { ProjectSetupOffers.shared.decline(in: store) },
+                                   lift: beltInset) {
+                            Button("Open") { ProjectSetupOffers.shared.accept(in: store) }
+                                .help("Open it as a session of its own — File ▸ Open Ultra Setup")
+                        }
                 } else {
                     Color.clear
                 }
@@ -783,26 +799,16 @@ struct RootView: View {
                 guard !Task.isCancelled else { return }
                 showTabBelt()
             }
-            // THE title, and the only one in the window: the PROJECT's name — whatever the
-            // sidebar row says, which is either the name typed in Customize or the folder's
-            // own. In the slot macOS draws a window title in, beside the sidebar toggle.
+            // What macOS calls this window — the Dock's menu, the Window menu, Mission
+            // Control: "Ultra". The project's name is drawn over the canvas
+            // (`WindowHeaderTitle`, above), and a pane moved to a window of its own is named
+            // for its pane, so in a list of the app's windows the main one is the app and
+            // each of the others says what it holds. See `LayoutStore.systemWindowTitle`,
+            // which `WindowChrome` writes to `window.title` too.
             //
             // On the DETAIL column, because in a `NavigationSplitView` that is the column
-            // whose title becomes the window's. With nothing set anywhere, SwiftUI supplies
-            // the app's own name, which is how a literal "Ultra" came to sit up there telling
-            // the user which app they were in, in the app's own window.
-            //
-            // Removing the item instead was tried and is worse: the window then carries no
-            // name at all, and which project this is remains the one question a title
-            // answers. A `.principal` item is not the way back either — that slot is laid out
-            // against a titlebar whose leading width is still animating as the sidebar opens,
-            // so the name flickered in and out. The system's own title item does not move,
-            // and it is what the Window menu reads.
-            //
-            // Empty, not "Ultra", for the instant before the first session exists: the app's
-            // own name in its own window is the thing being removed here, and a name that
-            // appears for one frame and is replaced is worse than a slot that fills in.
-            .navigationTitle(store?.workspaceTitle ?? "")
+            // whose title becomes the window's.
+            .navigationTitle(store?.systemWindowTitle ?? "Ultra")
             // The name is still the window's — the Window menu and Mission Control read it
             // — but it is not DRAWN in the toolbar's leading slot any more. It is drawn in
             // the middle of the detail column's header instead (`WindowHeaderTitle`, above).
@@ -882,10 +888,25 @@ struct RootView: View {
             // the glyph on the window's own material, the way a pane header's controls sit
             // on the pane's.
             .toolbar {
-                // The sidebar toggle is the system's, glass and all. It was replaced once
-                // with a bare item of our own in the same slot, and put back: the one
-                // glass control on the bar, where navigation starts, is the right one.
-                //
+                // The sidebar toggle, bare like every other glyph on the bar. The system's
+                // own wears a glass capsule there is no way to take off it, and it was the
+                // last lens left on a bar that is glass already. It drives the same binding
+                // the system's did, so the belt still steps aside first; View ▸ Show
+                // Sidebar (⌃⌘S) is the system's menu item and is unaffected.
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        withAnimation {
+                            splitVisibility.wrappedValue = columnVisibility == .detailOnly
+                                ? .all : .detailOnly
+                        }
+                    } label: {
+                        WindowBarGlyph(columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar",
+                                       symbol: "sidebar.left")
+                    }
+                    .help(columnVisibility == .detailOnly ? "Show Sidebar (⌃⌘S)" : "Hide Sidebar (⌃⌘S)")
+                }
+                .sharedBackgroundVisibility(.hidden)
+
                 // An empty centre, standing where the system title used to. The title item
                 // is what split the toolbar into a leading and a trailing group; with it
                 // removed (the name is drawn in the middle of the header by
@@ -1023,6 +1044,14 @@ struct WindowBarGlyph: View {
 }
 
 extension RootView {
+    /// The scratch session's question, when its shell is standing in a project Ultra knows.
+    private func setupNotice(for store: LayoutStore) -> TileNotice? {
+        ProjectSetupOffers.shared.offer(for: store).map {
+            TileNotice(symbol: "folder.fill", message: ProjectSetupOffers.question(for: $0),
+                       tone: .info, stays: true)
+        }
+    }
+
     /// One registry command as a row of a window bar menu: dimmed when it cannot run.
     private func windowBarItem(_ command: AppCommand) -> some View {
         Button(command.title) { if let store { command.run(store) } }

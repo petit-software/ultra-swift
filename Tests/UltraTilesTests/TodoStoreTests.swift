@@ -43,6 +43,54 @@ struct TodoStoreTests {
         #expect(TodoStore(root: root).showsProgress)
     }
 
+    @Test("a folded section is remembered for the project, and follows a rename")
+    func collapsedSections() throws {
+        let root = try makeProject()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: TodoStore.collapsedKey(for: root))
+        }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(".ultra"),
+                                                withIntermediateDirectories: true)
+        try prose.write(to: root.appendingPathComponent(".ultra/todo.md"), atomically: true, encoding: .utf8)
+        let store = TodoStore(root: root)
+        #expect(!store.isCollapsed("Doing"))
+        store.toggleCollapsed("Doing")
+        #expect(store.isCollapsed("Doing"))
+        #expect(TodoStore(root: root).isCollapsed("Doing"), "a second pane on the project agrees")
+
+        let heading = try #require(store.document.grouped.compactMap(\.heading).first { $0.title == "Doing" })
+        store.setHeading("Now", for: heading.id)
+        #expect(store.isCollapsed("Now"))
+        #expect(!store.isCollapsed("Doing"))
+
+        store.expandAll()
+        #expect(!store.canExpandAll)
+        store.collapseAll()
+        #expect(store.collapsedSections == Set(store.document.sections))
+        #expect(!store.canCollapseAll)
+    }
+
+    @Test("clearing the whole list empties the file and forgets every fold")
+    func removeAll() throws {
+        let root = try makeProject()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            UserDefaults.standard.removeObject(forKey: TodoStore.collapsedKey(for: root))
+        }
+        let file = root.appendingPathComponent(".ultra/todo.md")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try prose.write(to: file, atomically: true, encoding: .utf8)
+        let store = TodoStore(root: root)
+        store.collapseAll()
+        store.removeAll()
+        #expect(try String(contentsOf: file, encoding: .utf8) == "")
+        #expect(store.document.isBlank)
+        #expect(store.collapsedSections.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: file.path), "the file stays, empty")
+    }
+
     @Test("a project with no list yet reports empty rather than creating a file")
     func noFileYet() throws {
         let root = try makeProject()

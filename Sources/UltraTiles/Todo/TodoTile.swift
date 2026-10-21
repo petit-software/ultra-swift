@@ -61,12 +61,18 @@ public struct TodoTile: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(store.document.grouped) { group in
                         // Not every heading earns a row — see `showsHeading(of:)`.
-                        if let heading = group.heading, store.document.showsHeading(of: group) {
+                        let headed = group.heading.flatMap {
+                            store.document.showsHeading(of: group) ? $0 : nil
+                        }
+                        if let heading = headed {
                             TodoHeadingRow(heading: heading,
+                                           count: group.items.count,
                                            isTarget: target == heading.title,
+                                           isCollapsed: store.isCollapsed(heading.title),
                                            isDropTarget: dropTarget == heading.id,
                                            isEditing: editingID == heading.id,
                                            select: { toggleTarget(heading.title) },
+                                           toggleCollapsed: { toggleCollapsed(heading.title) },
                                            delete: { remove(heading) },
                                            beginEdit: { editingID = heading.id },
                                            commitEdit: { text in commitEdit(text, for: heading) },
@@ -80,7 +86,10 @@ public struct TodoTile: View {
                                            },
                                            onDragOver: { dropTarget = $0 ? heading.id : nil })
                         }
-                        ForEach(group.items) { item in
+                        // Only a heading that has a row can be folded: a hidden one has
+                        // nothing to unfold it from.
+                        let folded = headed.map { store.isCollapsed($0.title) } ?? false
+                        ForEach(folded ? [] : group.items) { item in
                             TodoRow(item: item,
                                     isDropTarget: dropTarget == item.id,
                                     isEditing: editingID == item.id,
@@ -114,6 +123,12 @@ public struct TodoTile: View {
     private var target: String? {
         guard let targetSection, store.document.sections.contains(targetSection) else { return nil }
         return targetSection
+    }
+
+    private func toggleCollapsed(_ title: String) {
+        withAnimation(Token.Motion.structuralRespectingPreferences) {
+            store.toggleCollapsed(title)
+        }
     }
 
     private func toggleTarget(_ title: String) {
@@ -192,6 +207,14 @@ public struct TodoTile: View {
                              isEnabled: store.document.completedCount > 0) {
                 store.removeCompleted()
             }
+        } trailing: {
+            // Beside the path, because it empties the file the path names. Asks first; also
+            // Pane ▸ Todo ▸ Clear Todo List….
+            TileFooterButton(symbol: "z.circle.fill",
+                             help: "Clear the whole list",
+                             isEnabled: !store.document.isBlank) {
+                store.removeAllAfterConfirming()
+            }
         }
     }
 
@@ -229,9 +252,13 @@ public struct TodoTile: View {
                 }
                 if existing == nil { store.addSection(section.title, level: section.level) }
                 targetSection = existing ?? section.title
+                // Chosen to be typed into, so it is opened to show what is typed.
+                store.setCollapsed(false, for: existing ?? section.title)
             }
         } else if let target {
             store.prependItem(draft, to: target)
+            // A task added to a folded section would vanish as it landed.
+            store.setCollapsed(false, for: target)
         } else {
             store.prependItem(draft)
         }
@@ -545,12 +572,19 @@ private struct TodoRow: View {
 ///
 /// Clicking it points the composer at the section. The accent says which one is chosen, and
 /// the composer's placeholder says it again in words, so colour is never the only signal.
+/// The chevron ahead of the title folds the section's tasks away; a folded heading says how
+/// many it is hiding.
 private struct TodoHeadingRow: View {
     let heading: TodoDocument.Heading
+    /// How many tasks the section holds, said beside a folded heading so it is not mistaken
+    /// for an empty one.
+    let count: Int
     let isTarget: Bool
+    let isCollapsed: Bool
     let isDropTarget: Bool
     let isEditing: Bool
     let select: () -> Void
+    let toggleCollapsed: () -> Void
     let delete: () -> Void
     let beginEdit: () -> Void
     let commitEdit: (String) -> Void
@@ -561,81 +595,137 @@ private struct TodoHeadingRow: View {
     @State private var draft = ""
     @FocusState private var isFieldFocused: Bool
 
+    /// One point up from the 11 it was, so a section reads as the head of its tasks rather
+    /// than as a caption under the one above.
+    private static let titleFont = Font.system(size: 12, weight: .semibold)
+
     var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            // Its own target, ahead of the title: the title's click already means "add tasks
+            // here", and folding is a different question.
+            Button(action: toggleCollapsed) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .frame(width: 10)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Token.Colour.tertiaryLabel)
+            .pointerStyle(.link)
+            .help(isCollapsed ? "Expand section" : "Collapse section")
+            .accessibilityLabel(isCollapsed ? "Expand \(heading.title)" : "Collapse \(heading.title)")
+            .disabled(isEditing)
+
+            title
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 3)
+        .contentShape(.rect)
+        .onHover { isHovering = $0 }
+        // Counted, so the second click of a double-click does not also toggle the
+        // target the first one set.
+        .onTapGesture(count: 2) { if !isEditing { beginEdit() } }
+        .onTapGesture { if !isEditing { select() } }
+        .help(isTarget ? "New tasks go here — click to add at the top of the list instead"
+                       : "Click to add new tasks here")
+        .overlay(alignment: .bottom) {
+            if isDropTarget {
+                Rectangle()
+                    .fill(Token.Colour.accent)
+                    .frame(height: 2)
+            }
+        }
+        .dropDestination(for: TodoDragPayload.self) { payload, _ in
+            guard let moved = payload.first?.id else { return false }
+            onDrop(moved)
+            return true
+        } isTargeted: { onDragOver($0) }
+        .accessibilityLabel("Section, \(heading.title)")
+        .accessibilityValue(isCollapsed ? "Collapsed, \(count) task\(count == 1 ? "" : "s")" : "Expanded")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: isCollapsed ? "Expand" : "Collapse", toggleCollapsed)
+    }
+
+    private var title: some View {
         // The label gives the row its height and the field is laid over it, for the reason
         // `TodoRow` gives: swapping one for the other moves every row below by a point.
-        Text(heading.title)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(isTarget ? Token.Colour.accent : Token.Colour.tertiaryLabel)
-            .textCase(.uppercase)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(isEditing ? 0 : 1)
-            .overlay(alignment: .leading) {
-                if isEditing {
-                    // Not upper-cased: what is typed is what is written to the file, and a
-                    // field that shouted it back would misreport that.
-                    TextField("Section", text: $draft)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Token.Colour.label)
-                        .focused($isFieldFocused)
-                        .onSubmit { commitEdit(draft) }
-                        .onExitCommand(perform: cancelEdit)
-                        .task {
-                            draft = heading.title
-                            isFieldFocused = true
-                        }
-                }
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(heading.title)
+                .font(Self.titleFont)
+                .foregroundStyle(isTarget ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+                .textCase(.uppercase)
+                .lineLimit(1)
+            if isCollapsed, count > 0 {
+                Text("\(count)")
+                    .font(Token.Type_.monoSmall)
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+                    .monospacedDigit()
             }
-            .tileHoverControls(isHovering || isEditing) {
-                HStack(spacing: 4) {
-                    TodoRowSlot {
-                        if isEditing {
-                            Button { commitEdit(draft) } label: { Image(systemName: "return") }
-                                .foregroundStyle(Token.Colour.accent)
-                                .help("Save section")
-                                .pointerStyle(.link)
-                        } else {
-                            Button(action: beginEdit) { Image(systemName: "pencil") }
-                                .help("Rename section")
-                                .pointerStyle(.link)
-                        }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(isEditing ? 0 : 1)
+        .overlay(alignment: .leading) {
+            if isEditing {
+                // Not upper-cased: what is typed is what is written to the file, and a
+                // field that shouted it back would misreport that.
+                TextField("Section", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(Self.titleFont)
+                    .foregroundStyle(Token.Colour.label)
+                    .focused($isFieldFocused)
+                    .onSubmit { commitEdit(draft) }
+                    .onExitCommand(perform: cancelEdit)
+                    .task {
+                        draft = heading.title
+                        isFieldFocused = true
                     }
-                    TodoRowSlot {
-                        if !isEditing {
-                            Button(action: delete) { Image(systemName: "minus.circle") }
-                                .help("Remove section — its tasks stay")
-                                .pointerStyle(.link)
-                        }
+            }
+        }
+        .tileHoverControls(isHovering || isEditing) {
+            HStack(spacing: 4) {
+                TodoRowSlot {
+                    if isEditing {
+                        Button { commitEdit(draft) } label: { Image(systemName: "return") }
+                            .foregroundStyle(Token.Colour.accent)
+                            .help("Save section")
+                            .pointerStyle(.link)
+                    } else {
+                        Button(action: beginEdit) { Image(systemName: "pencil") }
+                            .help("Rename section")
+                            .pointerStyle(.link)
+                    }
+                }
+                TodoRowSlot {
+                    if !isEditing {
+                        Button(action: delete) { Image(systemName: "minus.circle") }
+                            .help("Remove section — its tasks stay")
+                            .pointerStyle(.link)
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 3)
-            .contentShape(.rect)
-            .onHover { isHovering = $0 }
-            // Counted, so the second click of a double-click does not also toggle the
-            // target the first one set.
-            .onTapGesture(count: 2) { if !isEditing { beginEdit() } }
-            .onTapGesture { if !isEditing { select() } }
-            .help(isTarget ? "New tasks go here — click to add at the top of the list instead"
-                           : "Click to add new tasks here")
-            .overlay(alignment: .bottom) {
-                if isDropTarget {
-                    Rectangle()
-                        .fill(Token.Colour.accent)
-                        .frame(height: 2)
-                }
-            }
-            .dropDestination(for: TodoDragPayload.self) { payload, _ in
-                guard let moved = payload.first?.id else { return false }
-                onDrop(moved)
-                return true
-            } isTargeted: { onDragOver($0) }
-            .accessibilityLabel("Section, \(heading.title)")
-            .accessibilityAddTraits(.isButton)
+        }
+    }
+}
+
+public extension TodoStore {
+    /// Clear the whole list, once the user has said so.
+    ///
+    /// The one todo verb that asks first. Everything else takes a line, or the ticked lines,
+    /// and leaves the rest; this takes the notes between the sections too, and the file is
+    /// often committed work someone else wrote. Shared by the footer and the menu, so both
+    /// paths ask the same question.
+    func removeAllAfterConfirming() {
+        guard !document.isBlank else { return }
+        let alert = NSAlert()
+        alert.messageText = "Clear the whole todo list?"
+        alert.informativeText = "Every task, section and note in "
+            + TileFactory.abbreviate(url.path) + " is removed. The file stays, empty."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear List").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        removeAll()
     }
 }
 

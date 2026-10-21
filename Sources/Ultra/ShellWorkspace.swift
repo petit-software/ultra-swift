@@ -180,6 +180,8 @@ enum ShellWorkspace {
             store.surfaces.updateRecord(record, for: paneID)
             if store.tree.focused == paneID { store.refreshWindowTitle() }
             store.persist()
+            // A scratch session's shell walking into a project Ultra knows is offered it.
+            if let cwd = record.cwd { ProjectSetupOffers.shared.note(cwd, in: store) }
         }
         // A pane moved to a window of its own: the app opens one for it. Its pane menu
         // converts in THAT canvas, which is the one holding the pane.
@@ -240,6 +242,7 @@ enum ShellWorkspace {
     /// released before the factories that own them go.
     static func tearDown(_ store: LayoutStore) {
         let id = store.workspaceID
+        ProjectSetupOffers.shared.forget(id)
         Registry.factories[id]?.saveScrollback()
         store.persistNow()
         // Releasing every pane is what stops the PTYs — `PaneSurfaceStore.release` is the one
@@ -606,6 +609,10 @@ enum ShellWorkspace {
         }
         if let simulator = tiles.simulatorSession(for: focused), simulator.error != nil {
             return { simulator.error = nil }
+        }
+        // Last: the canvas's own question, which no pane's notice should be behind.
+        if ProjectSetupOffers.shared.offer(for: store) != nil {
+            return { ProjectSetupOffers.shared.decline(in: store) }
         }
         return nil
     }

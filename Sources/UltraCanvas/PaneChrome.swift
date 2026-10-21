@@ -33,7 +33,7 @@ public final class PaneActions {
     /// The pane's way into a window of its own, or back out of one: a title for the pane's
     /// menu and what it does. Nil when there is nowhere to go — the last pane of a window.
     /// Supplied by the store, which is the one that knows which window the pane is in.
-    public var windowMove: (PaneID) -> (title: String, run: () -> Void)? = { _ in nil }
+    public var windowMove: (PaneID) -> (title: String, symbol: String, run: () -> Void)? = { _ in nil }
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
@@ -278,7 +278,7 @@ struct PaneIdentityButton: View {
         var entries = kindEntries()
         if let move = actions.windowMove(paneID) {
             entries.append(.separator)
-            entries.append(.item(title: move.title, symbol: "macwindow", action: move.run))
+            entries.append(.item(title: move.title, symbol: move.symbol, action: move.run))
         }
         return entries
     }

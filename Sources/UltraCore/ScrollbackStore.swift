@@ -28,8 +28,7 @@ public final class ScrollbackStore: @unchecked Sendable {
     }
 
     public static var defaultDirectory: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Ultra/scrollback", isDirectory: true)
+        AppSupport.directory.appendingPathComponent("scrollback", isDirectory: true)
     }
 
     public func url(for paneID: UUID) -> URL {

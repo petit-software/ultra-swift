@@ -232,5 +232,27 @@ struct PaneWindowTests {
         #expect(window.surfaces.actions.windowMove(pane)?.title == "Move Pane Back to Main Window")
         #expect(session.store.surfaces.actions.windowMove(session.store.tree.paneIDs[0]) == nil,
                 "the last pane of the main window has nowhere to go")
+        #expect(window.surfaces.actions.windowMove(pane)?.symbol == "arrow.up.right.and.arrow.down.left")
+    }
+
+    @Test("the main window is called Ultra; a pane window is called what its pane shows")
+    func systemWindowTitle() throws {
+        let session = Session(.twoAcross)
+        session.store.workspaceTitle = "ultra-swift"
+        #expect(session.store.systemWindowTitle == "Ultra")
+        let pane = session.store.tree.paneIDs[0]
+        let window = try #require(session.store.moveToNewWindow(pane))
+        #expect(window.systemWindowTitle == "Pane", "named as soon as it opens, from the pane it took")
+        #expect(session.store.systemWindowTitle == "Ultra")
+
+        // An editor switching files, the way `onRecordChange` delivers it.
+        window.surfaces.updateRecord(PaneRecord(kind: .editor, title: "README.md"), for: pane)
+        window.refreshWindowTitle()
+        #expect(window.systemWindowTitle == "README.md")
+
+        // A shell's header title is its folder's path; the window takes the folder's name.
+        window.surfaces.updateRecord(PaneRecord(kind: .shell, title: "~/Repo/ultra-swift"), for: pane)
+        window.refreshWindowTitle()
+        #expect(window.systemWindowTitle == "ultra-swift")
     }
 }

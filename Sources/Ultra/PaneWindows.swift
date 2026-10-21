@@ -139,7 +139,10 @@ private struct PaneWindowContent: View {
                 }
             }
             .ignoresSafeArea()
-            .navigationTitle(store.workspaceTitle)
+            // The PANE's name, not the project's: in the Dock's menu and the Window menu
+            // this window sits beside the main one, and "Ultra" twice says nothing about
+            // which is which. The project is still drawn over the canvas.
+            .navigationTitle(store.systemWindowTitle)
             // The same bar as the main window's, and for the same reason: the project's
             // name is drawn in the middle of it (`WindowHeaderTitle`), which is laid out
             // for a toolbar's height. Without a toolbar the bar is the bare titlebar's,
@@ -157,7 +160,8 @@ private struct PaneWindowContent: View {
                 // What a pane window can do as a window: send its pane home.
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.moveBackToMainWindow() } label: {
-                        WindowBarGlyph("Move Pane Back to Main Window", symbol: "macwindow")
+                        WindowBarGlyph("Move Pane Back to Main Window",
+                                       symbol: "arrow.up.right.and.arrow.down.left")
                     }
                     .help("Move Pane Back to Main Window (⇧⌘M)")
                 }

@@ -1,21 +1,21 @@
 ## Menu cleanup
 
-- [x] Move New Shell/Agent/Tile Pane and Change Pane To from File into Pane ▸ New Pane / Change Pane To
-- [x] Move Next/Previous/Move Session from File ▸ Session into View
-- [x] Point registry menu paths and the docs at the new places
-- [x] Build and test
 
 ## Tabs and footers
+- [x] Todo pane: collapse and expand a section from a chevron before its title
+- [x] Todo pane: section titles 1pt larger
+- [x] Todo pane: clear-the-whole-list button (z in a filled circle) right of the footer path
+- [x] Pane window: Move Back control uses arrow.up.right.and.arrow.down.left
+- [x] Pane window: named after its pane or file in the Dock and Window menus; main window is "Ultra"
+- [x] Test builds are Ultra Dev (`build-app.sh --dev`), with their own bundle id and Application Support folder
+- [x] Scratch shell that cds into a project with an Ultra setup is asked to open it
+- [x] Sidebar toggle without the glass capsule
+- [x] Sidebar on the window's own surface, with a hairline on its right edge
+- [x] Selected session row drawn as a capsule
 
-- [x] Editor shows its file tabs only with more than one file open
-- [x] Chat pane gets tabs for several chats, hidden with one
-- [x] Every footer's light/dark toggle sits last, after a small separator
-- [x] Editor caret visible in light mode
-- [x] Build and test
 
 ## What's New
 
-- [x] Drop the launch-time What's New sheet; Ultra ▸ What's New in Ultra… stays
 
 ## Notify when an agent goes quiet
 
@@ -25,21 +25,9 @@ knows the state that matters — `AgentStatusTracker` turns "agent owns the tty 
 printed nothing for 5 s, or for 1 s after a BEL" into `needsInput` — so the notification
 hangs off that transition rather than a new detector.
 
-- [x] `AgentTurnTracker` in UltraTerminal: per pane, remember when `working` began; on `working → needsInput` emit a turn-ended event with the agent's name, the pane, and how long the turn ran. Pure and tested, like the two trackers beside it.
-- [x] Fold it into `AgentMonitor.observeStatuses`, which already has every pane's status each second
-- [x] Policy, in `AgentCompletionPolicy`: notify only when the turn ran at least the minimum (30 s, the existing threshold), the app is not being watched (`isWatching`), and the setting is on. One notification per turn: a pane stays quiet until the next `working`, so the transition fires once by construction.
-- [x] A BEL within the bell window makes the turn-end a report rather than a guess: let it through at a shorter minimum (5 s), since the agent asked. Permission prompts ring too, which is exactly when the user is wanted.
-- [x] Message: "<agent> is waiting" / "Worked for 2m 10s in <session name>" — a turn end is a request for input, not a completion, and the session name says which window to go to
-- [x] Clicking the notification raises the window and selects the session (`SessionList.raise`), then acknowledges the badge
-- [x] Settings: rename the toggle to "Notify me when an agent finishes or waits for me"; keep one switch, not two
-- [x] Stop the idle rule mis-firing on a long tool call: a build that prints nothing for 5 s looks like a turn end. Raise the quiet threshold for the NOTIFICATION only (15 s) while keeping the sidebar's 5 s dot, and let a BEL cut it short.
-- [x] Tests: a working agent that goes quiet for the threshold notifies once; more output before the threshold does not; a quiet shorter than the minimum turn does not; the watched app does not; a BEL shortens the wait
 
 ## After the notifications
 
-- [x] Drop the finished-agent badges from the sidebar; a system notification is the only word on a finished turn
-- [x] A new user's first window is one shell pane (already so: no saved document and no default layout opens `LayoutTree(single:)`; nothing to change)
-- [x] Commit, push main, GitHub release
 
 ## Notification permission
 
@@ -47,21 +35,9 @@ The settings footer says switching notifications on asks macOS for permission, b
 asked until the first notification was due, and that one was posted before the answer came
 and refused. Ultra never appeared in System Settings ▸ Notifications.
 
-- [x] Ask for permission when the toggle turns on, and at launch when it is already on
-- [x] Post each notification from inside the authorization callback so the first is not dropped
-- [x] Build and test
-- [x] Ultra 0.35.0: bump, commit, push, GitHub release
 
 ## Simulator pane, properly
 
-- [x] Device frame on: Xcode's composite body where the chrome has one (phone14/15), nine-part edges stretched rather than tiled (the iPad's faded side bands), per screen for a two-screen device
-- [x] Rotation: `devicectl device orientation rotate`, and the screen turned by its `uiOrientation`, which the pane never read
-- [x] iPhone Duo: show whichever screen is active (`devicectl device info displays`), fold and unfold through SpringBoard's display tool from a small simulator-side helper
-- [x] Footer: the device picker moves into it; power, URL, zoom and appearance stay
-- [x] Floating controls over a running device: Home, Lock, Screenshot, Fold; hold ⌥ for Rotate Left/Right, with a hint in the corner on hover
-- [x] Menu items with key paths for Rotate Left/Right, Fold/Unfold and Show Device Frame
-- [x] Previews, tests, docs
-- [x] Build, test, and run the fresh build as its own window
 
 ## iPhone remote, part 1: the channel
 
@@ -135,17 +111,9 @@ command": the phone has a shell for that.
 
 ## Chat: copy an answer
 
-- [x] A copy icon under every finished answer copies the whole answer, every turn of it, and ticks for a moment
-- [x] Pane ▸ Chat ▸ Copy Last Answer (⇧⌥⌘C), dimmed while an answer is arriving or before there is one
-- [x] Tests for what an answer's text is
 
 ## Move a pane to its own window
 
-- [x] A pane can leave the canvas for a window of its own, in the same session: same project, same shell, same agent socket — only its view moves
-- [x] Pane ▸ Move Pane to New Window, with a key, and the same item on the pane's header menu
-- [x] The window closes back: closing it returns the pane to the canvas rather than killing it; Pane ▸ Move Pane Back to Main Window (⇧⌘M in a pane window) does the same from the keyboard
-- [x] Persisted: a detached pane and its window frame come back on the next launch
-- [x] Tests, build, previews
 
 ## Simulator: a soft enclosure, a finish, and Edit / Preview
 
@@ -155,11 +123,6 @@ radius — so that is kept and the artwork is replaced. A 3D body (first in Core
 then in Metal with a studio light and a shadow) was built, looked at, and taken out: a
 drawing of a phone round a phone, when the pane is for the app.
 
-- [x] `DeviceFamily` from the device type, and `DeviceFinish`: the real finishes of each generation, with a fallback for a device newer than the list
-- [x] `DeviceEnclosure`: a soft body in the finish's colour with black glass set into it, from Xcode's geometry; no cameras, buttons or ports, no shadow
-- [x] Colour dots over the top of the device switch the finish; Next/Previous Finish in the palette; the finish is saved with the pane
-- [x] Edit / Preview: ⌃⌘E, the pill's first control, the footer; in Preview nothing reaches the device; saved with the pane
-- [x] Tests, previews, docs
 
 ## Agent states in the session list
 
@@ -168,13 +131,7 @@ needs you (an orange ringed dot), done and not read yet (a filled check, the nam
 done (a small check), inactive (a moon, the name dimmed). Rows with no agent history stay
 clean.
 
-- [x] `AgentState` + `AgentStateTracker` in UltraTerminal: quiet becomes done only after the turn tracker's silence or a bell; done is unread until its session is looked at; an hour after that it is inactive
-- [x] `AgentPrompt`: "needs you" read from the bottom of the agent's screen — a question over a numbered menu, a y/n — so a finished agent and an asking one are told apart
-- [x] Each agent sample carries the screen's last lines; `AgentMonitor` folds readings and the viewed sessions (key window's selected session, or its pane window) into states, and a once-a-minute clock for the ages
-- [x] Sidebar row: age column and symbol in the trailing slot, bold name while unread, dimmed when inactive, the state spoken to VoiceOver
-- [x] Tests for prompts (Claude Code's box, Codex's "Allow command?", y/n, a finished screen) and every transition; a preview of the five states
 
 ## Simulator pane switched off
 
-- [x] `TileFactory.offersSimulator` off: no pane kind, no Pane ▸ Simulator menu or palette commands, the agent `simulator` verb refuses, AGENTS.md stops advertising it, a saved Simulator pane opens as a shell
 - [ ] Bring it back when a touch reliably reaches a device that was already running when the pane connected

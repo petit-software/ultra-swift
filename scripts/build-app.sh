@@ -10,14 +10,24 @@
 # app could only be rebuilt on a machine that had already built it once.
 #
 # Ad-hoc signed. Developer ID signing and notarization are a later milestone.
+#
+# --dev builds "Ultra Dev.app" instead: the same app under its own name and bundle id, so a
+# build being tried runs BESIDE the Ultra in use rather than replacing it. Same id and
+# LaunchServices hands `open` to the copy already running; same name and the Dock, the app
+# switcher and the menu bar cannot say which one is which. The id also gives it its own
+# defaults and its own Application Support folder (`AppSupport`), so it never loads or
+# rewrites the saved workspaces of the Ultra in use. Every build made to test a change is
+# this one; plain Ultra.app is the user's own copy, and what scripts/release.sh packages.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-APP="Ultra.app"
+NAME="Ultra"
+if [ "${1:-}" = "--dev" ]; then NAME="Ultra Dev"; fi
+APP="$NAME.app"
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 
-echo "Building Ultra $VERSION ($BUILD_NUMBER) — release…"
+echo "Building $NAME $VERSION ($BUILD_NUMBER) — release…"
 swift build -c release --product Ultra
 
 mkdir -p "$APP/Contents/MacOS"
@@ -37,6 +47,12 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "$APP/Contents/Info.plist" 2>/dev/null || true
 # The build number tracks the commit count, so About can tell two builds apart.
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
+if [ "$NAME" != "Ultra" ]; then
+  BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Resources/Info.plist)"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID.dev" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName $NAME" "$APP/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $NAME" "$APP/Contents/Info.plist"
+fi
 
 # --- SwiftPM resource bundles -----------------------------------------------------------
 # A package target with `resources:` compiles them into a `<Package>_<Target>.bundle` left in
@@ -97,4 +113,8 @@ codesign --verify --deep --strict "$APP" && echo "signature OK"
 touch "$APP"
 
 echo "Built $APP — version $VERSION ($BUILD_NUMBER)"
-echo "Quit any running Ultra, then: open $APP"
+if [ "$NAME" = "Ultra" ]; then
+  echo "Quit any running Ultra, then: open $APP"
+else
+  echo "Runs beside Ultra: open \"$APP\""
+fi

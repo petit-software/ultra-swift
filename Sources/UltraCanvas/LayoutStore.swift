@@ -133,6 +133,12 @@ public final class LayoutStore {
         // `didSet` does not run during init, and a pane built before the first theme change
         // would otherwise wear the store's default rather than this window's.
         self.surfaces.apply(theme: theme)
+        // A pane window restored from a document has no records until its canvas first lays
+        // its panes out; its name is only known then.
+        surfaces.onBuild = { [weak self] paneID in
+            guard let self, tree.focused == paneID else { return }
+            refreshWindowTitle()
+        }
         // Header controls call exactly the same verbs as the menu and the palette.
         surfaces.actions.split = { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) }
         surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }
@@ -304,12 +310,26 @@ public final class LayoutStore {
     /// value has to be pushed onto the store that IS observed, or the tab label silently
     /// stops following the shell.
     public func refreshWindowTitle() {
-        let name = surfaces.records[tree.focused]?.cwd
+        let name = isPaneWindow ? paneName : surfaces.records[tree.focused]?.cwd
             .map { URL(fileURLWithPath: $0).lastPathComponent }
             .flatMap { $0.isEmpty ? nil : $0 }
         // A pane with no directory of its own — a tile — leaves the project name showing
         // rather than blanking the tab.
-        windowTitle = name ?? workspaceTitle
+        let title = name ?? workspaceTitle
+        // Called from every layout pass that builds a pane, and an observed property set to
+        // the value it already holds still invalidates every view that reads it.
+        if windowTitle != title { windowTitle = title }
+    }
+
+    /// A pane window is named for what its focused pane is SHOWING — the header's own title:
+    /// the file an editor has open, the page a browser is on, the agent or folder a shell
+    /// is in. A shell's title is a path, and a path is named by its last folder, the way
+    /// the main window's tab is.
+    private var paneName: String? {
+        guard let title = surfaces.records[tree.focused]?.title, !title.isEmpty else { return nil }
+        guard title.hasPrefix("/") || title.hasPrefix("~") else { return title }
+        let last = URL(fileURLWithPath: title).lastPathComponent
+        return last.isEmpty || last == "~" ? title : last
     }
 
     public func moveFocus(_ direction: Edge) {
@@ -503,6 +523,12 @@ extension Edge {
 extension LayoutStore {
     public var isPaneWindow: Bool { owner != nil }
 
+    /// What macOS calls this canvas's window — in the Dock's menu, the Window menu and
+    /// Mission Control. The main window is the app's, so it is "Ultra"; a pane window is
+    /// its pane's, so it takes the name the pane's header shows (`windowTitle`), which is
+    /// how two windows of one app are told apart in a list of them.
+    public var systemWindowTitle: String { isPaneWindow ? windowTitle : "Ultra" }
+
     /// The session's own store, whichever canvas this is.
     public var session: LayoutStore { owner ?? self }
 
@@ -554,14 +580,16 @@ extension LayoutStore {
     }
 
     /// The pane's window entry for its header menu: out to a window of its own, or back.
-    func windowMove(for paneID: PaneID) -> (title: String, run: () -> Void)? {
+    /// Back wears the arrows pointing IN, the same glyph as the pane window's own control
+    /// and the menu item, so the three read as one verb.
+    func windowMove(for paneID: PaneID) -> (title: String, symbol: String, run: () -> Void)? {
         if isPaneWindow {
-            return ("Move Pane Back to Main Window", { [weak self] in
+            return ("Move Pane Back to Main Window", "arrow.up.right.and.arrow.down.left", { [weak self] in
                 self?.moveBackToMainWindow(paneID)
             })
         }
         guard canMoveToNewWindow(paneID) else { return nil }
-        return ("Move Pane to New Window", { [weak self] in self?.moveToNewWindow(paneID) })
+        return ("Move Pane to New Window", "macwindow", { [weak self] in self?.moveToNewWindow(paneID) })
     }
 
     /// Pane windows from a saved document, before any of their panes is built: the panes
@@ -622,6 +650,8 @@ extension LayoutStore {
         }
         let window = makePaneWindow(tree: windowTree, frame: nil)
         for paneID in moving { surfaces.handOver(paneID, to: window.surfaces) }
+        // Named once its pane's record has come across with it.
+        window.refreshWindowTitle()
         commitWithoutUndo(candidate)
         onPaneWindowCreated?(window)
         return window

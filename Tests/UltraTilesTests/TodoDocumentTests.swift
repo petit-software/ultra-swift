@@ -129,6 +129,16 @@ struct TodoDocumentTests {
         #expect(document.text == before)
     }
 
+    @Test("clearing the whole list leaves nothing, and a blank file counts as nothing")
+    func removeAll() {
+        #expect(TodoDocument(text: "\n  \n").isBlank)
+        var document = TodoDocument(text: "# Plan\n\n- [ ] a\nprose\n")
+        #expect(!document.isBlank)
+        document.removeAll()
+        #expect(document.text == "")
+        #expect(document.isBlank)
+    }
+
 
     @Test("progress counts task lines only: not headings, prose or fenced lines")
     func progress() {

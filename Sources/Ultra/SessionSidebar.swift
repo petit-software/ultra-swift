@@ -42,6 +42,43 @@ struct SessionSidebar: View {
     }
 
     var body: some View {
+        // The WINDOW's surface under the list, not the sidebar's own. On macOS 26 the column
+        // is a glass panel holding its content, and that glass read as a second, darker
+        // surface beside the canvas. It cannot be taken off — it IS the column — so the
+        // window's material is laid inside it instead, the same view `RootView` puts behind
+        // the canvas, and a hairline is all that parts the two.
+        ZStack {
+            if Token.Environment_.reduceTransparency {
+                Token.Colour.tileBackground.ignoresSafeArea()
+            } else {
+                // The LEFT corners only: those are the window's, and the right edge meets
+                // the canvas along the hairline.
+                WindowSurface(corners: [.layerMinXMinYCorner, .layerMinXMaxYCorner])
+                    .ignoresSafeArea()
+            }
+            list
+        }
+        // One kind of thing in one group, so a header would be a word explaining a list that
+        // explains itself. The editor's sidebar has two sections because it holds two kinds.
+        .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(Token.Colour.separator)
+                .frame(width: 1)
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
+                // In the overlay because a `background` on the column's root is never built.
+                .background(SidebarSelectionHider())
+        }
+        // Under the list, which is where every source list on this platform puts "add" —
+        // Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a toolbar item, up
+        // in the strip the traffic lights own and a long way from the list it adds to.
+        .overlay(alignment: .bottom) {
+            SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder)
+        }
+    }
+
+    private var list: some View {
         List(selection: selection) {
             ForEach(sessions.sessions, id: \.workspaceID) { store in
                 SessionRow(store: store,
@@ -52,6 +89,13 @@ struct SessionSidebar: View {
                            rename: { sessions.rename(store.workspaceID, to: $0) },
                            close: { ui.closingSessionID = store.workspaceID })
                     .tag(store.workspaceID)
+                    // The selection, drawn here as a capsule — see `.tint(.clear)` below.
+                    .listRowBackground(
+                        Capsule(style: .continuous)
+                            .fill(Token.Colour.selectionWash)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 1)
+                            .opacity(sessions.selectedID == store.workspaceID ? 1 : 0))
             }
             // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
             // is possible, including the insertion line and the drag image.
@@ -63,10 +107,11 @@ struct SessionSidebar: View {
                 sessions.move(fromOffsets: offsets, toOffset: destination)
             }
         }
-        // A sidebar list draws its selection in the TINT colour, so this is how the
-        // selected row gets a neutral wash instead of a slab of accent — see
-        // `Token.Colour.selectionWash` for why a coloured one fights the row's own icon.
-        .tint(Token.Colour.selectionWash)
+        // A sidebar list draws its selection in the TINT colour, as a rounded rectangle
+        // whose radius there is no way to set. Clear, so the list's own goes unseen, and the
+        // row's background above draws it instead: fully rounded, in the neutral wash —
+        // see `Token.Colour.selectionWash` for why a coloured one fights the row's own icon.
+        .tint(.clear)
         // The footer floats OVER the list, and the list's content — not the list itself —
         // is inset to clear it. `safeAreaInset` was the obvious spelling and it is the wrong
         // one, for the reason written out on `View.tileFooter`: it shrinks the container, so
@@ -74,15 +119,50 @@ struct SessionSidebar: View {
         // ramp has nothing to fade against. Which made the footer read as a bar bolted on —
         // which is what the divider was there to justify.
         .contentMargins(.bottom, Token.Space.tileHeaderHeight, for: .scrollContent)
-        // One kind of thing in one group, so a header would be a word explaining a list that
-        // explains itself. The editor's sidebar has two sections because it holds two kinds.
-        .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
+        // The list draws nothing of its own behind the rows: the surface is the ZStack's.
+        .scrollContentBackground(.hidden)
         .accessibilityLabel("Sessions")
-        // Under the list, which is where every source list on this platform puts "add" —
-        // Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a toolbar item, up
-        // in the strip the traffic lights own and a long way from the list it adds to.
-        .overlay(alignment: .bottom) {
-            SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder)
+    }
+}
+
+/// Stops the sidebar list drawing its own selection, so the row's capsule is the only one.
+///
+/// A sidebar `List` draws its selection as a rounded rectangle there is no way to reshape,
+/// and `.tint(.clear)` hides it only while the list has the keyboard — the rest of the time
+/// it draws in grey, behind the capsule, as a second shape round the first. The list is an
+/// `NSTableView` underneath, and a table can be told to draw no selection at all; selection
+/// itself, the arrow keys and the binding are untouched. SwiftUI has no say over that, so
+/// the table is found from a probe inside the column.
+///
+/// Re-applied on every update and on being moved into a window, since collapsing and
+/// reopening the column can build the list again.
+private struct SidebarSelectionHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ view: NSView, context: Context) { (view as? Probe)?.apply() }
+
+    private final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Next turn: the list is built after this probe is in the window.
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func apply() {
+            // Up to the column — the view the split view holds — then down to the table.
+            var column: NSView? = self
+            while let view = column, !(view.superview is NSSplitView) { column = view.superview }
+            guard let column else { return }
+            Self.unhighlight(in: column)
+        }
+
+        private static func unhighlight(in view: NSView) {
+            if let table = view as? NSTableView {
+                if table.selectionHighlightStyle != .none { table.selectionHighlightStyle = .none }
+                return
+            }
+            for subview in view.subviews { unhighlight(in: subview) }
         }
     }
 }

@@ -75,11 +75,11 @@ public struct CanvasSurface: View {
         // the column beside it. The top is still ignored so the backdrop runs behind the
         // transparent titlebar, which is where the glass reading comes from.
         .ignoresSafeArea(edges: .top)
-        // The PROJECT's name, which is what the window is called — the same string
-        // `RootView` gives `navigationTitle`, so the two writers of `window.title` cannot
-        // disagree about what it says.
+        // What macOS calls the window — the same string `RootView` and `PaneWindowView`
+        // give `navigationTitle`, so the two writers of `window.title` cannot disagree
+        // about what it says. See `LayoutStore.systemWindowTitle`.
         .background(WindowChrome(theme: store.theme,
-                                 title: store.workspaceTitle) { store.noteWindowFrame($0) })
+                                 title: store.systemWindowTitle) { store.noteWindowFrame($0) })
     }
 }
 
@@ -209,16 +209,26 @@ public struct WindowChrome: NSViewRepresentable {
 /// titlebar, this material is what shows through up there too. The tint is laid ON the
 /// material, not mixed into it, so 30% means 30% regardless of what is behind the window.
 public struct WindowSurface: NSViewRepresentable {
-    public init() {}
+    /// The corners rounded to `windowRadius`. All four for the window; a surface that lies
+    /// against another inside the window — the session sidebar's — rounds only the corners
+    /// that are the window's own, or its square edge would show as a notch.
+    private let corners: CACornerMask
+
+    public init(corners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
+                                         .layerMinXMaxYCorner, .layerMaxXMaxYCorner]) {
+        self.corners = corners
+    }
 
     public func makeNSView(context: Context) -> NSVisualEffectView {
         let view = WindowSurfaceView()
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
+        view.corners = corners
         return view
     }
 
     public func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        (nsView as? WindowSurfaceView)?.corners = corners
         nsView.needsLayout = true
     }
 }
@@ -230,6 +240,8 @@ final class WindowSurfaceView: NSVisualEffectView {
     /// A sublayer rather than a background colour: `NSVisualEffectView` paints its material
     /// over its own layer's background, so a tint set there would simply not be visible.
     private let tint = CALayer()
+    var corners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
+                                 .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
 
     /// Its own observer, deliberately.
     ///
@@ -263,12 +275,14 @@ final class WindowSurfaceView: NSVisualEffectView {
         CATransaction.setDisableActions(true)
         layer.cornerRadius = Token.Space.windowRadius
         layer.cornerCurve = .continuous
+        layer.maskedCorners = corners
         layer.masksToBounds = true
 
         if tint.superlayer == nil { layer.addSublayer(tint) }
         tint.frame = bounds
         tint.cornerRadius = Token.Space.windowRadius
         tint.cornerCurve = .continuous
+        tint.maskedCorners = corners
         applyColours()
         CATransaction.commit()
         // The shadow is cast from the window's alpha, so it is recomputed whenever the

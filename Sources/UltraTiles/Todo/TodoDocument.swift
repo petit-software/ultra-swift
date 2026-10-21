@@ -384,6 +384,16 @@ public struct TodoDocument: Equatable, Sendable {
         return before - lines.count
     }
 
+    /// Every line, gone: tasks, sections and the prose between them. The file is kept, empty.
+    public mutating func removeAll() {
+        lines.removeAll()
+    }
+
+    /// Nothing but whitespace — nothing a clear would take away.
+    public var isBlank: Bool {
+        lines.allSatisfy { $0.content.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     /// How many tasks are ticked, for the control that clears them.
     public var completedCount: Int {
         lines.reduce(0) { $0 + (Self.parseTask($1.content)?.done == true ? 1 : 0) }
