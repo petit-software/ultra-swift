@@ -372,7 +372,7 @@ public final class PaneContainerView: NSView {
     }
 
     public var isFocused: Bool = false {
-        didSet { guard isFocused != oldValue else { return }; refresh() }
+        didSet { guard isFocused != oldValue else { return }; applyBackdrop(); refresh() }
     }
 
     /// The pane's surface colour, and the ONE place background opacity is painted.
@@ -418,10 +418,19 @@ public final class PaneContainerView: NSView {
     /// painted solid it put a blue cast on every pane. Opaque whatever the opacity setting
     /// says — that setting tints glass, and with no material under it a translucent sheet
     /// would show the bare desktop through the pane.
+    ///
+    /// Glass off, a pane without focus is a shade darker than the focused one. Glass lets
+    /// the panes differ by what is behind each; solid sheets are all the same grey, and the
+    /// ring alone was carrying focus. Dark mode takes a bigger share of black because its
+    /// sheet is already near it, and the same fraction there would not show.
     private func applyBackdrop() {
         guard Appearance.paneGlass else {
             effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
-                clip.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+                let sheet = NSColor.controlBackgroundColor
+                let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                let shade: CGFloat = isFocused ? 0 : (isDark ? 0.18 : 0.04)
+                clip.layer?.backgroundColor = (sheet.blended(withFraction: shade, of: .black)
+                                               ?? sheet).cgColor
             }
             return
         }

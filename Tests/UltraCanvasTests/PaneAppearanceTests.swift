@@ -57,6 +57,27 @@ struct PaneAppearanceTests {
         #expect(colour.brightnessComponent < 0.3)
     }
 
+    @Test("glass off, a pane without focus is a shade darker than the focused one",
+          arguments: [PaneRecord.Appearance.dark, .light])
+    func unfocusedIsDarkerWithoutGlass(_ look: PaneRecord.Appearance) throws {
+        let name = "ultra.tests.paneAppearance.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) }
+        try Preferences.withStore(suite) {
+            Appearance.paneGlass = false
+            let store = store(appearance: look)
+            let pane = store.surfaces.surface(for: try #require(store.tree.paneIDs.first))
+            pane.isFocused = true
+            let focused = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+            pane.isFocused = false
+            let unfocused = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+            #expect(unfocused.brightnessComponent < focused.brightnessComponent)
+            // A shade, not a different colour: still opaque, still near the focused sheet.
+            #expect(unfocused.alphaComponent == 1)
+            #expect(focused.brightnessComponent - unfocused.brightnessComponent < 0.06)
+        }
+    }
+
     @Test("an old document with no appearance field still decodes")
     func decodesOldRecords() throws {
         let json = #"{"kind":"shell","title":"zsh","icon":"apple.terminal"}"#
