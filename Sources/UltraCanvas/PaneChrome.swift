@@ -344,6 +344,9 @@ public final class PaneContainerView: NSView {
     /// The pane's surface: real Liquid Glass, rounded, with the tile's content inside it.
     /// The container itself stays unclipped so it can cast a shadow.
     private let glass = NSGlassEffectView()
+    /// The surface with the glass turned off: the desktop behind the window, blurred, with
+    /// no lens. See `mountSurface`.
+    private let frost = NSVisualEffectView()
 
     /// The focused pane's ring.
     ///
@@ -411,27 +414,27 @@ public final class PaneContainerView: NSView {
     /// opaque sheet of paper, whatever the opacity setting says. A pane pinned dark keeps
     /// the window's own glass, which is already dark.
     ///
-    /// With the glass turned off (`Appearance.paneGlass`) the sheet is the system's control
-    /// background, opaque, resolved in the pane's own appearance: a dark pane is the neutral
-    /// grey of a dark window, a light one is white. NOT the theme's background: that colour
-    /// is a cold navy chosen to sit under glass at opacity zero, where it is never seen, and
-    /// painted solid it put a blue cast on every pane. Opaque whatever the opacity setting
-    /// says — that setting tints glass, and with no material under it a translucent sheet
-    /// would show the bare desktop through the pane.
+    /// With the glass turned off (`Appearance.paneGlass`) the pane is frosted: the clip sits
+    /// on `frost`, which blurs what is behind it, and paints no sheet of its own
+    /// — NOT the theme's background, a cold navy chosen to sit under glass at opacity zero,
+    /// which painted over the blur put a blue cast on every pane. It was a solid sheet of
+    /// control background once, and every pane was then the same flat grey on a window that
+    /// is otherwise all material.
     ///
-    /// Glass off, a pane without focus is a shade darker than the focused one. Glass lets
-    /// the panes differ by what is behind each; solid sheets are all the same grey, and the
-    /// ring alone was carrying focus. Dark mode takes a bigger share of black because its
-    /// sheet is already near it, and the same fraction there would not show.
+    /// Glass off, the wash of black over the blur differs with focus — in dark the focused
+    /// pane takes more, see `Appearance.frostFocusedTintDark`. Glass lets the panes differ
+    /// by the lens over what is behind each; one frost is the same in every pane, and the
+    /// ring alone was carrying focus.
     private func applyBackdrop() {
         guard Appearance.paneGlass else {
-            effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
-                let sheet = NSColor.controlBackgroundColor
-                let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-                let shade: CGFloat = isFocused ? 0 : (isDark ? 0.18 : 0.04)
-                clip.layer?.backgroundColor = (sheet.blended(withFraction: shade, of: .black)
-                                               ?? sheet).cgColor
+            let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let shade = switch (isDark, isFocused) {
+            case (true, true): Appearance.frostFocusedTintDark
+            case (true, false): Appearance.frostUnfocusedTintDark
+            case (false, true): Appearance.frostFocusedTintLight
+            case (false, false): Appearance.frostUnfocusedTintLight
             }
+            clip.layer?.backgroundColor = NSColor.black.withAlphaComponent(shade).cgColor
             return
         }
         let colour: NSColor = switch paneAppearance {
@@ -443,9 +446,16 @@ public final class PaneContainerView: NSView {
         clip.layer?.backgroundColor = colour.cgColor
     }
 
-    /// The pane's surface: the clip inside the glass, or — glass off — the clip on its own,
-    /// a solid sheet in the glass's place. Re-mounted only when the setting has changed
-    /// since the last look, since moving a view with a live terminal in it is not free.
+    /// The pane's surface: the clip inside the glass, or — glass off — the clip on `frost`,
+    /// a behind-window blur in the glass's place. Re-mounted only when the setting has
+    /// changed since the last look, since moving a view with a live terminal in it is not
+    /// free.
+    ///
+    /// Within-window by default: a pane blurs the window's own smoked surface behind it
+    /// rather than the desktop, so a busy wallpaper does not come through every pane
+    /// (`Appearance.frostSource`). It follows the window's active state, as that surface
+    /// does: an inactive window goes flat all at once, panes included. All of it, and the
+    /// material, are `Appearance.frost…` settings, applied in `applyAppearance`.
     private func mountSurface() {
         let wantsGlass = Appearance.paneGlass
         guard wantsGlass != (glass.contentView === clip) else { return }
@@ -453,12 +463,13 @@ public final class PaneContainerView: NSView {
             clip.removeFromSuperview()
             glass.contentView = clip
             glass.isHidden = false
+            frost.isHidden = true
         } else {
             glass.contentView = nil
             clip.removeFromSuperview()
             glass.isHidden = true
-            // Under the ring, which stays the topmost view whatever the surface is.
-            addSubview(clip, positioned: .below, relativeTo: ring)
+            frost.addSubview(clip)
+            frost.isHidden = false
         }
         applyBackdrop()
     }
@@ -475,6 +486,11 @@ public final class PaneContainerView: NSView {
         mountSurface()
         let radius = Token.Space.paneRadius
         clip.layer?.cornerRadius = radius
+        frost.layer?.cornerRadius = radius
+        frost.material = Appearance.frostMaterial.material
+        frost.blendingMode = Appearance.frostSource.blending
+        frost.state = Appearance.frostAlwaysActive ? .active : .followsWindowActiveState
+        applyBackdrop()
         glass.cornerRadius = radius
         glass.style = Appearance.glassStyle.style
         // Resolved inside the view's appearance: the accent can be System Accent, which is
@@ -526,6 +542,11 @@ public final class PaneContainerView: NSView {
 
         ring.isHidden = true
 
+        frost.wantsLayer = true
+        frost.layer?.cornerCurve = .continuous
+        frost.layer?.masksToBounds = true
+        frost.isHidden = true
+
         // The tile's content lives INSIDE the glass, which is what `NSGlassEffectView`
         // expects — the material is the pane's surface, not a layer stacked behind it.
         glass.contentView = clip
@@ -535,6 +556,7 @@ public final class PaneContainerView: NSView {
 
         header.focusRingType = .none
         addSubview(glass)
+        addSubview(frost)
         clip.addSubview(content)
         clip.addSubview(header)
         clip.addSubview(dragHandle)
@@ -714,7 +736,7 @@ public final class PaneContainerView: NSView {
     public override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         applyLayerState()
-        // The glass-off sheet is a system colour resolved once; it does not re-resolve.
+        // How dark the glass-off wash is depends on the appearance, and is chosen here.
         applyBackdrop()
     }
 
@@ -733,6 +755,7 @@ public final class PaneContainerView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         glass.frame = bounds
+        frost.frame = bounds
         clip.frame = bounds
         let inset = Token.Space.focusRingInset
         ring.frame = bounds.insetBy(dx: inset, dy: inset)

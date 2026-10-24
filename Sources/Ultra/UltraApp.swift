@@ -330,6 +330,11 @@ final class WorkspaceModel {
 /// itself; with the app running, a window is opened for them.
 @MainActor
 final class FileOpening: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // ⌘W is the pane's, and macOS 27 puts its own Close on it. See `StockCloseItems`.
+        StockCloseItems.start()
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return }
@@ -543,10 +548,17 @@ struct WorkspaceCommands: Commands {
         // `pane.close` never had the key to begin with: SwiftUI saw the duplicate and dropped
         // the shortcut, leaving Pane ▸ Close Pane showing no binding at all while ⌘W quietly
         // closed the window — and with it the app, since closing the last window quits.
+        // Since macOS 27 replacing the group is no longer enough: AppKit adds a Close of its
+        // own outside it, and `StockCloseItems` takes that out. Nor is the group drawn any
+        // more — what it held went missing from File altogether — so it stays empty, and
+        // its items follow New in a group that is.
         //
         // Closing a window is still one keystroke away, just the shifted one, which is the
         // arrangement Terminal and iTerm both settled on.
-        CommandGroup(replacing: .saveItem) {
+        CommandGroup(replacing: .saveItem) {}
+        CommandGroup(after: .newItem) {
+            Divider()
+
             Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
             // `windows` includes panels and the offscreen ones AppKit keeps around, so this

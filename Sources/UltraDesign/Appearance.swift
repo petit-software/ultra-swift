@@ -92,15 +92,137 @@ public enum Appearance {
         }
     }
 
+    /// The material a pane is frosted with when the glass is off. Every material
+    /// `NSVisualEffectView` has, since which one reads best over a busy desktop is a
+    /// thing to look at rather than to reason about.
+    public enum FrostMaterial: String, CaseIterable, Sendable, Identifiable {
+        case popover, menu, hudWindow, sidebar, headerView, titlebar, sheet, windowBackground,
+             underWindowBackground, underPageBackground, contentBackground, fullScreenUI,
+             toolTip, selection
+
+        public var id: String { rawValue }
+
+        public var title: String {
+            switch self {
+            case .popover: "Popover"
+            case .menu: "Menu"
+            case .hudWindow: "HUD"
+            case .sidebar: "Sidebar"
+            case .headerView: "Header"
+            case .titlebar: "Titlebar"
+            case .sheet: "Sheet"
+            case .windowBackground: "Window Background"
+            case .underWindowBackground: "Under Window"
+            case .underPageBackground: "Under Page"
+            case .contentBackground: "Content Background"
+            case .fullScreenUI: "Full Screen UI"
+            case .toolTip: "Tooltip"
+            case .selection: "Selection"
+            }
+        }
+
+        public var material: NSVisualEffectView.Material {
+            switch self {
+            case .popover: .popover
+            case .menu: .menu
+            case .hudWindow: .hudWindow
+            case .sidebar: .sidebar
+            case .headerView: .headerView
+            case .titlebar: .titlebar
+            case .sheet: .sheet
+            case .windowBackground: .windowBackground
+            case .underWindowBackground: .underWindowBackground
+            case .underPageBackground: .underPageBackground
+            case .contentBackground: .contentBackground
+            case .fullScreenUI: .fullScreenUI
+            case .toolTip: .toolTip
+            case .selection: .selection
+            }
+        }
+    }
+
+    /// What a frosted pane blurs: the desktop behind the window, or the window's own
+    /// surface behind the pane.
+    public enum FrostSource: String, CaseIterable, Sendable, Identifiable {
+        case desktop, window
+        public var id: String { rawValue }
+        public var title: String { rawValue.capitalized }
+
+        public var blending: NSVisualEffectView.BlendingMode {
+            switch self {
+            case .desktop: .behindWindow
+            case .window: .withinWindow
+            }
+        }
+    }
+
     // MARK: - Glass
 
-    /// Whether a pane is Liquid Glass at all. Off, every pane is a solid sheet of the
-    /// system's control background — flat, opaque, and lighter on the GPU. The ONE look switch in
-    /// Settings (General ▸ Appearance): the material is the product, but it is also the
-    /// one thing about the look a user may want none of, on a busy desktop or an old Mac.
+    /// Whether a pane is Liquid Glass at all. Off, every pane is a plain blur — frosted,
+    /// with no lens and no refraction at its edges. The ONE look switch in Settings
+    /// (General ▸ Appearance).
+    ///
+    /// Off by default since the frosted pane was tuned against a real desktop (Ultra Dev's
+    /// Tuning tab, 2026-10-24): the glass's lens bent whatever sat behind the window into
+    /// every pane, and the frost — the `frost…` values below, under a HUD window — read as
+    /// one calm surface where the glass read as a dozen.
     public static var paneGlass: Bool {
-        get { PreferenceStore.flag(key("paneGlass"), default: true) }
+        get { PreferenceStore.flag(key("paneGlass"), default: false) }
         set { PreferenceStore.setFlag(key("paneGlass"), newValue, current: paneGlass) }
+    }
+
+    // MARK: - Frost (glass off)
+
+    /// `.selection`: of every material, the one that stays a quiet blur under the focused
+    /// pane's 50% wash instead of going to flat grey.
+    public static var frostMaterial: FrostMaterial {
+        get { choice("frostMaterial", default: .selection) }
+        set { setChoice("frostMaterial", newValue, current: frostMaterial) }
+    }
+
+    /// The window's own surface, not the desktop: a pane that blurred the desktop let a busy
+    /// wallpaper through every pane, where blurring the window's smoked HUD material keeps
+    /// the panes of a piece with the window round them.
+    public static var frostSource: FrostSource {
+        get { choice("frostSource", default: .window) }
+        set { setChoice("frostSource", newValue, current: frostSource) }
+    }
+
+    /// Keep the blur while the window is in the background. Off, a frosted pane goes flat
+    /// with the window's own surface when another app is in front.
+    public static var frostAlwaysActive: Bool {
+        get { PreferenceStore.flag(key("frostAlwaysActive"), default: false) }
+        set { PreferenceStore.setFlag(key("frostAlwaysActive"), newValue, current: frostAlwaysActive) }
+    }
+
+    /// How much black is washed over a frosted pane, by appearance and focus. The two
+    /// differ, which is what tells the focused pane from the rest besides the ring.
+    ///
+    /// In dark the FOCUSED pane takes more, 50% against 25%: the one being typed into sits
+    /// deeper and steadier, and the others stay lighter, more of the window. In light it
+    /// is the other way round and slight, since a light pane is a pinned page of paper.
+    public static var frostFocusedTintDark: CGFloat {
+        get { PreferenceStore.number(key("frostFocusedTintDark"), default: 0.5, in: 0...1) }
+        set { PreferenceStore.setNumber(key("frostFocusedTintDark"), newValue,
+                                        current: frostFocusedTintDark, in: 0...1) }
+    }
+
+    public static var frostUnfocusedTintDark: CGFloat {
+        get { PreferenceStore.number(key("frostUnfocusedTintDark"), default: 0.25, in: 0...1) }
+        set { PreferenceStore.setNumber(key("frostUnfocusedTintDark"), newValue,
+                                        current: frostUnfocusedTintDark, in: 0...1) }
+    }
+
+    public static var frostFocusedTintLight: CGFloat {
+        get { PreferenceStore.number(key("frostFocusedTintLight"), default: 0, in: 0...1) }
+        set { PreferenceStore.setNumber(key("frostFocusedTintLight"), newValue,
+                                        current: frostFocusedTintLight, in: 0...1) }
+    }
+
+    public static var frostUnfocusedTintLight: CGFloat {
+        get { PreferenceStore.number(key("frostUnfocusedTintLight"), default: 0.05, in: 0...1) }
+        set { PreferenceStore.setNumber(key("frostUnfocusedTintLight"), newValue,
+                                        current: frostUnfocusedTintLight, in: 0...1) }
     }
 
     public static var glassStyle: GlassStyle {
@@ -213,23 +335,26 @@ public enum Appearance {
 
     // MARK: - Window
 
-    /// `.popover` rather than `.underWindowBackground`, which the app first shipped with.
+    /// `.hudWindow`, after `.popover`, after `.underWindowBackground`, which the app first
+    /// shipped with.
     ///
     /// A window full of terminals wants a darker, less transparent material than a document
     /// window does: `.underWindowBackground` is tuned for sitting over a desktop, so whatever
     /// happened to be behind Ultra came through the gutters and read as noise between the
-    /// panes rather than as one surface. Popover, under a 72% dark tint, is the one that
-    /// settled into a single quiet surface. The rest of the list is still there for anyone
-    /// comparing through `defaults write`.
+    /// panes rather than as one surface. Popover, under a 72% dark tint, settled that while
+    /// the panes were glass. With frosted panes that blur the window itself
+    /// (`frostSource`), the window's material is what every pane is made of, and HUD under
+    /// an 80% tint is the darker, steadier one they were tuned on. The rest of the list is
+    /// still there for anyone comparing through `defaults write`.
     public static var windowMaterial: WindowMaterial {
-        get { choice("windowMaterial", default: .popover) }
+        get { choice("windowMaterial", default: .hudWindow) }
         set { setChoice("windowMaterial", newValue, current: windowMaterial) }
     }
 
     /// How much black is laid over the material in dark appearance, so the glass reads as
     /// smoked rather than as clear frost.
     public static var windowTintDark: CGFloat {
-        get { PreferenceStore.number(key("windowTintDark"), default: 0.72, in: 0...1) }
+        get { PreferenceStore.number(key("windowTintDark"), default: 0.80, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowTintDark"), newValue,
                                         current: windowTintDark, in: 0...1) }
     }
@@ -238,7 +363,7 @@ public enum Appearance {
     /// more of itself to read as a surface than black needs to read as smoke, which is why
     /// the two defaults are not the same number.
     public static var windowTintLight: CGFloat {
-        get { PreferenceStore.number(key("windowTintLight"), default: 0.45, in: 0...1) }
+        get { PreferenceStore.number(key("windowTintLight"), default: 0.50, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowTintLight"), newValue,
                                         current: windowTintLight, in: 0...1) }
     }
@@ -274,8 +399,11 @@ public enum Appearance {
     /// How much the header darkens — or, in light appearance, lightens — at its solid edge.
     /// Blur separates a title from a busy backdrop; over a near-uniform one this is what
     /// does the work.
+    ///
+    /// Zero by default since the frosted panes: their wash already sets the title off, and a
+    /// second band of darkening across the top of each pane read as a seam.
     public static var headerTintOpacity: CGFloat {
-        get { PreferenceStore.number(key("headerTintOpacity"), default: 0.14, in: 0...1) }
+        get { PreferenceStore.number(key("headerTintOpacity"), default: 0, in: 0...1) }
         set { PreferenceStore.setNumber(key("headerTintOpacity"), newValue,
                                         current: headerTintOpacity, in: 0...1) }
     }
@@ -291,6 +419,8 @@ public enum Appearance {
     public static let keys = [
         "paneGlass", "glassStyle", "glassTint", "glassTintStrength", "mergesPaneGlass",
         "glassMergeSpacing",
+        "frostMaterial", "frostSource", "frostAlwaysActive", "frostFocusedTintDark",
+        "frostUnfocusedTintDark", "frostFocusedTintLight", "frostUnfocusedTintLight",
         "paneRadius", "paneShadowRadius", "paneShadowOpacity", "paneGutter",
         "focusRingWidth", "focusRingStrength",
         "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",

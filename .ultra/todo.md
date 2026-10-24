@@ -13,6 +13,10 @@
 - [x] Sidebar toggle without the glass capsule
 - [x] Sidebar on the window's own surface, with a hairline on its right edge
 - [x] Selected session row drawn as a capsule
+- [x] ⌘W closes the pane, then the project, then the app: AppKit's own File ▸ Close (macOS 27) taken out of the menu
+- [x] Glass off: panes are a behind-window blur, not a solid sheet
+- [x] Ultra Dev: Settings ▸ Tuning, the look as live sliders with Copy Values
+- [x] Make the tuned frosted-pane values the defaults
 
 
 ## What's New

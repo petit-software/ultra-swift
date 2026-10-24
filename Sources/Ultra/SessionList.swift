@@ -181,6 +181,12 @@ final class SessionList {
         lists.allObjects.filter { $0 !== list }
     }
 
+    /// Whether another window is showing a session: somewhere for ⌘W to go once this
+    /// window's last pane of its last session closes.
+    var othersAreShowingSessions: Bool {
+        Self.others(than: self).contains { !$0.sessions.isEmpty }
+    }
+
     /// The sessions still running that no window is showing: their window has closed.
     private static var unheld: [LayoutStore] {
         let held = Set(lists.allObjects.flatMap(\.sessions).map(\.workspaceID))

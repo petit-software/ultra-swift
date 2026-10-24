@@ -597,9 +597,12 @@ enum PaneCommands {
         // pane, which is what ⌘W stops every other time.
         //
         // The last session cannot close (`SessionList.canCloseSelected`), so there the
-        // pane is the window too, and the window closes. `performClose` rather than a
-        // direct close, so the window still runs its own teardown: scrollback saved,
-        // layout persisted.
+        // pane is the window too. With another window showing a project, this one closes
+        // and that one is where the keyboard goes; with none, the app quits — a window
+        // closed instead left the app running with nothing on screen, its shells still
+        // going where no window showed them. `performClose` rather than a direct close, so
+        // the window still runs its own teardown: scrollback saved, layout persisted. A
+        // quit saves the same way, and the project reopens on the next launch.
         AppCommand(id: "pane.close", title: "Close Pane", symbol: "xmark", menuPath: ["Pane"],
                    binding: KeyBinding("w", [.command])) { store in
             guard store.tree.paneCount > 1 else {
@@ -613,10 +616,13 @@ enum PaneCommands {
                     }
                     return
                 }
-                if let sessions = SessionList.holding(store), sessions.canCloseSelected {
+                let sessions = SessionList.holding(store)
+                if let sessions, sessions.canCloseSelected {
                     sessions.close(store.workspaceID)
-                } else {
+                } else if sessions?.othersAreShowingSessions ?? true {
                     ShellWorkspace.Registry.windows[store.workspaceID]?.performClose(nil)
+                } else {
+                    NSApp.terminate(nil)
                 }
                 return
             }

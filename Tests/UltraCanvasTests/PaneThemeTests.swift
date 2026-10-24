@@ -29,6 +29,18 @@ struct PaneThemeTests {
         return store
     }
 
+    /// The theme's opacity is what a GLASS pane paints; a frosted one paints its wash
+    /// instead. These run with the glass on, whichever way the shipped default points.
+    private func withGlass(_ body: () -> Void) {
+        let name = "ultra.tests.paneTheme.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) }
+        Preferences.withStore(suite) {
+            Appearance.paneGlass = true
+            body()
+        }
+    }
+
     private func backdropAlpha(_ container: PaneContainerView) -> CGFloat {
         container.layoutSubtreeIfNeeded()
         guard let colour = container.backdropColourForTesting else { return -1 }
@@ -36,7 +48,7 @@ struct PaneThemeTests {
     }
 
     @Test("every pane wears the opacity, not just the shells")
-    func opacityReachesEveryPane() {
+    func opacityReachesEveryPane() { withGlass {
         let store = store(.grid2x2)
         var theme = TerminalTheme.dark
         theme.backgroundOpacity = 0.6
@@ -47,10 +59,10 @@ struct PaneThemeTests {
         for pane in panes {
             #expect(abs(backdropAlpha(pane) - 0.6) < 0.01)
         }
-    }
+    } }
 
     @Test("a pane opened after a theme change opens in the new theme")
-    func newPaneAdoptsTheCurrentTheme() {
+    func newPaneAdoptsTheCurrentTheme() { withGlass {
         let store = store(.single)
         var theme = TerminalTheme.light
         theme.backgroundOpacity = 0.4
@@ -60,10 +72,10 @@ struct PaneThemeTests {
         let fresh = try! #require(store.tree.paneIDs.last.map { store.surfaces.surface(for: $0) })
         #expect(abs(backdropAlpha(fresh) - 0.4) < 0.01,
                 "a pane built after the change must not open in the theme the window launched with")
-    }
+    } }
 
     @Test("switching theme repaints panes that already exist")
-    func themeSwitchRepaintsLivePanes() {
+    func themeSwitchRepaintsLivePanes() { withGlass {
         let store = store(.twoAcross, theme: .dark)
         var dark = TerminalTheme.dark
         dark.backgroundOpacity = 1
@@ -84,10 +96,10 @@ struct PaneThemeTests {
         }
         #expect(brightness(before) < 0.2)
         #expect(brightness(after) > 0.8)
-    }
+    } }
 
     @Test("at zero the pane paints nothing and the glass is the surface")
-    func zeroOpacityLeavesTheGlassAlone() {
+    func zeroOpacityLeavesTheGlassAlone() { withGlass {
         let store = store(.twoAcross)
         var theme = TerminalTheme.dark
         theme.backgroundOpacity = 0
@@ -97,7 +109,7 @@ struct PaneThemeTests {
             let pane = try! #require(store.surfaces.existingSurface(for: paneID))
             #expect(backdropAlpha(pane) < 0.01)
         }
-    }
+    } }
 }
 
 /// A pane is three elements stacked — header, content, footer — not one surface with chrome

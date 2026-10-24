@@ -32,6 +32,10 @@ struct UltraSettings: View {
             Tab("Tiles", systemImage: "square.grid.2x2") { TileSettings() }
             Tab("Agents", systemImage: "sparkles") { AgentSettings() }
             Tab("Chat", systemImage: "text.bubble") { ChatSettings() }
+            // Ultra Dev only: the look's numbers as sliders, for deciding a new default.
+            if TuningSettings.isAvailable {
+                Tab("Tuning", systemImage: "slider.horizontal.3") { TuningSettings() }
+            }
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
         .frame(width: 560)
@@ -94,9 +98,9 @@ private struct GeneralSettings: View {
                 Text("Appearance")
             } footer: {
                 SettingNote("On, every pane is Liquid Glass over the desktop. Off, each pane "
-                            + "is a solid, flat sheet instead — neutral, "
-                            + "opaque and lighter on the GPU. The window bar and the "
-                            + "palette keep their glass either way.")
+                            + "is frosted instead — a plain blur of the window behind it, "
+                            + "with no lens. The window bar and the palette keep their "
+                            + "glass either way.")
             }
 
             Section {

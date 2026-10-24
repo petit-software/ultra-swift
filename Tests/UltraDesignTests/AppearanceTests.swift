@@ -33,14 +33,23 @@ struct AppearanceTests {
             #expect(Appearance.focusRingWidth == 1)
             #expect(Appearance.focusRingStrength == 0.25)
 
-            #expect(Appearance.windowMaterial == .popover)
-            #expect(Appearance.windowTintDark == 0.72)
-            #expect(Appearance.windowTintLight == 0.45)
+            #expect(Appearance.windowMaterial == .hudWindow)
+            #expect(Appearance.windowTintDark == 0.80)
+            #expect(Appearance.windowTintLight == 0.50)
             #expect(Appearance.windowRadius == Token.Space.systemWindowRadius)
             #expect(Appearance.windowPadding == 8)
 
             #expect(Appearance.headerBlurRadius == 14)
-            #expect(Appearance.headerTintOpacity == 0.14)
+            #expect(Appearance.headerTintOpacity == 0)
+
+            #expect(Appearance.paneGlass == false)
+            #expect(Appearance.frostMaterial == .selection)
+            #expect(Appearance.frostSource == .window)
+            #expect(Appearance.frostAlwaysActive == false)
+            #expect(Appearance.frostFocusedTintDark == 0.5)
+            #expect(Appearance.frostUnfocusedTintDark == 0.25)
+            #expect(Appearance.frostFocusedTintLight == 0)
+            #expect(Appearance.frostUnfocusedTintLight == 0.05)
         }
     }
 
@@ -108,7 +117,7 @@ struct AppearanceTests {
         clean {
             // Every value here is NOT the default — the setter skips a write that would not
             // change anything, so a default would leave its key empty and fail the guard.
-            Appearance.paneGlass = false
+            Appearance.paneGlass = true
             Appearance.glassStyle = .regular
             Appearance.glassTint = .accent
             Appearance.glassTintStrength = 0.5
@@ -120,13 +129,20 @@ struct AppearanceTests {
             Appearance.paneGutter = 36
             Appearance.focusRingWidth = 6
             Appearance.focusRingStrength = 0.9
-            Appearance.windowMaterial = .hudWindow
+            Appearance.windowMaterial = .sidebar
             Appearance.windowTintDark = 0.9
             Appearance.windowTintLight = 0.1
             Appearance.windowRadius = 40
             Appearance.windowPadding = 40
             Appearance.headerBlurRadius = 35
             Appearance.headerTintOpacity = 0.9
+            Appearance.frostMaterial = .hudWindow
+            Appearance.frostSource = .desktop
+            Appearance.frostAlwaysActive = true
+            Appearance.frostFocusedTintDark = 0.3
+            Appearance.frostUnfocusedTintDark = 0.6
+            Appearance.frostFocusedTintLight = 0.3
+            Appearance.frostUnfocusedTintLight = 0.6
 
             // Every key this namespace owns now holds something.
             for name in Appearance.keys {
@@ -142,7 +158,7 @@ struct AppearanceTests {
             }
             #expect(Appearance.glassStyle == .clear)
             #expect(Appearance.paneRadius == 15)
-            #expect(Appearance.windowMaterial == .popover)
+            #expect(Appearance.windowMaterial == .hudWindow)
         }
     }
 
