@@ -186,6 +186,9 @@ their session too — the grid is complete or it is not an overview.
 - [x] A visiting pane's header loses its close and split controls — the grid cannot be split — and the X moves to the wrapper strip, leading, where the pane's was
 - [x] The working arc is turned by a `TimelineView`, not a `repeatForever` animation: inside a strip laid out after it appeared, the animation took the move into place with it and the arc slid up the pane in a loop until the next layout
 
+- [x] Use Default Layout and Apply to All Projects keep the panes a project has: each fills the first slot of its kind (shell and agent one kind), the rest sit beside them, only the missing kinds are opened — a layout is an arrangement, not a reason to stop a shell; `adopt(tree:)` prunes only what the new tree no longer names
+- [x] The `+` menu's empty line on the overview reads naturally
+
 ## Agents overview, part 2
 
 - [ ] `agents.openWaiting` "Open Waiting Agent", ⌥⌘0: focus the first needs-you pane in the overview if it is up, else open its project directly — the keyboard answer to the orange dot

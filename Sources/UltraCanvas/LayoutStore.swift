@@ -233,23 +233,25 @@ public final class LayoutStore {
         }
     }
 
-    /// Replace the whole canvas with another arrangement — every pane released, every
-    /// surface rebuilt through the factories from whatever records they now hold.
+    /// Replace the whole canvas with another arrangement. A pane the new tree still names
+    /// keeps its surface — and its process — where it now stands; every other pane is
+    /// released, and the new ones are built through the factories from whatever records
+    /// they now hold.
     ///
-    /// The one verb behind "apply this layout to all projects". Not routed through `apply`:
-    /// that registers an undo, and undoing this would restore a tree whose panes no longer
-    /// have processes, records or history behind them — a canvas of fresh shells wearing
-    /// old ids. So the undo stack is emptied instead, and the confirmation this is reached
-    /// through says so.
+    /// The one verb behind "use the default layout" and "apply this layout to all
+    /// projects". Not routed through `apply`: that registers an undo, and undoing this
+    /// would restore a tree whose released panes no longer have processes, records or
+    /// history behind them — a canvas of fresh shells wearing old ids. So the undo stack
+    /// is emptied instead, and the confirmation this is reached through says so.
     public func adopt(tree newTree: LayoutTree) {
         guard newTree.validate().isEmpty, !isFixedArrangement else { return }
         trace("adopt: \(tree.paneCount) -> \(newTree.paneCount) panes")
-        surfaces.prune(keeping: [])
+        surfaces.prune(keeping: Set(newTree.paneIDs))
         tree = newTree
         undoManager.removeAllActions()
         navigation = NavigationMemory()
-        lastFocusedShell = nil
-        lastFocusedEditor = nil
+        if let last = lastFocusedShell, !newTree.contains(last) { lastFocusedShell = nil }
+        if let last = lastFocusedEditor, !newTree.contains(last) { lastFocusedEditor = nil }
         refreshWindowTitle()
         persist()
         onGeometrySettled?()

@@ -35,8 +35,10 @@ enum SharedLayout {
     static func resetToDefault(_ store: LayoutStore) {
         guard let template = store.storage?.loadDefaultLayout() else { return }
         guard confirm("Use the default layout for this project?",
-                      "Its panes are replaced with the default arrangement. Shells in this "
-                      + "project are restarted, and this cannot be undone.",
+                      "Its panes move into the default arrangement. Nothing restarts: each "
+                      + "pane fills a slot of its kind, any left over stay beside them, and "
+                      + "kinds the default has that this project lacks are opened. This "
+                      + "cannot be undone.",
                       button: "Use") else { return }
         adopt(template, into: store)
     }
@@ -73,8 +75,8 @@ enum SharedLayout {
             + "its own folder. Their current layouts are replaced and cannot be undone."
         if live.count > 0 {
             detail += live.count == 1
-                ? "\n\nOne of them is open now: its shells will be restarted."
-                : "\n\n\(live.count) of them are open now: their shells will be restarted."
+                ? "\n\nOne of them is open now: its panes move into place and keep running."
+                : "\n\n\(live.count) of them are open now: their panes move into place and keep running."
         }
         guard confirm(count == 1 ? "Apply this layout to 1 other project?"
                                  : "Apply this layout to \(count) other projects?",
@@ -87,15 +89,18 @@ enum SharedLayout {
     }
 
     /// Give a LIVE workspace the arrangement: its factories learn the new panes, then the
-    /// store swaps its tree and the canvas builds them.
+    /// store swaps its tree and the canvas builds them. The panes it already has keep
+    /// their ids, their surfaces and their processes (`adoptingLayout(of:keepingPanes:)`):
+    /// a layout is an arrangement, and a shell with an agent in it is not restarted
+    /// because its neighbours moved.
     ///
-    /// Records go to the factories BEFORE the tree changes. The canvas asks for a surface
-    /// the moment a pane id appears in the tree, and a factory asked about an id it has no
-    /// record for builds a plain shell.
+    /// Records go to the factories BEFORE the tree changes, and only for the panes that
+    /// are NEW: the canvas asks for a surface the moment a pane id appears in the tree,
+    /// and a factory asked about an id it has no record for builds a plain shell.
     private static func adopt(_ template: WorkspaceDocument, into store: LayoutStore) {
-        let document = store.document.adoptingLayout(of: template)
+        let document = store.document.adoptingLayout(of: template, keepingPanes: true)
         var records: [PaneID: PaneRecord] = [:]
-        for paneID in document.tree.paneIDs {
+        for paneID in document.tree.paneIDs where !store.surfaces.activePanes.contains(paneID) {
             if let record = document.record(for: paneID) { records[paneID] = record }
         }
         let id = store.workspaceID

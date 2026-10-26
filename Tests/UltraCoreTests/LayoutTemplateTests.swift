@@ -87,4 +87,45 @@ struct LayoutTemplateTests {
             .first { $0.kind == .todo }
         #expect(todo?.cwd == "/Users/x/Notes")
     }
+
+    @Test("keeping panes: each fills the first slot of its kind, the rest are kept beside them, the missing are fresh")
+    func keepingPanes() {
+        let from = source()   // fileTree, shell, editor, editor…
+        var toTree = LayoutTree.fixture(.twoAcross)
+        let shell = toTree.paneIDs[0], todo = toTree.paneIDs[1]
+        toTree.focused = todo
+        let to = WorkspaceDocument(directory: "/Users/x/Repo/b", title: "b", tree: toTree, panes: [
+            shell: PaneRecord(kind: .agent, title: "claude", cwd: "/Users/x/Repo/b/src", command: "claude"),
+            todo: PaneRecord(kind: .todo, title: "Todo"),
+        ])
+
+        let adopted = to.adoptingLayout(of: from, keepingPanes: true)
+
+        #expect(adopted.isConsistent)
+        // The template's shell slot is the agent pane we had, record and all; the todo had
+        // no slot and sits after the last pane; everything else is new.
+        #expect(adopted.tree.paneCount == from.tree.paneCount + 1)
+        #expect(adopted.tree.contains(shell))
+        #expect(adopted.tree.contains(todo))
+        #expect(adopted.record(for: shell)?.command == "claude")
+        #expect(adopted.record(for: shell)?.cwd == "/Users/x/Repo/b/src")
+        let shellIndex = from.tree.paneIDs.firstIndex { from.record(for: $0)?.kind == .shell }
+        #expect(adopted.tree.paneIDs.firstIndex(of: shell) == shellIndex)
+        #expect(adopted.tree.paneIDs.last == todo)
+        #expect(adopted.record(for: todo)?.kind == .todo)
+        let fresh = adopted.tree.paneIDs.filter { $0 != shell && $0 != todo }
+        #expect(fresh.count == from.tree.paneCount - 1)
+        #expect(Set(fresh).isDisjoint(with: from.tree.paneIDs))
+        #expect(adopted.tree.focused == todo, "focus stays where it was")
+    }
+
+    @Test("keeping panes with nothing to keep is the fresh copy")
+    func keepingNothing() {
+        let from = source()
+        let empty = WorkspaceDocument(directory: "/Users/x/Repo/b", title: "b",
+                                      tree: .fixture(.single), panes: [:])
+        let adopted = empty.adoptingLayout(of: from, keepingPanes: true)
+        #expect(adopted.tree.paneCount == from.tree.paneCount)
+        #expect(adopted.isConsistent)
+    }
 }

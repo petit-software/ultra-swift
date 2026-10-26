@@ -24,7 +24,53 @@ extension WorkspaceDocument {
     ///   position survive, which is the arrangement being copied.
     /// - Per-tile state is dropped for the same reason. It is the tile's own blob and it
     ///   describes the tile as it stood in the project it came from.
-    public func adoptingLayout(of source: WorkspaceDocument) -> WorkspaceDocument {
+    /// With `keepingPanes`, the panes this document already has are not thrown away: each
+    /// fills the first slot of its own kind in the new arrangement, in reading order,
+    /// keeping its id — and so, for a live session, its surface and its process. Slots no
+    /// pane fills are opened fresh; panes no slot fits are kept, split in after the last
+    /// pane, since a layout is an arrangement and not a reason to stop a shell. Shell and
+    /// agent are one kind here: an agent typed at a shell is the same pane either way.
+    /// Focus stays on the pane that had it, when it survived.
+    public func adoptingLayout(of source: WorkspaceDocument,
+                               keepingPanes: Bool = false) -> WorkspaceDocument {
+        let adopted = adoptingLayout(of: source)
+        guard keepingPanes else { return adopted }
+
+        let family = { (kind: PaneRecord.Kind) -> String in
+            kind == .shell || kind == .agent ? "shell" : kind.rawValue
+        }
+        var unused = tree.paneIDs.filter { record(for: $0) != nil }
+        var takes: [PaneID: PaneID] = [:]
+        for slot in adopted.tree.paneIDs {
+            guard let kind = adopted.record(for: slot)?.kind,
+                  let index = unused.firstIndex(where: { family(record(for: $0)!.kind) == family(kind) })
+            else { continue }
+            takes[slot] = unused.remove(at: index)
+        }
+        let renamed = { (id: PaneID) in takes[id] ?? id }
+        var tree = LayoutTree(root: Self.remap(adopted.tree.root, renamed),
+                              focused: renamed(adopted.tree.focused),
+                              zoomed: adopted.tree.zoomed.map(renamed))
+        var out = adopted
+        for (slot, existing) in takes {
+            out.panes[slot.uuidString] = nil
+            if let record = record(for: existing) { out.setRecord(record, for: existing) }
+        }
+        for leftover in unused {
+            guard let last = tree.paneIDs.last else { continue }
+            tree.split(last, edge: .right, newPane: leftover)
+            if let record = record(for: leftover) { out.setRecord(record, for: leftover) }
+        }
+        if tree.contains(self.tree.focused) { tree.focused = self.tree.focused }
+        out.tree = tree
+        out.reconcile()
+        return out
+    }
+
+    /// This document, holding `source`'s panes in place of its own — every one of them
+    /// fresh. See `adoptingLayout(of:keepingPanes:)` for the version that keeps what
+    /// this document already has.
+    private func adoptingLayout(of source: WorkspaceDocument) -> WorkspaceDocument {
         var ids: [PaneID: PaneID] = [:]
         for paneID in source.tree.paneIDs { ids[paneID] = PaneID() }
         let fresh = { (id: PaneID) in ids[id] ?? id }

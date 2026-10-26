@@ -305,7 +305,7 @@ struct AgentProjectsMenuItems: View {
     var body: some View {
         let projects = AgentsOverview.shared.projectsWithAgents
         if projects.isEmpty {
-            Text("No open project lists an agent — add one under Customize")
+            Text("None of your open projects has an agent set up yet — add one under Customize")
         }
         ForEach(projects, id: \.store.workspaceID) { entry in
             Section(entry.store.workspaceTitle) {
