@@ -32,6 +32,11 @@ final class UIState {
     /// because it decides WHICH view presents the customise sheet: the sidebar's selected
     /// row, or the belt's selected tab. Both answering the one flag would stack two sheets.
     var showsTabBelt = false
+    /// Whether this window shows the Agents overview in place of its session's canvas.
+    /// Window state, since the sidebar's row, the belt's tab and View ▸ Show Agents all
+    /// read it — and set only through `AgentsOverview`, which lends the panes it shows
+    /// and has to take them back when the window moves on.
+    var showsAgents = false
     /// The session waiting on "Close this session?", or nil.
     ///
     /// Every way to close one — the X on a sidebar row or a belt tab, their context menus,

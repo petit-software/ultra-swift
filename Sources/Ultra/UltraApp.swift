@@ -150,7 +150,10 @@ struct WorkspaceWindow: View {
                     ShellWorkspace.Registry.factories[store.workspaceID]?.saveScrollback()
                 }
             }
-            .focusedSceneValue(\.layoutStore, model.sessions.selected)
+            // The overview's store while the window shows it, so the Pane menu, the
+            // palette and every key act on the grid rather than the session behind it.
+            .focusedSceneValue(\.layoutStore, model.ui.showsAgents ? AgentsOverview.shared.store
+                                                                   : model.sessions.selected)
             .focusedSceneValue(\.sessionList, model.sessions)
             .focusedSceneValue(\.uiState, model.ui)
     }
@@ -592,6 +595,27 @@ struct WorkspaceCommands: Commands {
 
             Divider()
 
+            // The Agents overview and, from it, the way to a pane's project. Both from
+            // the registry, which is what puts them in the palette as well.
+            Button(PaneCommands.showAgents.title) {
+                if let store { PaneCommands.showAgents.run(store) }
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(store.map { !PaneCommands.showAgents.isEnabled($0) } ?? true)
+            Button(PaneCommands.openAgentProject.title) {
+                if let store { PaneCommands.openAgentProject.run(store) }
+            }
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(store.map { !PaneCommands.openAgentProject.isEnabled($0) } ?? true)
+            if AgentsOverview.isDevBuild {
+                Button(PaneCommands.agentsDemo.title) {
+                    if let store { PaneCommands.agentsDemo.run(store) }
+                }
+                .disabled(store.map { !PaneCommands.agentsDemo.isEnabled($0) } ?? true)
+            }
+
+            Divider()
+
             // Which session is on screen, beside the system's own Show Sidebar: the View
             // menu is where a Mac app keeps what is shown. They were under File ▸ Session,
             // between opening a project and closing one, where nobody looked for a way to
@@ -722,8 +746,11 @@ struct RootView: View {
         })
     }
 
-    /// The session on screen. Nil only for the instant before the first one exists.
-    private var store: LayoutStore? { sessions.selected }
+    /// The canvas on screen: the Agents overview's while the window shows it, else the
+    /// selected session's. Nil only for the instant before the first session exists.
+    private var store: LayoutStore? {
+        ui.showsAgents ? AgentsOverview.shared.store : sessions.selected
+    }
 
     private func chooseSessionFolder() {
         for folder in chooseProjectFolders() { sessions.open(directory: folder) }
@@ -761,7 +788,10 @@ struct RootView: View {
             // terminal redraw. The inset reaches AppKit as one value: the panes move once,
             // and all the animation has left to do is slide a small strip of glass.
             ZStack(alignment: .bottom) {
-                if let store {
+                if ui.showsAgents {
+                    // Every working agent's pane, lent to one canvas — see `AgentsOverview`.
+                    CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset)
+                } else if let store {
                     CanvasSurface(store: store, bottomInset: beltInset)
                         // Over the canvas, above the belt when it is up: the question is the
                         // session's, not any one pane's.
@@ -788,7 +818,7 @@ struct RootView: View {
             // titlebar's leading width, which animates as the sidebar opens, and the name
             // flickered. An overlay just moves with the column.
             .overlay(alignment: .top) {
-                WindowHeaderTitle(title: store?.workspaceTitle ?? "")
+                WindowHeaderTitle(title: ui.showsAgents ? "Agents" : store?.workspaceTitle ?? "")
                     .ignoresSafeArea()
             }
             // `ui.showsTabBelt` trails `columnVisibility` rather than reading it.

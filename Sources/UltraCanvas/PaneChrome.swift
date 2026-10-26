@@ -361,6 +361,9 @@ public final class PaneContainerView: NSView {
     private let ring = PaneRingView()
     private let clip = FlippedView()
     private let header: NSHostingView<PaneHeader>
+    /// The strip a visiting pane wears above its header, saying where it is from. Built
+    /// when a strip is first set, dropped when it is cleared.
+    private var stripHost: NSHostingView<VisitStripView>?
     private var descriptor: PaneDescriptor
     /// What this pane currently is, so its own kind is not offered as a change.
     private var kind: PaneRecord.Kind?
@@ -512,6 +515,30 @@ public final class PaneContainerView: NSView {
     /// close back to.
     public var canClose: Bool = true {
         didSet { guard canClose != oldValue else { return }; refresh() }
+    }
+
+    /// Which session a pane shown away from home belongs to, and the way back — worn as
+    /// a strip above the pane's own header while the pane is visiting the Agents
+    /// overview. Nil at home. The pane's header and controls are untouched under it.
+    public var visitStrip: VisitStrip? {
+        didSet {
+            guard visitStrip?.key != oldValue?.key || (visitStrip == nil) != (oldValue == nil) else { return }
+            if let visitStrip {
+                if let stripHost {
+                    stripHost.rootView = VisitStripView(strip: visitStrip)
+                } else {
+                    let host = NSHostingView(rootView: VisitStripView(strip: visitStrip))
+                    host.focusRingType = .none
+                    clip.addSubview(host)
+                    stripHost = host
+                }
+            } else {
+                stripHost?.removeFromSuperview()
+                stripHost = nil
+            }
+            updateAccessibilityLabel()
+            needsLayout = true
+        }
     }
 
     public init(paneID: PaneID, descriptor: PaneDescriptor, kind: PaneRecord.Kind?,
@@ -698,6 +725,7 @@ public final class PaneContainerView: NSView {
     private func updateAccessibilityLabel() {
         var parts: [String] = []
         if let accessibilityOrdinal { parts.append("\(accessibilityOrdinal).") }
+        if let visitStrip { parts.append("\(visitStrip.title),") }
         if let kind { parts.append(Self.name(of: kind)) }
         // A tile whose title merely repeats its kind — "Todo", "Ports" — says it once.
         if !descriptor.title.isEmpty,
@@ -764,6 +792,9 @@ public final class PaneContainerView: NSView {
                                    cornerHeight: Token.Space.paneRadius,
                                    transform: nil)
         let headerHeight = Token.Space.tileHeaderHeight
+        // A visiting pane's strip sits above everything, and the rest moves down by it.
+        let stripHeight = stripHost == nil ? 0 : min(headerHeight, bounds.height)
+        stripHost?.frame = CGRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
         // A pane is header, content, footer — three elements, not one surface with chrome
         // floating on it. The content starts BELOW the header rather than running under it.
         //
@@ -773,16 +804,17 @@ public final class PaneContainerView: NSView {
         // glass pane. With the band left to the pane's own surface there is nothing to show
         // through and no second colour: the header is a label on the pane's glass, and the
         // content simply stops where it stops.
-        content.frame = CGRect(x: 0, y: min(headerHeight, bounds.height),
+        content.frame = CGRect(x: 0, y: min(stripHeight + headerHeight, bounds.height),
                                width: bounds.width,
-                               height: max(0, bounds.height - headerHeight))
-        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: min(headerHeight, bounds.height))
+                               height: max(0, bounds.height - stripHeight - headerHeight))
+        header.frame = CGRect(x: 0, y: stripHeight, width: bounds.width,
+                              height: min(headerHeight, max(0, bounds.height - stripHeight)))
         // Between the identity control (close, icon and name, on the left) and the split
         // cluster. Both ends are controls, and a drag that starts on one of them is a
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
         let trailingGutter: CGFloat = 68
-        dragHandle.frame = CGRect(x: leadingGutter, y: 0,
+        dragHandle.frame = CGRect(x: leadingGutter, y: stripHeight,
                                   width: max(0, bounds.width - leadingGutter - trailingGutter),
                                   height: min(headerHeight, bounds.height))
         CATransaction.commit()
@@ -819,4 +851,84 @@ public final class PaneContainerView: NSView {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "ultra-swift-workspace", subtitle: "~/Repo/Ultra"),
                currentKind: nil, isFocused: true, canClose: true, actions: .inert)
+}
+
+// MARK: - Visiting strip
+
+/// What a visiting pane says above its header on the Agents overview: the session it
+/// belongs to, the state of its agent, and the one verb — go to that project.
+///
+/// The status is handed in as a view: the state mapping — the turning arc, the orange
+/// dot, the check — lives in the app with the sidebar's rows, and this layer knows
+/// nothing of agent states. `key` is what the container compares to know the strip has
+/// changed, since the status view and the action cannot be.
+public struct VisitStrip {
+    public var symbol: String
+    public var tint: Color
+    public var title: String
+    /// How long the agent's state has held — "4m" — beside the status.
+    public var detail: String?
+    public var status: AnyView?
+    public var key: String
+    public var open: () -> Void
+
+    public init(symbol: String, tint: Color, title: String, detail: String? = nil,
+                status: AnyView? = nil, key: String, open: @escaping () -> Void) {
+        self.symbol = symbol
+        self.tint = tint
+        self.title = title
+        self.detail = detail
+        self.status = status
+        self.key = key
+        self.open = open
+    }
+}
+
+struct VisitStripView: View {
+    let strip: VisitStrip
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: strip.symbol)
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(strip.tint)
+                .frame(width: 20)
+            Text(strip.title)
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(Token.Colour.label)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 4)
+            if let detail = strip.detail {
+                Text(detail)
+                    .font(Token.Type_.tileSubtitle)
+                    .monospacedDigit()
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+                    .fixedSize()
+            }
+            if let status = strip.status {
+                status.frame(width: 16, height: 16)
+            }
+            // The way back: the pane goes home, its session comes on screen. The key
+            // path is View ▸ Open Agent's Project (⌘↩), which the tooltip teaches.
+            ChromeIconButton(symbol: "arrow.up.forward.app", help: "Open Project (⌘↩)",
+                             action: strip.open)
+                .fixedSize()
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 5)
+        .frame(height: Token.Space.tileHeaderHeight)
+        .frame(maxWidth: .infinity)
+        // A faint band, so the strip reads as the wrapper the pane sits in rather than a
+        // second header of the pane's own. The pane's header below it keeps no fill, as
+        // ever; one tint, on the thing that is not the pane.
+        .background(Token.Colour.label.opacity(0.05))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("From \(strip.title)")
+    }
+}
+
+#Preview("Visiting strip", traits: .fixedLayout(width: 420, height: 40)) {
+    VisitStripView(strip: VisitStrip(symbol: "shippingbox.fill", tint: .orange, title: "ultra-swift",
+                                     detail: "4m", key: "p", open: {}))
 }

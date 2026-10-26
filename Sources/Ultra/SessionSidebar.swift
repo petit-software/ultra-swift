@@ -29,9 +29,14 @@ struct SessionSidebar: View {
     let openFolder: () -> Void
 
     private var selection: Binding<UUID?> {
-        Binding(get: { sessions.selectedID },
+        Binding(get: { ui.showsAgents ? AgentsOverview.selectionID : sessions.selectedID },
                 set: { id in
                     guard let id else { return }
+                    // The row above the sessions: not a session, so not `select`.
+                    if id == AgentsOverview.selectionID {
+                        AgentsOverview.shared.open(in: sessions)
+                        return
+                    }
                     // Clicking a row leaves AppKit's first responder on the LIST. Nothing
                     // about that changes the model, so the canvas has no reason to re-assert
                     // itself and the shell you just switched to could not be typed into —
@@ -80,6 +85,15 @@ struct SessionSidebar: View {
 
     private var list: some View {
         List(selection: selection) {
+            // Above every session: the one view that is about all of them.
+            AgentsRow(isSelected: ui.showsAgents)
+                .tag(AgentsOverview.selectionID)
+                .listRowBackground(
+                    Capsule(style: .continuous)
+                        .fill(Token.Colour.selectionWash)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 1)
+                        .opacity(ui.showsAgents ? 1 : 0))
             ForEach(sessions.sessions, id: \.workspaceID) { store in
                 SessionRow(store: store,
                            ui: ui,
@@ -95,7 +109,7 @@ struct SessionSidebar: View {
                             .fill(Token.Colour.selectionWash)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 1)
-                            .opacity(sessions.selectedID == store.workspaceID ? 1 : 0))
+                            .opacity(!ui.showsAgents && sessions.selectedID == store.workspaceID ? 1 : 0))
             }
             // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
             // is possible, including the insertion line and the drag image.
@@ -359,6 +373,50 @@ enum ProjectControlSize {
         case .bar: ChromeIconLabel.height
         case .belt: 36
         }
+    }
+}
+
+/// The row above the sessions: the Agents overview, with how many agents are running
+/// and the state the most pressing of them is in — the same glyph the session rows wear,
+/// rolled up once more. Never hidden: a row that comes and goes is a view nobody learns
+/// the key for. Dimmed with nothing running.
+private struct AgentsRow: View {
+    let isSelected: Bool
+
+    private var running: Int { AgentMonitor.shared.runningCount }
+    private var state: AgentState? { AgentState.rollup(AgentMonitor.shared.stateByPane.values) }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "rectangle.grid.2x2.fill")
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(running > 0 ? Token.Colour.label : Token.Colour.tertiaryLabel)
+                .frame(width: 20)
+            Text("Agents")
+                .font(Token.Type_.tileTitle)
+                .fontWeight(state?.isUnread == true ? .bold : .regular)
+                .foregroundStyle(running > 0 ? Token.Colour.label : Token.Colour.tertiaryLabel)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if running > 0 {
+                Text("\(running)")
+                    .font(Token.Type_.tileSubtitle)
+                    .monospacedDigit()
+                    .foregroundStyle(Token.Colour.tertiaryLabel)
+                    .fixedSize()
+                    .frame(minWidth: 30, alignment: .trailing)
+            }
+            ZStack {
+                if let state { AgentStateSymbol(state: state).help(state.title) }
+            }
+            .frame(width: 16, height: 16)
+        }
+        .contentShape(.rect)
+        .help("Every working agent's pane, from every project (⌘0)")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(running > 0
+                            ? "Agents, \(running) running" + (state.map { ", \($0.title)" } ?? "")
+                            : "Agents, none running")
     }
 }
 

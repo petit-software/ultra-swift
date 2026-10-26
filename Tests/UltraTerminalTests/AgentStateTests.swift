@@ -179,3 +179,67 @@ struct AgentStateTests {
         #expect(AgentState.age(of: -4) == "now")
     }
 }
+
+/// Each pane keeps its own state; a session's is the panes' rolled up, the one that needs
+/// a person first.
+@Suite("Agent state per pane")
+struct AgentStateRollupTests {
+    private let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
+    private let session = UUID()
+
+    private func reading(_ status: AgentStatus, asking: Bool = false, lastOutput: Date) -> AgentPaneReading {
+        AgentPaneReading(sample: AgentPaneSample(agent: status == .idle ? nil : "claude", lastOutputAt: lastOutput),
+                         status: status, asking: asking)
+    }
+
+    @Test("asking beats working, since the earliest asker")
+    func askingWins() {
+        let a = t0.addingTimeInterval(-30), b = t0.addingTimeInterval(-10)
+        #expect(AgentState.rollup([.working(since: t0.addingTimeInterval(-100)),
+                                   .needsYou(since: b), .needsYou(since: a)]) == .needsYou(since: a))
+    }
+
+    @Test("working beats done, since the earliest worker")
+    func workingWins() {
+        let a = t0.addingTimeInterval(-30), b = t0.addingTimeInterval(-10)
+        #expect(AgentState.rollup([.done(at: t0, read: false), .working(since: b), .working(since: a)])
+                == .working(since: a))
+    }
+
+    @Test("done is unread if any pane is, since the last finish; inactive only when every pane is")
+    func doneAndInactive() {
+        let early = t0.addingTimeInterval(-600), late = t0.addingTimeInterval(-60)
+        #expect(AgentState.rollup([.done(at: early, read: true), .done(at: late, read: false)])
+                == .done(at: late, read: false))
+        #expect(AgentState.rollup([.done(at: early, read: true), .inactive(since: late)])
+                == .done(at: early, read: true))
+        #expect(AgentState.rollup([.inactive(since: early), .inactive(since: late)]) == .inactive(since: late))
+        #expect(AgentState.rollup([]) == nil)
+    }
+
+    @Test("two panes in one session are tracked apart, and the row shows the one that needs you")
+    func perPane() {
+        var tracker = AgentStateTracker()
+        let a = PaneID(), b = PaneID()
+        tracker.observe([session: [a: reading(.working, lastOutput: t0), b: reading(.working, lastOutput: t0)]],
+                        viewed: [], at: t0)
+        #expect(tracker.stateByPane[a] == .working(since: t0))
+        #expect(tracker.stateByPane[b] == .working(since: t0))
+        let t1 = t0.addingTimeInterval(10)
+        tracker.observe([session: [a: reading(.needsInput, asking: true, lastOutput: t0),
+                                   b: reading(.working, lastOutput: t1)]], viewed: [], at: t1)
+        #expect(tracker.stateByPane[a] == .needsYou(since: t1))
+        #expect(tracker.stateByPane[b] == .working(since: t0))
+        #expect(tracker.stateBySession[session] == .needsYou(since: t1))
+        // The asker is answered and finishes; the other is still working: the row works.
+        let t2 = t1.addingTimeInterval(AgentTurnTracker.silence + 1)
+        tracker.observe([session: [a: reading(.needsInput, lastOutput: t1), b: reading(.working, lastOutput: t2)]],
+                        viewed: [], at: t2)
+        #expect(tracker.stateByPane[a] == .done(at: t2, read: false))
+        #expect(tracker.stateBySession[session] == .working(since: t0))
+        // Pane a closes: its state goes with it.
+        tracker.observe([session: [b: reading(.working, lastOutput: t2)]], viewed: [], at: t2)
+        #expect(tracker.stateByPane[a] == nil)
+        #expect(tracker.stateByPane.count == 1)
+    }
+}

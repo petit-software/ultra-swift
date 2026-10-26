@@ -61,6 +61,7 @@ public final class LayoutStore {
     /// The old surface is released — which is what stops a converted shell's PTY — and the
     /// next layout pass builds the replacement through the same factory chain as a new pane.
     public func replaceContent(of paneID: PaneID) {
+        guard !isFixedArrangement else { NSSound.beep(); return }
         surfaces.release(paneID)
         surfaceRevision += 1
     }
@@ -81,6 +82,19 @@ public final class LayoutStore {
     /// This pane window is finished with — its panes went back, or its session closed —
     /// and its window should close.
     @ObservationIgnored public var onDismiss: (() -> Void)?
+    /// Where each of this store's panes is away on loan — see "Visiting panes" below.
+    @ObservationIgnored private var visitHosts: [PaneID: WeakStore] = [:]
+    /// The store each pane shown here on loan belongs to.
+    @ObservationIgnored private var visitorHomes: [PaneID: WeakStore] = [:]
+    /// A pane shown here on loan has gone — home, or closed there. The host's cue to take
+    /// it off whatever it was showing it in.
+    @ObservationIgnored public var onVisitorLeft: ((PaneID) -> Void)?
+    /// Whether this canvas's arrangement is computed rather than edited: the Agents
+    /// overview, whose grid is whatever agents there are. Nothing is split, converted,
+    /// moved to a window or replaced wholesale here — each would put a pane in the tree
+    /// that nothing computed, and the next rebuild would throw it away. Closing and
+    /// focusing still work: those are about the panes, not the arrangement.
+    @ObservationIgnored public var isFixedArrangement = false
     @ObservationIgnored public let undoManager = UndoManager()
     @ObservationIgnored private var navigation = NavigationMemory()
     @ObservationIgnored private var nextPaneNumber = 0
@@ -144,6 +158,13 @@ public final class LayoutStore {
         surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }
         surfaces.actions.focus = { [weak self] paneID in self?.focus(paneID) }
         surfaces.actions.windowMove = { [weak self] paneID in self?.windowMove(for: paneID) }
+        // A pane lent to this store whose home has released it: off this canvas, no
+        // release of this store's own.
+        surfaces.onEvicted = { [weak self] paneID in
+            guard let self else { return }
+            visitorHomes[paneID] = nil
+            onVisitorLeft?(paneID)
+        }
     }
 
     /// Teach the pane headers what a pane can become. The canvas has no idea what a "Todo"
@@ -213,7 +234,7 @@ public final class LayoutStore {
     /// old ids. So the undo stack is emptied instead, and the confirmation this is reached
     /// through says so.
     public func adopt(tree newTree: LayoutTree) {
-        guard newTree.validate().isEmpty else { return }
+        guard newTree.validate().isEmpty, !isFixedArrangement else { return }
         trace("adopt: \(tree.paneCount) -> \(newTree.paneCount) panes")
         surfaces.prune(keeping: [])
         tree = newTree
@@ -232,7 +253,8 @@ public final class LayoutStore {
     @discardableResult
     public func split(edge: Edge, paneID: PaneID? = nil) -> Bool {
         let source = paneID ?? tree.focused
-        guard canSplit(tree, pane: source, edge: edge, in: canvasBounds, metrics: metrics) else {
+        guard !isFixedArrangement,
+              canSplit(tree, pane: source, edge: edge, in: canvasBounds, metrics: metrics) else {
             NSSound.beep()
             return false
         }
@@ -245,6 +267,9 @@ public final class LayoutStore {
 
     public func close(_ paneID: PaneID) {
         guard tree.paneCount > 1 else { NSSound.beep(); return }
+        // A visitor that is the last pane of its own canvas: closing it here would empty
+        // that canvas, so it is closed from home or not at all.
+        guard !surfaces.lockedOpen.contains(paneID) else { NSSound.beep(); return }
         navigation.forget(paneID)
         // Panes vanishing without the user asking is the worst failure this app can have,
         // so closes record where they came from. `ULTRA_TRACE=1 swift run Ultra`.
@@ -453,8 +478,9 @@ extension LayoutStore {
                                          })
         // Ensure every pane in the tree has a record, even one never yet materialised.
         for paneID in tree.paneIDs {
-            document.setRecord(surfaces.records[paneID] ?? surfaces.surfaceRecord(for: paneID),
-                               for: paneID)
+            // `surfaceRecord`, not `records`: a pane away on loan reports its folder to
+            // the canvas showing it, and that is the record worth writing.
+            document.setRecord(surfaces.surfaceRecord(for: paneID), for: paneID)
         }
         for window in paneWindows {
             for paneID in window.tree.paneIDs {
@@ -532,12 +558,18 @@ extension LayoutStore {
     /// The session's own store, whichever canvas this is.
     public var session: LayoutStore { owner ?? self }
 
-    /// The canvas that has this pane — the session's or one of its pane windows'.
+    /// The canvas that has this pane — the session's, one of its pane windows', or the
+    /// store the pane is visiting, since that is where its surface is and where a change
+    /// to its header has to land.
     public func holder(of paneID: PaneID) -> LayoutStore? {
         let session = session
-        return ([session] + session.paneWindows).first {
-            $0.tree.contains(paneID) || $0.surfaces.existingSurface(for: paneID) != nil
+        for store in [session] + session.paneWindows {
+            if let host = store.visitHosts[paneID]?.store { return host }
+            if store.tree.contains(paneID) || store.surfaces.existingSurface(for: paneID) != nil {
+                return store
+            }
         }
+        return nil
     }
 
     /// Whether this pane can go to a window of its own: it is on the session's canvas, and
@@ -545,7 +577,7 @@ extension LayoutStore {
     /// nothing in it.
     public func canMoveToNewWindow(_ paneID: PaneID? = nil) -> Bool {
         let paneID = paneID ?? tree.focused
-        return !isPaneWindow && tree.contains(paneID) && tree.paneCount > 1
+        return !isPaneWindow && !isFixedArrangement && tree.contains(paneID) && tree.paneCount > 1
     }
 
     /// Move a pane into a new window of its own. Undoable: ⌘Z in the main window brings
@@ -722,4 +754,115 @@ extension LayoutStore {
         onGeometrySettled?()
         onChange?(candidate)
     }
+}
+
+// MARK: - Visiting panes
+
+/// A pane shown on another canvas for a while, without leaving this one.
+///
+/// Pane windows MOVE a pane: it leaves the tree and goes into a canvas of its own. A
+/// visit LENDS it: the tree keeps the pane's place, the canvas shows a stand-in there, and
+/// the live surface — the same view, the same process — is handed to the host to show
+/// among panes from other sessions, which is what the Agents overview is. It comes back
+/// to exactly where it was. Lending rather than moving because the overview gathers
+/// panes whose canvases may hold nothing else, and a canvas with nothing on it is a window
+/// with nothing in it.
+///
+/// Three ways a visit ends, and each is one call: `takeHome` (the overview closes, or the
+/// agent is gone); the host closing the pane (`visitorClosed`, which the host's owner
+/// wires to its `surfaces.onRelease`), after which the pane is gone from here too; and
+/// this store releasing the pane — its session closing — which evicts it from the host.
+extension LayoutStore {
+    /// The panes of this store that are away, and where.
+    public var visitingPanes: [PaneID: LayoutStore] {
+        visitHosts.compactMapValues(\.store)
+    }
+
+    /// The panes shown here on loan, and where each belongs.
+    public var visitors: [PaneID: LayoutStore] {
+        visitorHomes.compactMapValues(\.store)
+    }
+
+    /// The store a pane shown here belongs to, or nil for one of this store's own.
+    public func home(of paneID: PaneID) -> LayoutStore? {
+        visitorHomes[paneID]?.store
+    }
+
+    /// Lend a pane to `host`. The host's tree is the host's business — the caller puts the
+    /// pane in it once this has succeeded, so the host's canvas finds a surface to adopt
+    /// rather than building one. False for a pane not here, or already away.
+    @discardableResult
+    public func send(_ paneID: PaneID, toVisit host: LayoutStore) -> Bool {
+        guard host !== self, tree.contains(paneID), visitHosts[paneID] == nil else { return false }
+        guard surfaces.lend(paneID, to: host.surfaces) else { return false }
+        visitHosts[paneID] = WeakStore(store: host)
+        host.visitorHomes[paneID] = WeakStore(store: self)
+        trace("VISIT \(paneID.uuidString.prefix(8)) -> \(host.workspaceID.uuidString.prefix(8))")
+        // The canvas swaps the stand-in in for the surface that left: same tree, new view.
+        surfaceRevision += 1
+        return true
+    }
+
+    /// Bring a pane back from its visit, to the place it never left. The host hears it has
+    /// gone (`onVisitorLeft`) and takes it off its own tree. False when the pane was not
+    /// away — or was closed where it was shown, which `visitorClosed` has already settled.
+    @discardableResult
+    public func takeHome(_ paneID: PaneID) -> Bool {
+        guard let host = visitHosts.removeValue(forKey: paneID)?.store else { return false }
+        host.visitorHomes[paneID] = nil
+        let returned = surfaces.reclaim(paneID)
+        trace("HOME \(paneID.uuidString.prefix(8)) returned=\(returned)")
+        surfaceRevision += 1
+        refreshWindowTitle()
+        host.onVisitorLeft?(paneID)
+        return returned
+    }
+
+    /// Every pane away from here, back. What the overview closing does for each home.
+    public func takeAllHome() {
+        for paneID in visitHosts.keys { takeHome(paneID) }
+    }
+
+    /// A pane lent to THIS store was closed here: its surface has been released, so its
+    /// home forgets it as a close would and takes it out of its tree. The host's owner
+    /// calls this from `surfaces.onRelease`; the stand-in and the home's own release
+    /// callback — what stops the shell — follow from it.
+    public func visitorClosed(_ paneID: PaneID) {
+        guard let home = visitorHomes.removeValue(forKey: paneID)?.store else { return }
+        home.visitorDied(paneID)
+    }
+
+    private func visitorDied(_ paneID: PaneID) {
+        visitHosts[paneID] = nil
+        surfaces.forfeit(paneID)
+        navigation.forget(paneID)
+        trace("VISITOR CLOSED \(paneID.uuidString.prefix(8))")
+        // No undo entry, as for a pane window: the process is gone, and undoing into a
+        // tree that names it would build a fresh shell wearing its id.
+        guard tree.paneCount > 1 else {
+            // The last pane: it stays in the tree, and the canvas builds it afresh. The
+            // host hides the close control on such a pane, so this is the backstop.
+            surfaceRevision += 1
+            return
+        }
+        var candidate = tree
+        candidate.close(paneID)
+        commitWithoutUndo(candidate)
+    }
+
+    /// Replace this store's tree outright, with no undo entry: for a canvas whose
+    /// arrangement is computed — the overview's grid — rather than edited. Panes dropped
+    /// from the tree are released, as always; a visitor that has already gone home has no
+    /// surface here to release.
+    public func rearrange(_ newTree: LayoutTree) {
+        guard newTree.validate().isEmpty, newTree != tree else { return }
+        trace("rearrange: \(tree.paneCount) -> \(newTree.paneCount) panes")
+        commitWithoutUndo(newTree)
+    }
+}
+
+/// A store held without owning it: a home and its host each name the other for as long
+/// as a visit lasts, and a session that closes must not be kept alive by its visitor.
+private struct WeakStore {
+    weak var store: LayoutStore?
 }

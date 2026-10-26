@@ -276,6 +276,31 @@ the whole canvas is wrapped by **one** `NSViewRepresentable` at the tab level, a
 tiles are `NSHostingView<TileView>` instances in the same surface store. Glass tiles and terminal
 panes are laid out by identical code paths.
 
+### Visiting panes
+
+The Agents overview shows every working agent's pane, from every session, on one canvas —
+the panes themselves, not pictures of them. A pane on it is **lent**, not moved
+(`LayoutStore.send(_:toVisit:)`, `PaneSurfaceStore.lend`): the live surface is handed to the
+overview's store exactly as a pane window takes one (`handOver`), while the home tree keeps
+the pane's place and the home canvas shows a stand-in there (`VisitingStandIn`). Nothing is
+built or released on the way, and the pane comes back to the place it never left
+(`takeHome`). Lending rather than moving because a canvas whose only pane has gone to be
+looked at elsewhere must still be a canvas.
+
+A visit ends one of three ways, and each is one call: `takeHome` (the overview closes, or
+the agent is gone); the host closing the pane, which releases the surface there and reaches
+the home through `visitorClosed` → `forfeit`, firing the home's own `onRelease` once; or the
+home releasing the pane — its session closing — which `evict`s it from the host without a
+second release. The home's document is unchanged by a visit: its tree already holds the
+pane, and `surfaceRecord` reads the record from wherever the pane is.
+
+The overview's store is a real `LayoutStore`, so focus, ⌘1…9, zoom and close all work on
+it, but a **fixed arrangement** (`isFixedArrangement`): its grid is computed from whatever
+agents there are (`LayoutTree.grid`), so nothing splits, converts or moves a pane to a
+window there. Each visitor wears a strip above its own header saying which session it is
+from (`PaneContainerView.visitStrip`); the app fills it, since this layer knows nothing of
+agent states.
+
 ### Layer-backing
 
 Every surface is layer-backed with `canDrawSubviewsIntoLayer = false` and

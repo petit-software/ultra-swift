@@ -51,6 +51,29 @@ public enum AgentState: Equatable, Sendable {
         if seconds < 86_400 { return "\(Int(seconds / 3600))h" }
         return "\(Int(seconds / 86_400))d"
     }
+
+    /// Several panes' states as one: a session's row, from its panes.
+    ///
+    /// The one that needs a person wins — asking, then working — each since the earliest
+    /// of its kind, which is how long someone has been waited on. With nothing live, done
+    /// since the LAST finish, unread if any is unread; inactive only when every pane is.
+    /// Nil for no states at all.
+    public static func rollup(_ states: some Sequence<AgentState>) -> AgentState? {
+        var asking: [Date] = [], working: [Date] = [], done: [(Date, Bool)] = [], inactive: [Date] = []
+        for state in states {
+            switch state {
+            case .needsYou(let since): asking.append(since)
+            case .working(let since): working.append(since)
+            case .done(let at, let read): done.append((at, read))
+            case .inactive(let since): inactive.append(since)
+            }
+        }
+        if let since = asking.min() { return .needsYou(since: since) }
+        if let since = working.min() { return .working(since: since) }
+        if let at = done.map(\.0).max() { return .done(at: at, read: done.allSatisfy(\.1)) }
+        if let since = inactive.max() { return .inactive(since: since) }
+        return nil
+    }
 }
 
 /// Whether the last lines of an agent's screen are asking the person something.
@@ -102,12 +125,18 @@ public struct AgentPaneReading: Equatable, Sendable {
     }
 }
 
-/// Turns each session's panes into one `AgentState`, remembering what it needs to: when a
-/// state began, and whether a finished turn has been seen.
+/// Reads each pane's `AgentState`, remembering what it needs to — when a state began, and
+/// whether a finished turn has been seen — and rolls the panes of a session up into one.
+///
+/// PER PANE, with the session derived: the sidebar's row wants one answer per session and
+/// the Agents overview wants one per pane, and two trackers would be two ways of being
+/// wrong about the same tty. The rollup keeps the state that needs a person first
+/// (`AgentState.rollup`).
 public struct AgentStateTracker: Equatable, Sendable {
     /// How long a turn that has been seen stays "done" before it is "inactive".
     public static let inactiveAfter: TimeInterval = 3600
 
+    public private(set) var stateByPane: [PaneID: AgentState] = [:]
     public private(set) var stateBySession: [UUID: AgentState] = [:]
 
     public init() {}
@@ -115,51 +144,61 @@ public struct AgentStateTracker: Equatable, Sendable {
     /// Fold one tick in. `viewed` is the sessions on screen in a window with the keyboard:
     /// looking at a finished turn is what reads it.
     ///
-    /// A session with no agent and no history has no state. Sessions not in `readings`
-    /// are dropped — a closed session cannot have news.
+    /// A pane with no agent and no history has no state, and a session whose panes have
+    /// none has none. Panes not in `readings` are dropped — a closed pane cannot have news.
     @discardableResult
     public mutating func observe(_ readings: [UUID: [PaneID: AgentPaneReading]],
                                  viewed: Set<UUID>, at now: Date) -> [UUID: AgentState] {
-        var next: [UUID: AgentState] = [:]
+        var nextPanes: [PaneID: AgentState] = [:]
+        var nextSessions: [UUID: AgentState] = [:]
         for (session, panes) in readings {
-            let previous = stateBySession[session]
             let isViewed = viewed.contains(session)
-            let panes = Array(panes.values)
-            let quiet = panes.filter { $0.sample.agent != nil && $0.status == .needsInput }
-
-            if quiet.contains(where: \.asking) {
-                if case .needsYou(let since) = previous { next[session] = .needsYou(since: since) }
-                else { next[session] = .needsYou(since: now) }
-                continue
+            var states: [AgentState] = []
+            for (paneID, pane) in panes {
+                guard let state = Self.state(of: pane, previous: stateByPane[paneID],
+                                             viewed: isViewed, at: now) else { continue }
+                nextPanes[paneID] = state
+                states.append(state)
             }
-            let stopped = quiet.filter { Self.hasStopped($0.sample, at: now) }
-            let busy = panes.contains { $0.sample.agent != nil && $0.status == .working }
-                || quiet.count > stopped.count
-            if busy {
-                if case .working(let since) = previous { next[session] = .working(since: since) }
-                else { next[session] = .working(since: now) }
-                continue
-            }
-            // Nothing working and nothing asking: a turn that has ended — the agent quiet at
-            // its prompt, or gone altogether — or nothing ever happened here.
-            switch previous {
-            case nil:
-                // Quiet agents the tracker never saw work are done too: an app launched on a
-                // session whose agent is waiting at its prompt. Read, because it is not news.
-                if !stopped.isEmpty { next[session] = .done(at: now, read: true) }
-            case .working, .needsYou:
-                // Watched as it finished, it was read as it finished.
-                next[session] = .done(at: now, read: isViewed)
-            case .done(let at, let read):
-                let read = read || isViewed
-                next[session] = read && now.timeIntervalSince(at) >= Self.inactiveAfter
-                    ? .inactive(since: at) : .done(at: at, read: read)
-            case .inactive(let since):
-                next[session] = .inactive(since: since)
-            }
+            if let rolled = AgentState.rollup(states) { nextSessions[session] = rolled }
         }
-        stateBySession = next
-        return next
+        stateByPane = nextPanes
+        stateBySession = nextSessions
+        return nextSessions
+    }
+
+    /// One pane's state from its reading and what it was a tick ago.
+    static func state(of pane: AgentPaneReading, previous: AgentState?,
+                      viewed: Bool, at now: Date) -> AgentState? {
+        let present = pane.sample.agent != nil
+        let quiet = present && pane.status == .needsInput
+        if quiet, pane.asking {
+            if case .needsYou(let since) = previous { return .needsYou(since: since) }
+            return .needsYou(since: now)
+        }
+        let stopped = quiet && hasStopped(pane.sample, at: now)
+        let busy = present && pane.status == .working || (quiet && !stopped)
+        if busy {
+            if case .working(let since) = previous { return .working(since: since) }
+            return .working(since: now)
+        }
+        // Nothing working and nothing asking: a turn that has ended — the agent quiet at
+        // its prompt, or gone altogether — or nothing ever happened here.
+        switch previous {
+        case nil:
+            // A quiet agent the tracker never saw work is done too: an app launched on a
+            // pane whose agent is waiting at its prompt. Read, because it is not news.
+            return stopped ? .done(at: now, read: true) : nil
+        case .working, .needsYou:
+            // Watched as it finished, it was read as it finished.
+            return .done(at: now, read: viewed)
+        case .done(let at, let read):
+            let read = read || viewed
+            return read && now.timeIntervalSince(at) >= Self.inactiveAfter
+                ? .inactive(since: at) : .done(at: at, read: read)
+        case .inactive(let since):
+            return .inactive(since: since)
+        }
     }
 
     /// A quiet agent has really stopped — not paused mid-turn on a slow tool call — once it

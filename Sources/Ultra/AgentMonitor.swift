@@ -53,6 +53,8 @@ final class AgentMonitor {
     /// unread, done, inactive — see `AgentState`. What the sidebar's rows show.
     private(set) var states = AgentStateTracker()
     private(set) var stateBySession: [UUID: AgentState] = [:]
+    /// The same, per pane: what the Agents overview's strips show.
+    private(set) var stateByPane: [PaneID: AgentState] = [:]
 
     /// The time, to the minute, for the rows' "4m". Moves once a minute, so a row that
     /// reads it redraws once a minute and no oftener — the rows hold no timers of their own.
@@ -108,6 +110,8 @@ final class AgentMonitor {
         }
         observe(present)
         observeStatuses(byWorkspace)
+        // After the states, so a pane arriving on the overview wears its state at once.
+        AgentsOverview.shared.refresh(byWorkspace)
     }
 
     /// Fold one round of per-pane samples into a status for every session.
@@ -161,6 +165,7 @@ final class AgentMonitor {
         }
         let next = states.observe(readings, viewed: viewedSessions(), at: timestamp)
         if next != stateBySession { stateBySession = next }
+        if states.stateByPane != stateByPane { stateByPane = states.stateByPane }
         let turned = Calendar.current.dateInterval(of: .minute, for: timestamp)?.start ?? timestamp
         if turned != Calendar.current.dateInterval(of: .minute, for: minute)?.start { minute = turned }
     }

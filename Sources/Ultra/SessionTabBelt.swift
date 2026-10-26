@@ -92,6 +92,10 @@ struct SessionTabBelt: View {
                 // torn down on one and built again on the next.
                 GlassEffectContainer {
                     HStack(spacing: Self.spacing) {
+                        // First, as it is first in the sidebar: the overview of every agent.
+                        AgentsTab(isSelected: ui.showsAgents, glass: glass) {
+                            AgentsOverview.shared.open(in: sessions)
+                        }
                         ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
                             index, store in
                             tab(store, at: index)
@@ -134,7 +138,7 @@ struct SessionTabBelt: View {
         let id = store.workspaceID
         return SessionTab(store: store,
                           ui: ui,
-                          isSelected: sessions.selectedID == id,
+                          isSelected: !ui.showsAgents && sessions.selectedID == id,
                           canClose: sessions.canCloseSelected,
                           glass: glass,
                           mode: mode(of: index, id: id),
@@ -467,6 +471,53 @@ private struct SessionTab: View {
         // an easy thing to hit.
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+/// The belt's first tab: the Agents overview. Icon only — the sidebar's row has the word,
+/// and on a belt of named sessions a glyph alone says "not one of these". A count beside
+/// it while an agent needs someone, which is the one state worth a number here. Selected,
+/// it wears the same glass as a session tab, so the capsule slides to it and back.
+/// The keyboard path is View ▸ Show Agents (⌘0).
+private struct AgentsTab: View {
+    let isSelected: Bool
+    let glass: Namespace.ID
+    let select: () -> Void
+    @State private var isHovering = false
+
+    private var waiting: Int {
+        AgentMonitor.shared.stateByPane.values.filter { if case .needsYou = $0 { true } else { false } }.count
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "rectangle.grid.2x2.fill")
+                .font(Token.Type_.body.weight(.semibold))
+                .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
+                .frame(width: 16, height: 16)
+            if waiting > 0 {
+                Text("\(waiting)")
+                    .font(Token.Type_.body.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Token.Colour.agentNeedsYou)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background {
+            if !isSelected, isHovering {
+                Capsule().fill(Token.Colour.selectionWash.opacity(0.5))
+            }
+        }
+        .modifier(SelectedGlass(isSelected: isSelected, glass: glass))
+        .contentShape(.capsule)
+        .onHover { isHovering = $0 }
+        .onTapGesture(perform: select)
+        .help("Agents — every working agent's pane (⌘0)")
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityLabel(waiting > 0 ? "Agents, \(waiting) waiting" : "Agents")
+        .accessibilityAction { select() }
     }
 }
 

@@ -140,3 +140,48 @@ clean.
 ## Simulator pane switched off
 
 - [ ] Bring it back when a touch reliably reaches a device that was already running when the pane connected
+
+## Agents overview: every working agent's pane, on one canvas
+
+One overview for the whole app: every pane with an agent in it, from every session in
+every window and from the sessions a closed window left running, brought together on one
+canvas to be watched and typed into. Not a picture of the panes — the panes themselves.
+The mechanism exists: Move Pane to New Window hands a live surface from one canvas to
+another (`PaneSurfaceStore.handOver`, `LayoutStore.sendToNewWindow` / `takeBack`) and
+nothing is rebuilt or released on the way, which is property 1. The overview is a canvas
+that agent panes VISIT: they come when the view opens or when an agent starts anywhere
+while it is up (the monitor's tick, which already notices `claude` typed at a prompt), and
+they go home — to the exact place they left — when the view closes, when the agent exits,
+or when their wrapper's "Open project" is pressed. In their home canvas the siblings fill
+the gap meanwhile, as they do for a pane window.
+
+Each pane sits in a wrapper that says which project it is — the session's icon and name,
+the agent's state and age — and carries one verb: go to that project, which takes the pane
+home, selects its session and puts the keyboard in it.
+
+It is the row above every session in the sidebar and the first tab on the belt, icon
+`rectangle.grid.2x2.fill`, key ⌘0, the entry before the first session for Next / Previous
+Session. One overview, in the window that asked for it: asking in a second window moves
+it there, since a pane can only be in one place. Panes come from windows that are showing
+their session too — the grid is complete or it is not an overview.
+
+- [x] `LayoutStore` lends rather than moves: `send(_:toVisit:)` hands the live surface to the host and leaves a stand-in in the home canvas with the tree untouched (a canvas whose only pane is an agent must still be a canvas), `takeHome(_:)` puts the same view back; `holder(of:)` finds a visiting pane; pane windows unchanged beside it. Tests in `UltraCanvasTests` beside `PaneWindowTests`: round trip leaves tree and containers as they were, the home's `onRelease` is the one that fires for a pane closed while visiting, a session closing evicts its visitor
+- [x] A home's `document` is untouched by a visit — the tree keeps the pane, and its record is read from wherever the pane is — so a quit or a crash with the overview up loses no pane
+- [x] `AgentsOverview` (app target, one for the app): the visiting store on a `LayoutTree.grid` of its panes, rebuilt on join and leave; fed by `AgentMonitor`'s tick — a pane whose sample names an agent joins, a pane whose agent has gone goes home; `open(in:)` moves the overview to that window, `close()` sends every pane home; a window closing sends them home before letting its sessions go
+- [x] Wrapper: a session strip above the pane's own header, drawn by the container for a visiting pane — session icon in its tint, session title, `AgentStateSymbol` with age, and "Open project" (arrow glyph) — the pane's own header and controls unchanged under it, so close and zoom still work; `PaneContainerView.visitStrip`, filled by the app, so the canvas learns nothing of sessions
+- [x] `UIState.showsAgents`, cleared by `SessionList.select`; `selectNext` / `selectPrevious` step through the overview as the entry before the first session; `RootView` shows `CanvasSurface(store: AgentsOverview.store)` in the detail column while the flag is on, the belt still under it; `focusedSceneValue(\.layoutStore)` is the overview's store then, so the Pane menu, ⌘1…9, ⌥⌘arrows and zoom act on the grid
+- [x] Command `view.agents` "Show Agents", symbol `rectangle.grid.2x2.fill`, View menu beside Next Session, ⌘0 (free: ⌃⌘0 is Fit Device, ⌘1…9 are panes), a toggle, in the palette; `agents.openProject` "Open Agent's Project" ⌘↩ for the focused card — the strip's button and the key are one verb
+- [x] Empty state: "No agents running", naming Pane ▸ New Pane, on the canvas surface where the grid would be; the view stays open so the next agent to start lands in it
+- [x] Sidebar: an "Agents" row above the sessions in the same `List`, the capsule on it while `showsAgents`, trailing slot the strongest state across every agent with the count; dimmed label with none, never hidden
+- [x] Belt: an icon-only first tab, the glass capsule morphing to it when selected, a count beside the glyph when an agent needs you
+- [x] Previews: the overview canvas with placeholder panes in wrappers, the empty state, the wrapper alone, the stand-in; the four-pane grid rendered offscreen from a throwaway test to look at, then the test removed
+- [x] Docs: `docs/01-SPLIT-ENGINE.md` gains a short "Visiting panes" section under Rendering (lent not moved, the stand-in, the three ways a visit ends, what persists)
+- [x] `whats-new.md` line at release
+- [x] Try it in Ultra Dev: ⌘0 with two projects running agents, a pane visiting from a project whose only pane it is, ⌘W on a visitor, Open project from the strip, closing the window with the overview up
+
+## Agents overview, part 2
+
+- [ ] `agents.openWaiting` "Open Waiting Agent", ⌥⌘0: focus the first needs-you pane in the overview if it is up, else open its project directly — the keyboard answer to the orange dot
+- [ ] A click on the "claude is waiting" notification with the overview up focuses that pane in it
+- [ ] Menu bar item lists the agents that need you, by session, each focusing its pane
+- [ ] Chat panes with a turn in flight as visitors too, decided after the tty panes have been lived with

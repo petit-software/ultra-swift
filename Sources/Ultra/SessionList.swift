@@ -204,6 +204,10 @@ final class SessionList {
     /// Saved first, as the window's teardown always did. NOT `persist()`: the stored list
     /// is what this window held, and it is what the next launch should reopen.
     func relinquish() {
+        // The overview's panes are lent to a canvas this window was showing; they go
+        // home before the sessions are let go of, or they would run on with nothing
+        // showing them anywhere.
+        if ui?.showsAgents == true { AgentsOverview.shared.close() }
         for store in sessions {
             store.persistNow()
             ShellWorkspace.Registry.factories[store.workspaceID]?.saveScrollback()
@@ -314,6 +318,8 @@ final class SessionList {
     /// write and the persist are still behind the change check.
     func select(_ id: UUID) {
         guard sessions.contains(where: { $0.workspaceID == id }) else { return }
+        // Choosing a session is leaving the Agents overview, whichever way it was chosen.
+        if ui?.showsAgents == true { AgentsOverview.shared.close() }
         if selectedID != id {
             selectedID = id
             persist()
@@ -322,15 +328,24 @@ final class SessionList {
     }
 
     /// Wraps, for the same reason the editor's list does: stopping at the end just means
-    /// pressing the other shortcut to get anywhere.
+    /// pressing the other shortcut to get anywhere — and wraps THROUGH the Agents
+    /// overview, the entry before the first session, as the sidebar draws it.
     func selectNext() { step(by: 1) }
     func selectPrevious() { step(by: -1) }
 
     private func step(by offset: Int) {
-        guard sessions.count > 1,
-              let current = sessions.firstIndex(where: { $0.workspaceID == selectedID })
-        else { return }
-        select(sessions[(current + offset + sessions.count) % sessions.count].workspaceID)
+        if ui?.showsAgents == true {
+            guard let target = offset > 0 ? sessions.first : sessions.last else { return }
+            select(target.workspaceID)
+            return
+        }
+        guard let current = sessions.firstIndex(where: { $0.workspaceID == selectedID }) else { return }
+        let next = current + offset
+        if sessions.indices.contains(next) {
+            select(sessions[next].workspaceID)
+        } else {
+            AgentsOverview.shared.open(in: self)
+        }
     }
 
     // MARK: - Ordering

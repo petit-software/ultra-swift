@@ -176,16 +176,19 @@ enum ShellWorkspace {
         // A shell renames its own pane as it runs; the header follows, and so does the tab
         // when the pane doing the renaming is the focused one.
         factory.onDescriptorChange = { [weak store] paneID, record in
-            guard let store = store?.holder(of: paneID) else { return }
-            let moved = store.surfaces.surfaceRecord(for: paneID).cwd != record.cwd
-            store.surfaces.updateRecord(record, for: paneID)
-            if store.tree.focused == paneID { store.refreshWindowTitle() }
-            store.persist()
+            // The canvas HOLDING the pane takes the record: a pane window's, or the
+            // Agents overview's while the pane is visiting. The session persists either
+            // way — a visitor's record is read from its host when the document is written.
+            guard let session = store, let holder = session.holder(of: paneID) else { return }
+            let moved = holder.surfaces.surfaceRecord(for: paneID).cwd != record.cwd
+            holder.surfaces.updateRecord(record, for: paneID)
+            if holder.tree.focused == paneID { holder.refreshWindowTitle() }
+            session.persist()
             // A scratch session's shell walking into a project Ultra knows is offered it.
             // Only on a MOVE: a title changes on every prompt and every agent spinner tick,
             // and a pane re-noting the folder it has sat in all along put back the question
             // a `cd` in another pane — or deeper in this one — had just withdrawn.
-            if moved, let cwd = record.cwd { ProjectSetupOffers.shared.note(cwd, in: store) }
+            if moved, let cwd = record.cwd { ProjectSetupOffers.shared.note(cwd, in: session) }
         }
         // A pane moved to a window of its own: the app opens one for it. Its pane menu
         // converts in THAT canvas, which is the one holding the pane.
@@ -387,6 +390,9 @@ enum ShellWorkspace {
     /// gets. Splitting the LONGER axis keeps panes closer to square and keeps room available
     /// for longer; the remaining edges are tried before giving up.
     static func newPaneEdge(in store: LayoutStore) -> Edge? {
+        // The overview's grid is whatever agents there are; a pane opened on it would be
+        // thrown away by the next rebuild. The New Pane entries dim on it.
+        guard !store.isFixedArrangement else { return nil }
         let focused = store.tree.focused
         let frame = store.layoutResult.frames[focused]
         let widerThanTall = frame.map { $0.width >= $0.height } ?? true

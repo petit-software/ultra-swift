@@ -17,6 +17,49 @@ enum PaneCommands {
                                  + layouts + chat + editor + browser
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
                                  + [newShell, openSetup, closeSession, whatsNew]
+                                 + [showAgents, openAgentProject]
+                                 + (AgentsOverview.isDevBuild ? [agentsDemo] : [])
+
+    /// Ultra Dev only: the overview with three stand-in agents, to look at the design
+    /// without running three agents. Not in a release build at all — absent, not dimmed,
+    /// since it is for the people building the app and no one else.
+    static let agentsDemo = AppCommand(
+        id: "debug.agentsDemo", title: "Demo: Agents Overview", symbol: "rectangle.grid.2x2",
+        menuPath: ["View"],
+        keywords: ["Debug"],
+        isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
+            guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
+            AgentsOverview.shared.showDemo(in: list)
+        }
+
+    /// The Agents overview: every working agent's pane, from every project, on one
+    /// canvas (`AgentsOverview`). A toggle, so the key that opens it closes it.
+    ///
+    /// ⌘0: the entry before the first session, as ⌘1…9 are the panes and ⌥⌘[ from the
+    /// first session lands on it. ⌃⌘0 is the simulator's Fit Device; nothing with ⌘
+    /// reaches a shell.
+    static let showAgents = AppCommand(
+        id: "view.agents", title: "Show Agents", symbol: "rectangle.grid.2x2.fill",
+        menuPath: ["View"],
+        binding: KeyBinding("0", [.command]),
+        keywords: ["Agents Overview", "All Agents", "Hide Agents"],
+        isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
+            guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
+            AgentsOverview.shared.toggle(in: list)
+        }
+
+    /// From the overview, the focused pane's project: the pane goes home and its session
+    /// comes on screen with the keyboard in that pane. The strip's arrow is this.
+    ///
+    /// ⌘↩, beside ⇧⌘↩ for zoom: Return is "go into it". Dims off the overview.
+    static let openAgentProject = AppCommand(
+        id: "agents.openProject", title: "Open Agent's Project", symbol: "arrow.up.forward.app",
+        menuPath: ["View"],
+        binding: KeyBinding(.return, [.command]),
+        keywords: ["Go to Project", "Go to Agent"],
+        isEnabled: { AgentsOverview.shared.canOpenProject(from: $0) }) { store in
+            AgentsOverview.shared.openProject(store.tree.focused)
+        }
 
     /// The running version's release list, on request (`WhatsNewChecker`). The only way
     /// to it: Sparkle's update prompt shows the same list before installing, so the app
@@ -465,7 +508,10 @@ enum PaneCommands {
                        menuPath: ["Pane", "Change Pane To"],
                        binding: nil,
                        isEnabled: { store in
-                           store.surfaces.records[store.tree.focused]?.kind != entry.kind
+                           // Not on the Agents overview: a pane is converted at home,
+                           // where the factories that build the replacement live.
+                           !store.isFixedArrangement
+                               && store.surfaces.records[store.tree.focused]?.kind != entry.kind
                        }) { store in
                 ShellWorkspace.convert(store.tree.focused, to: entry.kind, in: store)
             }
