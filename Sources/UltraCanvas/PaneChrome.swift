@@ -138,6 +138,10 @@ public struct PaneHeader: View {
     let isFocused: Bool
     let canClose: Bool
     let actions: PaneActions
+    /// Whether the close and split controls are drawn. Off for a pane visiting the Agents
+    /// overview: its grid cannot be split, and its close is on the strip above the header,
+    /// where the wrapper's own controls live.
+    var showsControls = true
     /// Where the identity control's trailing edge landed, in header coordinates. The drag
     /// handle is an AppKit view laid out by the container, and it must start after the
     /// name — the name is a control now, and a handle over it would take its clicks.
@@ -155,7 +159,7 @@ public struct PaneHeader: View {
             // Close leads, in the corner, the way a window's does. It was in the trailing
             // cluster beside Split, where the destructive control sat one pixel from the
             // constructive ones.
-            if canClose {
+            if canClose, showsControls {
                 PaneHeaderButton(symbol: "xmark", help: "Close Pane (⌘W)", isDestructive: true) {
                     actions.close(paneID)
                 }
@@ -175,16 +179,18 @@ public struct PaneHeader: View {
             // The split controls never move and never collapse as the pane narrows: they
             // are fixed-size, so the identity control is the only thing that gives, and it
             // gives by trimming its name.
-            HStack(spacing: 1) {
-                PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
-                    actions.split(paneID, .right)
+            if showsControls {
+                HStack(spacing: 1) {
+                    PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
+                        actions.split(paneID, .right)
+                    }
+                    PaneHeaderButton(symbol: "square.split.1x2", help: "Split Down (⇧⌘D)") {
+                        actions.split(paneID, .bottom)
+                    }
                 }
-                PaneHeaderButton(symbol: "square.split.1x2", help: "Split Down (⇧⌘D)") {
-                    actions.split(paneID, .bottom)
-                }
+                .opacity(controlOpacity)
+                .fixedSize()
             }
-            .opacity(controlOpacity)
-            .fixedSize()
         }
         // 4, not 10: the leading control wears the standard 28-wide hover plate, which
         // carries ~6.5pt of slack either side of the glyph. Padding the header as if the
@@ -523,21 +529,36 @@ public final class PaneContainerView: NSView {
     public var visitStrip: VisitStrip? {
         didSet {
             guard visitStrip?.key != oldValue?.key || (visitStrip == nil) != (oldValue == nil) else { return }
-            if let visitStrip {
-                if let stripHost {
-                    stripHost.rootView = VisitStripView(strip: visitStrip)
-                } else {
-                    let host = NSHostingView(rootView: VisitStripView(strip: visitStrip))
-                    host.focusRingType = .none
-                    clip.addSubview(host)
-                    stripHost = host
-                }
-            } else {
-                stripHost?.removeFromSuperview()
-                stripHost = nil
-            }
+            let hadStrip = stripHost != nil
+            rebuildStrip()
+            // The pane's own header loses its controls while the strip carries them.
+            if hadStrip != (stripHost != nil) { rebuildHeader() }
             updateAccessibilityLabel()
             needsLayout = true
+        }
+    }
+
+    /// The strip's view from the strip and the pane's own close, built or replaced; gone
+    /// when there is no strip. Re-run with the header, since the strip's X follows
+    /// `canClose` the way the header's did.
+    private func rebuildStrip() {
+        guard let visitStrip else {
+            stripHost?.removeFromSuperview()
+            stripHost = nil
+            return
+        }
+        let close: (() -> Void)? = canClose ? { [weak self] in
+            guard let self else { return }
+            actions.close(paneID)
+        } : nil
+        let view = VisitStripView(strip: visitStrip, close: close)
+        if let stripHost {
+            stripHost.rootView = view
+        } else {
+            let host = NSHostingView(rootView: view)
+            host.focusRingType = .none
+            clip.addSubview(host)
+            stripHost = host
         }
     }
 
@@ -650,6 +671,7 @@ public final class PaneContainerView: NSView {
 
     private func refresh() {
         rebuildHeader()
+        rebuildStrip()
         applyAppearance()
         applyLayerState()
     }
@@ -663,6 +685,7 @@ public final class PaneContainerView: NSView {
     private func rebuildHeader() {
         header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor, currentKind: kind,
                                      isFocused: isFocused, canClose: canClose, actions: actions,
+                                     showsControls: visitStrip == nil,
                                      onIdentityTrailing: { [weak self] in
                                          self?.noteIdentityTrailing($0)
                                      })
@@ -886,9 +909,17 @@ public struct VisitStrip {
 
 struct VisitStripView: View {
     let strip: VisitStrip
+    /// The pane's close, moved up here from its header: the wrapper is what a visitor is
+    /// handled by. Nil when the pane cannot be closed — the last pane of its canvas.
+    var close: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 6) {
+            if let close {
+                PaneHeaderButton(symbol: "xmark", help: "Close Pane (⌘W)", isDestructive: true,
+                                 action: close)
+                    .fixedSize()
+            }
             Image(systemName: strip.symbol)
                 .font(Token.Type_.tileTitle)
                 .foregroundStyle(strip.tint)
@@ -915,7 +946,9 @@ struct VisitStripView: View {
                              action: strip.open)
                 .fixedSize()
         }
-        .padding(.leading, 12)
+        // 4 with the X leading, as the pane header pads its own; 12 without, so the icon
+        // sits where the header's name does.
+        .padding(.leading, close == nil ? 12 : 4)
         .padding(.trailing, 5)
         .frame(height: Token.Space.tileHeaderHeight)
         .frame(maxWidth: .infinity)
@@ -930,5 +963,5 @@ struct VisitStripView: View {
 
 #Preview("Visiting strip", traits: .fixedLayout(width: 420, height: 40)) {
     VisitStripView(strip: VisitStrip(symbol: "shippingbox.fill", tint: .orange, title: "ultra-swift",
-                                     detail: "4m", key: "p", open: {}))
+                                     detail: "4m", key: "p", open: {}), close: {})
 }

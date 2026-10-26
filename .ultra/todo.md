@@ -179,6 +179,13 @@ their session too — the grid is complete or it is not an overview.
 - [x] `whats-new.md` line at release
 - [x] Try it in Ultra Dev: ⌘0 with two projects running agents, a pane visiting from a project whose only pane it is, ⌘W on a visitor, Open project from the strip, closing the window with the overview up
 
+## Agents overview, after the first look
+
+- [x] Sidebar row and belt tab show the number of running agents and nothing else; the states stay on the session rows
+- [x] On the overview, the window bar's `+` and Pane ▸ New Pane offer an agent in one of the open projects — a section per project, its installed agents — and nothing else; the pane is split off that project's canvas and comes to the overview at once, focused, its shell starting on the overview's first layout
+- [x] A visiting pane's header loses its close and split controls — the grid cannot be split — and the X moves to the wrapper strip, leading, where the pane's was
+- [x] The working arc is turned by a `TimelineView`, not a `repeatForever` animation: inside a strip laid out after it appeared, the animation took the move into place with it and the arc slid up the pane in a loop until the next layout
+
 ## Agents overview, part 2
 
 - [ ] `agents.openWaiting` "Open Waiting Agent", ⌥⌘0: focus the first needs-you pane in the overview if it is up, else open its project directly — the keyboard answer to the orange dot

@@ -41,6 +41,12 @@ final class AgentsOverview {
     /// The panes the grid was last built for, so a tick that changes nothing rebuilds
     /// nothing: a grid tree is new node ids every time, and would read as a change.
     private var shown: [PaneID] = []
+    /// Panes this overview opened itself, and when: an agent pane starts on its first
+    /// layout, which the overview's canvas gives it, and until it is running the sample
+    /// names no agent. Kept on the grid for a few seconds rather than sent home on the
+    /// tick between the split and the start.
+    private var opened: [PaneID: Date] = [:]
+    private static let openingGrace: TimeInterval = 10
     /// Ultra Dev only: stand-in panes shown to see the overview without three agents
     /// running. See `showDemo`.
     private let demo = DemoPanes()
@@ -114,6 +120,7 @@ final class AgentsOverview {
         isOpen = false
         for (paneID, home) in store.visitors { home.takeHome(paneID) }
         order = []
+        opened = [:]
         demo.ids = []
         rebuild()
         list?.ui?.showsAgents = false
@@ -139,7 +146,10 @@ final class AgentsOverview {
         for (workspaceID, panes) in samples {
             for (paneID, sample) in panes where sample.agent != nil { wanted[paneID] = workspaceID }
         }
-        for (paneID, home) in store.visitors where wanted[paneID] == nil {
+        for (paneID, started) in opened where wanted[paneID] != nil || Date().timeIntervalSince(started) > Self.openingGrace {
+            opened[paneID] = nil
+        }
+        for (paneID, home) in store.visitors where wanted[paneID] == nil && opened[paneID] == nil {
             home.takeHome(paneID)
         }
         // By session title then by id, so two agents arriving on one tick land in an
@@ -188,6 +198,42 @@ final class AgentsOverview {
                 status: state.map { AnyView(AgentStateSymbol(state: $0).help($0.title)) },
                 key: key) { [weak self] in self?.openProject(paneID) }
         }
+    }
+
+    // MARK: - Adding an agent
+
+    /// The open projects that list an installed agent, by title: what the overview's
+    /// New Pane offers. A project, not any pane — an agent belongs to a project's canvas,
+    /// and that is where the new pane goes before it comes here to be watched.
+    var projectsWithAgents: [(store: LayoutStore, agents: [AgentDefinition])] {
+        ShellWorkspace.Registry.stores.values
+            .filter { $0.workspaceDirectory != nil }
+            .sorted { $0.workspaceTitle.localizedStandardCompare($1.workspaceTitle) == .orderedAscending }
+            .map { ($0, ShellWorkspace.availableAgents(in: $0)) }
+            .filter { !$0.agents.isEmpty }
+    }
+
+    /// Start an agent in a project and bring its pane here at once, focused. The pane is
+    /// split off the project's focused pane, as New Agent Pane does there; its shell
+    /// starts on the overview's first layout of it.
+    func openAgent(_ agent: AgentDefinition, in session: LayoutStore) {
+        guard isOpen else {
+            ShellWorkspace.openShell(agent: agent, in: session)
+            return
+        }
+        // A session restored into the sidebar and never shown has no bounds to judge a
+        // split by. The overview's will do until its own canvas is laid out.
+        session.assumeCanvasBounds(store.canvasBounds)
+        guard ShellWorkspace.canOpenNewPane(in: session) else { NSSound.beep(); return }
+        ShellWorkspace.openShell(agent: agent, in: session)
+        let paneID = session.tree.focused
+        guard session.send(paneID, toVisit: store) else { return }
+        order.append(paneID)
+        opened[paneID] = Date()
+        rebuild()
+        dress()
+        store.focus(paneID)
+        store.reclaimKeyboardFocus()
     }
 
     // MARK: - Demo (Ultra Dev)
@@ -252,6 +298,26 @@ final class AgentsOverview {
     }
 }
 
+/// The overview's New Pane: an agent, in one of the open projects. The window bar's `+`
+/// and Pane ▸ New Pane both show this while the overview is up, so the keyboard reaches
+/// it through the menu.
+struct AgentProjectsMenuItems: View {
+    var body: some View {
+        let projects = AgentsOverview.shared.projectsWithAgents
+        if projects.isEmpty {
+            Text("No open project lists an agent — add one under Customize")
+        }
+        ForEach(projects, id: \.store.workspaceID) { entry in
+            Section(entry.store.workspaceTitle) {
+                ForEach(entry.agents) { agent in
+                    Button(agent.name) { AgentsOverview.shared.openAgent(agent, in: entry.store) }
+                        .help(agent.command)
+                }
+            }
+        }
+    }
+}
+
 /// The grid with nothing in it. Says where an agent comes from, since the overview
 /// cannot start one: a pane belongs to a project.
 struct AgentsEmptyState: View {
@@ -263,7 +329,7 @@ struct AgentsEmptyState: View {
             Text("No agents running")
                 .font(Token.Type_.tileTitle)
                 .foregroundStyle(Token.Colour.secondaryLabel)
-            Text("An agent started in any project's pane — Pane ▸ New Pane, or typed at a shell — appears here while it runs.")
+            Text("Start one in an open project from the + above, or type an agent at any shell: it appears here while it runs.")
                 .font(Token.Type_.tileSubtitle)
                 .foregroundStyle(Token.Colour.tertiaryLabel)
                 .multilineTextAlignment(.center)

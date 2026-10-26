@@ -376,15 +376,14 @@ enum ProjectControlSize {
     }
 }
 
-/// The row above the sessions: the Agents overview, with how many agents are running
-/// and the state the most pressing of them is in — the same glyph the session rows wear,
-/// rolled up once more. Never hidden: a row that comes and goes is a view nobody learns
-/// the key for. Dimmed with nothing running.
+/// The row above the sessions: the Agents overview, with how many agents are running.
+/// A number and nothing else — the states are each session's row's to show, and a glyph
+/// here said one more time what the rows under it already say. Never hidden: a row that
+/// comes and goes is a view nobody learns the key for. Dimmed with nothing running.
 private struct AgentsRow: View {
     let isSelected: Bool
 
     private var running: Int { AgentMonitor.shared.runningCount }
-    private var state: AgentState? { AgentState.rollup(AgentMonitor.shared.stateByPane.values) }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -394,29 +393,25 @@ private struct AgentsRow: View {
                 .frame(width: 20)
             Text("Agents")
                 .font(Token.Type_.tileTitle)
-                .fontWeight(state?.isUnread == true ? .bold : .regular)
                 .foregroundStyle(running > 0 ? Token.Colour.label : Token.Colour.tertiaryLabel)
                 .lineLimit(1)
             Spacer(minLength: 0)
-            if running > 0 {
-                Text("\(running)")
-                    .font(Token.Type_.tileSubtitle)
-                    .monospacedDigit()
-                    .foregroundStyle(Token.Colour.tertiaryLabel)
-                    .fixedSize()
-                    .frame(minWidth: 30, alignment: .trailing)
-            }
+            // In the slot the session rows keep for their badge, so the column lines up.
             ZStack {
-                if let state { AgentStateSymbol(state: state).help(state.title) }
+                if running > 0 {
+                    Text("\(running)")
+                        .font(Token.Type_.tileSubtitle)
+                        .monospacedDigit()
+                        .foregroundStyle(Token.Colour.secondaryLabel)
+                        .fixedSize()
+                }
             }
-            .frame(width: 16, height: 16)
+            .frame(minWidth: 16, minHeight: 16, maxHeight: 16, alignment: .trailing)
         }
         .contentShape(.rect)
         .help("Every working agent's pane, from every project (⌘0)")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(running > 0
-                            ? "Agents, \(running) running" + (state.map { ", \($0.title)" } ?? "")
-                            : "Agents, none running")
+        .accessibilityLabel(running > 0 ? "Agents, \(running) running" : "Agents, none running")
     }
 }
 
@@ -744,18 +739,25 @@ struct AgentStateSymbol: View {
 /// An arc going round: the working state. Not a `ProgressView`, whose spinner is the
 /// system's "loading" and the wrong weight beside a row's text. Under Reduce Motion it
 /// stands still — an arc with a gap still reads as "in progress".
+///
+/// Turned by the clock, not by an animation. It was a `repeatForever` animation on a flag
+/// flipped in `onAppear`, and inside a view that is laid out AFTER it appears — a strip
+/// in a hosting view whose frame arrives on the next layout — that animation took the
+/// move into place along with the turn: the arc slid from the bottom of the pane to its
+/// slot, forever, until another pane's arrival laid the strip out again. A timeline has
+/// no transaction to leak into anything.
 private struct AgentSpinner: View {
-    @State private var turning = false
-
     var body: some View {
-        Circle()
-            .trim(from: 0.08, to: 0.82)
-            .stroke(Token.Colour.label, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-            .frame(width: 12, height: 12)
-            .rotationEffect(.degrees(turning ? 360 : 0))
-            .animation(Token.Environment_.reduceMotion ? nil
-                       : .linear(duration: 1).repeatForever(autoreverses: false), value: turning)
-            .onAppear { turning = true }
+        let reduceMotion = Token.Environment_.reduceMotion
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let seconds = context.date.timeIntervalSinceReferenceDate
+            Circle()
+                .trim(from: 0.08, to: 0.82)
+                .stroke(Token.Colour.label, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .frame(width: 12, height: 12)
+                .rotationEffect(.degrees(reduceMotion ? 0 : seconds.truncatingRemainder(dividingBy: 1) * 360))
+        }
+        .frame(width: 12, height: 12)
     }
 }
 

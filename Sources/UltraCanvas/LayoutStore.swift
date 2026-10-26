@@ -49,6 +49,14 @@ public final class LayoutStore {
     /// Last laid-out canvas bounds, so commands can reason about geometry.
     public internal(set) var canvasBounds: CGRect = .zero
 
+    /// Bounds for a canvas that has never been laid out — a session restored into the
+    /// sidebar and not yet shown — so a split can be judged against something. Taken from
+    /// the canvas that is on screen; the real ones replace them on first layout.
+    public func assumeCanvasBounds(_ bounds: CGRect) {
+        guard canvasBounds == .zero, bounds != .zero else { return }
+        canvasBounds = bounds
+    }
+
     /// Bumped when a pane's CONTENT is replaced while the tree stays the same.
     ///
     /// The canvas rebuilds surfaces only for panes it does not already have, which is what

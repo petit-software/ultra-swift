@@ -764,6 +764,11 @@ struct PaneMenuCommands: Commands {
             // Agent Pane, New Tile Pane, Change Pane To, Change Pane to Agent — between
             // opening a project and closing a window, which is not where a pane lives.
             Menu("New Pane") {
+              if store?.isFixedArrangement == true {
+                // On the Agents overview: an agent in one of the open projects, which is
+                // the only pane that can come to it. The window bar's `+` says the same.
+                AgentProjectsMenuItems()
+              } else {
                 Button("Shell") {
                     guard let store else { return }
                     ShellWorkspace.openShell(in: store)
@@ -802,8 +807,9 @@ struct PaneMenuCommands: Commands {
                     }
                     .modifier(TileShortcut(kind: entry.kind))
                 }
+              }
             }
-            .disabled(!canOpenNewPane)
+            .disabled(!canOpenNewPane && store?.isFixedArrangement != true)
 
             // Switching an EXISTING pane, rather than opening another one. Separate on
             // purpose: converting a shell ends its process, which is not something to

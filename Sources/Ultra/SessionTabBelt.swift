@@ -475,9 +475,9 @@ private struct SessionTab: View {
 }
 
 /// The belt's first tab: the Agents overview. Icon only — the sidebar's row has the word,
-/// and on a belt of named sessions a glyph alone says "not one of these". A count beside
-/// it while an agent needs someone, which is the one state worth a number here. Selected,
-/// it wears the same glass as a session tab, so the capsule slides to it and back.
+/// and on a belt of named sessions a glyph alone says "not one of these". Beside it, how
+/// many agents are running, the one number the sidebar's row shows too. Selected, it
+/// wears the same glass as a session tab, so the capsule slides to it and back.
 /// The keyboard path is View ▸ Show Agents (⌘0).
 private struct AgentsTab: View {
     let isSelected: Bool
@@ -485,9 +485,7 @@ private struct AgentsTab: View {
     let select: () -> Void
     @State private var isHovering = false
 
-    private var waiting: Int {
-        AgentMonitor.shared.stateByPane.values.filter { if case .needsYou = $0 { true } else { false } }.count
-    }
+    private var running: Int { AgentMonitor.shared.runningCount }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -495,11 +493,11 @@ private struct AgentsTab: View {
                 .font(Token.Type_.body.weight(.semibold))
                 .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .frame(width: 16, height: 16)
-            if waiting > 0 {
-                Text("\(waiting)")
+            if running > 0 {
+                Text("\(running)")
                     .font(Token.Type_.body.weight(.semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Token.Colour.agentNeedsYou)
+                    .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
             }
         }
         .padding(.horizontal, 12)
@@ -516,7 +514,7 @@ private struct AgentsTab: View {
         .help("Agents — every working agent's pane (⌘0)")
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityLabel(waiting > 0 ? "Agents, \(waiting) waiting" : "Agents")
+        .accessibilityLabel(running > 0 ? "Agents, \(running) running" : "Agents")
         .accessibilityAction { select() }
     }
 }

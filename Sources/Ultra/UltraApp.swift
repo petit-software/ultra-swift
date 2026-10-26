@@ -1000,29 +1000,35 @@ struct RootView: View {
                         // someone looks for "another pane", and it is the only place the
                         // full list is discoverable.
                         Menu {
-                            Section("New Pane") {
-                                Button("Shell") {
-                                    if let store { ShellWorkspace.openShell(in: store) }
-                                }
-                                ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
-                                    Button(entry.title) {
-                                        if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                            if ui.showsAgents {
+                                // On the overview: an agent, in one of the open projects,
+                                // and nothing else — a tile belongs to a project's canvas.
+                                AgentProjectsMenuItems()
+                            } else {
+                                Section("New Pane") {
+                                    Button("Shell") {
+                                        if let store { ShellWorkspace.openShell(in: store) }
+                                    }
+                                    ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
+                                        Button(entry.title) {
+                                            if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                                        }
                                     }
                                 }
-                            }
-                            // Each agent by name, the way the Pane menu has them: "Agent"
-                            // on its own would open the default and leave the rest
-                            // undiscoverable from the one place a new user looks.
-                            Section("New Agent Pane") {
-                                ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
-                                    Button(agent.name) {
-                                        if let store { ShellWorkspace.openShell(agent: agent, in: store) }
+                                // Each agent by name, the way the Pane menu has them: "Agent"
+                                // on its own would open the default and leave the rest
+                                // undiscoverable from the one place a new user looks.
+                                Section("New Agent Pane") {
+                                    ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
+                                        Button(agent.name) {
+                                            if let store { ShellWorkspace.openShell(agent: agent, in: store) }
+                                        }
                                     }
                                 }
+                                // Dimmed rather than silent: with the canvas full, every one
+                                // of these can only beep.
+                                .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
                             }
-                            // Dimmed rather than silent: with the canvas full, every one
-                            // of these can only beep.
-                            .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
                         } label: {
                             WindowBarGlyph("Add Pane", symbol: "plus")
                         }
