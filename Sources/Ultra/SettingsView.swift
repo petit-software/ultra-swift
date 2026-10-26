@@ -91,19 +91,6 @@ private struct GeneralSettings: View {
             }
 
             Section {
-                Toggle("Glass panes",
-                       isOn: prefs.flag({ Appearance.paneGlass },
-                                        { Appearance.paneGlass = $0 }))
-            } header: {
-                Text("Appearance")
-            } footer: {
-                SettingNote("On, every pane is Liquid Glass over the desktop. Off, each pane "
-                            + "is frosted instead — a plain blur of the window behind it, "
-                            + "with no lens. The window bar and the palette keep their "
-                            + "glass either way.")
-            }
-
-            Section {
                 Toggle("Show Ultra in the menu bar",
                        isOn: prefs.flag({ Preferences.showsMenuBarIcon },
                                         { Preferences.showsMenuBarIcon = $0 }))

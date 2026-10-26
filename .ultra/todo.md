@@ -161,6 +161,12 @@ their session too — the grid is complete or it is not an overview.
 - [x] Typing into an agent is not the agent working: output within a beat of the person's own input is the TUI's echo and does not move `lastOutputAt` (`AgentEcho`); the arc turns only while the agent prints on its own
 - [x] The working arc is grey, not white
 
+- [x] "Agent" picked for a project with none set up — from a pane's kind menu or New Pane — opens the session's Customize sheet, where one is added, instead of beeping
+- [x] A pane pinned light is a white sheet under frost too: the frost branch of the backdrop had forgotten it, and a browser on a white page sat in a grey frame since frost became the default
+- [x] Sidebar: the X leaves the row the overview was opened from; no bold on any row; a hairline parts the Agents row from the projects
+- [x] Settings ▸ General loses the Glass panes toggle: frost is the look. The flag stays for the Tuning tab and the tests
+- [x] The belt parts its Agents tab from the sessions with a vertical hairline, as the sidebar does
+
 ## Agents overview, part 2
 
 - [x] `agents.openWaiting` "Open Waiting Agent", ⌥⌘0: focus the longest-waiting needs-you pane on the overview if it is up, else in its session, raised — the keyboard answer to the orange dot

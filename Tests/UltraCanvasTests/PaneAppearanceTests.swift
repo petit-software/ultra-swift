@@ -69,11 +69,24 @@ struct PaneAppearanceTests {
         #expect(colour.brightnessComponent < 0.3)
     } }
 
-    @Test("glass off, a pane is frosted, washed by its focus and its look",
+    @Test("glass off, a pane pinned light is still a sheet of white")
+    func pinnedLightWithoutGlass() throws { try withGlass(false) {
+        let store = store(appearance: .light)
+        let pane = store.surfaces.surface(for: try #require(store.tree.paneIDs.first))
+        pane.isFocused = true
+        let colour = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+        #expect(colour.brightnessComponent > 0.99)
+        #expect(colour.alphaComponent == 1)
+    } }
+
+    @Test("glass off, a pane is frosted, washed by its focus and the window's look",
           arguments: [PaneRecord.Appearance.dark, .light])
     func frostedWithoutGlass(_ look: PaneRecord.Appearance) throws { try withGlass(false) {
-        let store = store(appearance: look)
+        // The pane follows the window; the window is dark or light. (A pane PINNED light
+        // is a white sheet, tested above.)
+        let store = store(appearance: look == .dark ? .dark : nil)
         let pane = store.surfaces.surface(for: try #require(store.tree.paneIDs.first))
+        pane.appearance = NSAppearance(named: look == .dark ? .darkAqua : .aqua)
         pane.isFocused = true
         let focused = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
         pane.isFocused = false

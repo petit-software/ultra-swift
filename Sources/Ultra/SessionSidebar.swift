@@ -94,10 +94,31 @@ struct SessionSidebar: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 1)
                         .opacity(ui.showsAgents ? 1 : 0))
+            // A hairline between the one row about every project and the projects: the
+            // kinds differ, and a list that runs them together reads the overview as the
+            // first project. Not a row anyone can land on.
+            //
+            // Drawn as the row's BACKGROUND, the way the selection capsule is, with the
+            // capsule's own side padding: content is inset by the list, so a `Divider`
+            // in the row came out shorter than the capsule above it at both ends.
+            Color.clear
+                .frame(height: 1)
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(
+                    // Six points inside the capsule's edges: flush with them it read as
+                    // the capsule's own top edge rather than a line between rows.
+                    Rectangle()
+                        .fill(Token.Colour.separator)
+                        .frame(height: 1)
+                        .padding(.horizontal, 16))
+                .selectionDisabled()
+                .accessibilityHidden(true)
             ForEach(sessions.sessions, id: \.workspaceID) { store in
                 SessionRow(store: store,
                            ui: ui,
-                           isSelected: sessions.selectedID == store.workspaceID,
+                           // Not while the overview is up: the row stays the one the
+                           // overview was opened from, but nothing on it is selected.
+                           isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID,
                            canClose: sessions.canCloseSelected,
                            select: { sessions.select(store.workspaceID) },
                            rename: { sessions.rename(store.workspaceID, to: $0) },
@@ -493,11 +514,9 @@ private struct SessionRow: View {
                 // the primary navigation read as smaller print than the panes it navigates
                 // to. One token, so they cannot drift apart again.
                 .font(Token.Type_.tileTitle)
-                // Bold while a finished turn waits to be looked at, as an unread mail is —
-                // against the regular weight of every other row, or bold would not show
-                // beside the title token's own medium. Dimmed once the session has gone
-                // quiet for good.
-                .fontWeight(state?.isUnread == true ? .bold : .regular)
+                // One weight for every row. The badge says what is unread — the filled
+                // check — and a name that changed weight beside it moved the column.
+                // Dimmed once the session has gone quiet for good.
                 .foregroundStyle(state.map { if case .inactive = $0 { true } else { false } } == true
                                  ? AnyShapeStyle(Token.Colour.tertiaryLabel) : AnyShapeStyle(Token.Colour.label))
                 .lineLimit(1)
@@ -805,7 +824,6 @@ struct AgentStateGallery: View {
                 HStack(spacing: 6) {
                     Text(name)
                         .font(Token.Type_.tileTitle)
-                        .fontWeight(state.isUnread ? .bold : .regular)
                         .foregroundStyle({ if case .inactive = state { Token.Colour.tertiaryLabel } else { Token.Colour.label } }())
                     Spacer(minLength: 0)
                     Text(state.age(at: now))

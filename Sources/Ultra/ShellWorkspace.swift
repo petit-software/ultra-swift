@@ -422,7 +422,7 @@ enum ShellWorkspace {
         switch kind {
         case .shell: openShell(in: store); return
         case .agent:
-            guard let agent = defaultAgent(in: store) else { NSSound.beep(); return }
+            guard let agent = defaultAgent(in: store) else { offerAgents(in: store); return }
             openShell(agent: agent, in: store)
             return
         default: break
@@ -761,7 +761,7 @@ enum ShellWorkspace {
     static func convert(_ paneID: PaneID, to kind: PaneRecord.Kind, in store: LayoutStore) {
         guard store.surfaces.surfaceRecord(for: paneID).kind != kind else { return }
         if kind == .agent {
-            guard let agent = defaultAgent(in: store) else { NSSound.beep(); return }
+            guard let agent = defaultAgent(in: store) else { offerAgents(in: store); return }
             convert(paneID, toAgent: agent, in: store)
             return
         }
@@ -819,6 +819,18 @@ enum ShellWorkspace {
     static func defaultAgent(in store: LayoutStore) -> AgentDefinition? {
         let agents = agents(in: store)
         return agents.first { isAvailable($0) } ?? agents.first
+    }
+
+    /// "Agent" was asked for in a project that has none set up: open the session's
+    /// Customize sheet, whose Agents section is where one is added, rather than beep at a
+    /// request that was perfectly clear. A session on no project has no file to keep an
+    /// agent in, so there the answer is still a beep.
+    static func offerAgents(in store: LayoutStore) {
+        let session = store.session
+        guard session.workspaceDirectory != nil,
+              let list = SessionList.holding(session) else { NSSound.beep(); return }
+        list.select(session.workspaceID)
+        list.ui?.customizingSessionID = session.workspaceID
     }
 
     /// Whether an agent's binary is on the user's PATH.

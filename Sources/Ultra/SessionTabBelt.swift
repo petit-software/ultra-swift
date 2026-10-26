@@ -96,6 +96,16 @@ struct SessionTabBelt: View {
                         AgentsTab(isSelected: ui.showsAgents, glass: glass) {
                             AgentsOverview.shared.open(in: sessions)
                         }
+                        // The sidebar's hairline, turned on its side: the overview is not
+                        // one of the sessions, and a belt that ran them together read it
+                        // as the first tab. Inset from the tabs' edges as the sidebar's
+                        // is from the capsule's, a little further apart than the tabs.
+                        Rectangle()
+                            .fill(Token.Colour.separator)
+                            .frame(width: 1)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 4)
+                            .accessibilityHidden(true)
                         ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
                             index, store in
                             tab(store, at: index)

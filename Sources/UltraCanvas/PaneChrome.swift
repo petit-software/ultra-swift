@@ -435,6 +435,13 @@ public final class PaneContainerView: NSView {
     /// by the lens over what is behind each; one frost is the same in every pane, and the
     /// ring alone was carrying focus.
     private func applyBackdrop() {
+        // A pane pinned LIGHT is a sheet of white whatever the material: a browser on a
+        // white page, framed by a frosted dark wash, was a white page in a grey frame —
+        // which is what the glass branch below says, and the frost branch forgot.
+        if paneAppearance == .light {
+            clip.layer?.backgroundColor = NSColor.white.cgColor
+            return
+        }
         guard Appearance.paneGlass else {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let shade = switch (isDark, isFocused) {
