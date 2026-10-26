@@ -64,6 +64,25 @@ public struct AgentPaneSample: Equatable, Sendable {
     }
 }
 
+/// Whether a burst of output is the pane answering the person, not the agent at work.
+///
+/// An agent's TUI redraws its input line on every keystroke, and a status read as "any
+/// byte printed is work" had the sidebar's arc turning while someone typed a question
+/// into an idle agent — and for the quiet period after. Output that lands within a
+/// beat of the person's own input is their echo; what an agent does on its own comes
+/// later and keeps coming. A pane's `lastOutputAt` is not moved by an echo.
+public enum AgentEcho {
+    /// How long after a keystroke a burst is taken to be its redraw. A TUI answers a key
+    /// in tens of milliseconds; an agent that has started working prints past this.
+    public static let window: TimeInterval = 0.25
+
+    public static func isEcho(outputAt output: Date, afterInputAt input: Date?) -> Bool {
+        guard let input else { return false }
+        let gap = output.timeIntervalSince(input)
+        return gap >= 0 && gap < window
+    }
+}
+
 /// Reads a status off each pane's sample.
 ///
 /// A pure function of the sample, kept as a type for the thresholds it owns and for the

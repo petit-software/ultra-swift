@@ -258,7 +258,7 @@ struct VisitingPaneTests {
         #expect(session.released.isEmpty)
     }
 
-    @Test("a fixed arrangement refuses moves, swaps and splits: its grid is computed")
+    @Test("a fixed arrangement refuses splits and windows, but its panes can be swapped about")
     func fixedArrangementRefusesEdits() throws {
         let session = Session(.twoAcross)
         session.settle()
@@ -268,17 +268,13 @@ struct VisitingPaneTests {
         try #require(session.store.send(panes[0], toVisit: overview.store))
         try #require(session.store.send(panes[1], toVisit: overview.store))
         overview.show(panes)
-        let before = overview.store.tree
-
-        overview.store.swap(panes[0], panes[1])
-        overview.store.move(panes[0], toEdgeOf: panes[1], edge: .bottom)
-        overview.store.move(panes[0], toRootEdge: .top)
-        overview.store.apply(.swap(panes[1]), dragging: panes[0])
         #expect(!overview.store.split(edge: .right))
         #expect(!overview.store.canMoveToNewWindow(panes[0]))
-
-        #expect(overview.store.tree == before)
+        #expect(overview.store.tree.paneIDs == panes)
         #expect(overview.built == 1, "nothing was built for a refused split")
+
+        overview.store.swap(panes[0], panes[1])
+        #expect(overview.store.tree.paneIDs == [panes[1], panes[0]], "a swap is the person's order")
         #expect(session.released.isEmpty)
     }
 

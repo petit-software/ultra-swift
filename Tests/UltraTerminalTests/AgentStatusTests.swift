@@ -1,4 +1,24 @@
 import Testing
+
+/// A keystroke's redraw is not the agent working. See `AgentEcho`.
+@Suite("Agent echo")
+struct AgentEchoTests {
+    private let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
+
+    @Test("output within a beat of the person's input is their echo")
+    func echo() {
+        #expect(AgentEcho.isEcho(outputAt: t0.addingTimeInterval(0.05), afterInputAt: t0))
+        #expect(AgentEcho.isEcho(outputAt: t0.addingTimeInterval(AgentEcho.window - 0.01), afterInputAt: t0))
+    }
+
+    @Test("output later than that, or with no input at all, is the agent's own")
+    func work() {
+        #expect(!AgentEcho.isEcho(outputAt: t0.addingTimeInterval(AgentEcho.window), afterInputAt: t0))
+        #expect(!AgentEcho.isEcho(outputAt: t0.addingTimeInterval(2), afterInputAt: t0))
+        #expect(!AgentEcho.isEcho(outputAt: t0, afterInputAt: nil))
+        #expect(!AgentEcho.isEcho(outputAt: t0, afterInputAt: t0.addingTimeInterval(1)), "input after the output is not its cause")
+    }
+}
 import Foundation
 @testable import UltraTerminal
 @testable import UltraLayout

@@ -35,8 +35,9 @@ final class AgentsOverview {
     /// The window's sessions the overview is up in. One window at a time: a pane can only
     /// be in one place, and so can the canvas holding them.
     private(set) weak var list: SessionList?
-    /// Visitors in the order they arrived, which is the grid's reading order. A new agent
-    /// joins at the end rather than reshuffling the panes someone is looking at.
+    /// Visitors in the grid's reading order. A new agent joins at the end rather than
+    /// reshuffling the panes someone is looking at, and a pane dragged to another place
+    /// stays there: before a rebuild the order is read back from the tree as it stands.
     private var order: [PaneID] = []
     /// The panes the grid was last built for, so a tick that changes nothing rebuilds
     /// nothing: a grid tree is new node ids every time, and would read as a change.
@@ -205,6 +206,11 @@ final class AgentsOverview {
     }
 
     private func rebuild() {
+        // The arrangement as the person left it, then whoever arrived since. Dragging a
+        // pane into another cell changes the tree's reading order, and that order is the
+        // one worth keeping when the grid is laid out again for a pane coming or going.
+        let onScreen = store.tree.paneIDs.filter { store.visitors[$0] != nil }
+        order = onScreen + order.filter { !onScreen.contains($0) }
         let panes = order.filter { store.visitors[$0] != nil }
         if panes != shown {
             shown = panes

@@ -850,9 +850,7 @@ public final class PaneContainerView: NSView {
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
         let trailingGutter: CGFloat = 68
-        // No handle on a visitor: the overview's grid is computed, so a drag would move
-        // the pane somewhere the next rebuild undoes.
-        dragHandle.frame = stripHost != nil || isPlain ? .zero
+        dragHandle.frame = isPlain ? .zero
             : CGRect(x: leadingGutter, y: stripHeight,
                      width: max(0, bounds.width - leadingGutter - trailingGutter),
                      height: min(headerHeight, bounds.height))

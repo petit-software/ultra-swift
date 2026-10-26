@@ -155,6 +155,12 @@ their session too — the grid is complete or it is not an overview.
 
 
 
+## Agents overview, living with it
+
+- [x] Panes on the overview can be dragged into another order, and the order survives a pane coming or going: the grid is laid out again from the tree's reading order
+- [x] Typing into an agent is not the agent working: output within a beat of the person's own input is the TUI's echo and does not move `lastOutputAt` (`AgentEcho`); the arc turns only while the agent prints on its own
+- [x] The working arc is grey, not white
+
 ## Agents overview, part 2
 
 - [x] `agents.openWaiting` "Open Waiting Agent", ⌥⌘0: focus the longest-waiting needs-you pane on the overview if it is up, else in its session, raised — the keyboard answer to the orange dot

@@ -751,9 +751,11 @@ private struct AgentSpinner: View {
         let reduceMotion = Token.Environment_.reduceMotion
         TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
             let seconds = context.date.timeIntervalSinceReferenceDate
+            // Grey, not the label colour: it turns beside a name, and in white it
+            // outweighed the name it was about.
             Circle()
                 .trim(from: 0.08, to: 0.82)
-                .stroke(Token.Colour.label, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .stroke(Token.Colour.secondaryLabel, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
                 .frame(width: 12, height: 12)
                 .rotationEffect(.degrees(reduceMotion ? 0 : seconds.truncatingRemainder(dividingBy: 1) * 360))
         }

@@ -100,8 +100,9 @@ public final class LayoutStore {
     /// Whether this canvas's arrangement is computed rather than edited: the Agents
     /// overview, whose grid is whatever agents there are. Nothing is split, converted,
     /// moved to a window or replaced wholesale here — each would put a pane in the tree
-    /// that nothing computed, and the next rebuild would throw it away. Closing and
-    /// focusing still work: those are about the panes, not the arrangement.
+    /// that nothing computed, and the next rebuild would throw it away. Closing, focusing,
+    /// zooming, and moving panes about among themselves still work: those change which
+    /// pane is where, which the overview reads back as its order.
     @ObservationIgnored public var isFixedArrangement = false
     @ObservationIgnored public let undoManager = UndoManager()
     @ObservationIgnored private var navigation = NavigationMemory()
@@ -438,18 +439,15 @@ public final class LayoutStore {
     }
 
     public func move(_ paneID: PaneID, toEdgeOf target: PaneID, edge: Edge) {
-        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Move Pane") { $0.move(paneID, toEdgeOf: target, edge: edge) }
     }
 
     public func swap(_ a: PaneID, _ b: PaneID) {
-        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Swap Panes") { $0.swap(a, b) }
     }
 
     /// Move a pane to one edge of the whole canvas, spanning that side.
     public func move(_ paneID: PaneID, toRootEdge edge: Edge) {
-        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Move Pane to Edge") { $0.move(paneID, toRootEdge: edge) }
     }
 

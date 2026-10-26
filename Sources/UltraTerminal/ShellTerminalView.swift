@@ -88,6 +88,10 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// and a poller would only ever see the gaps between bursts.
     public private(set) var lastOutputAt: Date?
     public private(set) var lastBellAt: Date?
+    /// When the person last typed into this pane, or a tile sent into it. The burst that
+    /// follows is the TUI redrawing what they typed, not the agent at work — see
+    /// `AgentEcho` — and does not move `lastOutputAt`.
+    private var lastInputAt: Date?
 
     /// What the pane's process exited with, kept after it has gone.
     ///
@@ -391,6 +395,7 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     }
 
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
+        lastInputAt = Date()
         process.send(data: data)
     }
 
@@ -455,8 +460,10 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public func dataReceived(slice: ArraySlice<UInt8>) {
         feed(byteArray: slice)
         // One `gettimeofday` per burst on a path that already schedules a work item per
-        // burst. It is what lets the status badge tell a thinking agent from a stopped one.
-        lastOutputAt = Date()
+        // burst. It is what lets the status badge tell a thinking agent from a stopped one
+        // — unless the burst is the pane echoing what was just typed into it.
+        let now = Date()
+        if !AgentEcho.isEcho(outputAt: now, afterInputAt: lastInputAt) { lastOutputAt = now }
         scheduleDirectoryProbe()
     }
 
