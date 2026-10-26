@@ -438,15 +438,18 @@ public final class LayoutStore {
     }
 
     public func move(_ paneID: PaneID, toEdgeOf target: PaneID, edge: Edge) {
+        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Move Pane") { $0.move(paneID, toEdgeOf: target, edge: edge) }
     }
 
     public func swap(_ a: PaneID, _ b: PaneID) {
+        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Swap Panes") { $0.swap(a, b) }
     }
 
     /// Move a pane to one edge of the whole canvas, spanning that side.
     public func move(_ paneID: PaneID, toRootEdge edge: Edge) {
+        guard !isFixedArrangement else { NSSound.beep(); return }
         apply("Move Pane to Edge") { $0.move(paneID, toRootEdge: edge) }
     }
 

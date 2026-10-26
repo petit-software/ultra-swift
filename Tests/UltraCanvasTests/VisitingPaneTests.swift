@@ -257,4 +257,42 @@ struct VisitingPaneTests {
         #expect(session.store.holder(of: pane) === window)
         #expect(session.released.isEmpty)
     }
+
+    @Test("a fixed arrangement refuses moves, swaps and splits: its grid is computed")
+    func fixedArrangementRefusesEdits() throws {
+        let session = Session(.twoAcross)
+        session.settle()
+        let panes = session.store.tree.paneIDs
+        let overview = Overview()
+        overview.store.isFixedArrangement = true
+        try #require(session.store.send(panes[0], toVisit: overview.store))
+        try #require(session.store.send(panes[1], toVisit: overview.store))
+        overview.show(panes)
+        let before = overview.store.tree
+
+        overview.store.swap(panes[0], panes[1])
+        overview.store.move(panes[0], toEdgeOf: panes[1], edge: .bottom)
+        overview.store.move(panes[0], toRootEdge: .top)
+        overview.store.apply(.swap(panes[1]), dragging: panes[0])
+        #expect(!overview.store.split(edge: .right))
+        #expect(!overview.store.canMoveToNewWindow(panes[0]))
+
+        #expect(overview.store.tree == before)
+        #expect(overview.built == 1, "nothing was built for a refused split")
+        #expect(session.released.isEmpty)
+    }
+
+    @Test("a plain surface has no header band: its content fills it")
+    func plainSurface() {
+        let factory = CountingFactory()
+        let store = LayoutStore(tree: .fixture(.single)) { factory.make($0) }
+        let surface = store.surfaces.surface(for: store.tree.focused)
+        surface.frame = CGRect(x: 0, y: 0, width: 400, height: 300)
+        surface.layoutSubtreeIfNeeded()
+        #expect(surface.content.frame.minY > 0, "a pane's content starts under its header")
+        surface.isPlain = true
+        surface.layoutSubtreeIfNeeded()
+        #expect(surface.content.frame == surface.bounds)
+        #expect(surface.dragHandleFrameForTesting == .zero)
+    }
 }

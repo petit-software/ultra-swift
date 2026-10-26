@@ -523,6 +523,19 @@ public final class PaneContainerView: NSView {
         didSet { guard canClose != oldValue else { return }; refresh() }
     }
 
+    /// A surface that is not a pane: no header, no ring, no drag handle, no lift. What
+    /// the Agents overview shows when it has no panes to show — a note on the canvas's
+    /// own material, which a pane's chrome round it would make look like a pane with
+    /// nothing in it.
+    public var isPlain = false {
+        didSet {
+            guard isPlain != oldValue else { return }
+            header.isHidden = isPlain
+            dragHandle.isHidden = isPlain
+            refresh()
+        }
+    }
+
     /// Which session a pane shown away from home belongs to, and the way back — worn as
     /// a strip above the pane's own header while the pane is visiting the Agents
     /// overview. Nil at home. The pane's header and controls are untouched under it.
@@ -708,7 +721,7 @@ public final class PaneContainerView: NSView {
         // Handed the accent as an `NSColor`, still dynamic: `PaneRingView` resolves it
         // against its OWN appearance, which is the only one that can be right for it.
         ring.tint = Token.Colour.focusBorder.nsColor
-        ring.isHidden = !isFocused
+        ring.isHidden = !isFocused || isPlain
         // Colour never carries a signal alone here: the focused pane also lifts, which is
         // what keeps focus legible for anyone who cannot separate the accent from grey.
         layer?.shadowOpacity = isFocused
@@ -814,7 +827,7 @@ public final class PaneContainerView: NSView {
                                    cornerWidth: Token.Space.paneRadius,
                                    cornerHeight: Token.Space.paneRadius,
                                    transform: nil)
-        let headerHeight = Token.Space.tileHeaderHeight
+        let headerHeight = isPlain ? 0 : Token.Space.tileHeaderHeight
         // A visiting pane's strip sits above everything, and the rest moves down by it.
         let stripHeight = stripHost == nil ? 0 : min(headerHeight, bounds.height)
         stripHost?.frame = CGRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
@@ -837,9 +850,12 @@ public final class PaneContainerView: NSView {
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
         let trailingGutter: CGFloat = 68
-        dragHandle.frame = CGRect(x: leadingGutter, y: stripHeight,
-                                  width: max(0, bounds.width - leadingGutter - trailingGutter),
-                                  height: min(headerHeight, bounds.height))
+        // No handle on a visitor: the overview's grid is computed, so a drag would move
+        // the pane somewhere the next rebuild undoes.
+        dragHandle.frame = stripHost != nil || isPlain ? .zero
+            : CGRect(x: leadingGutter, y: stripHeight,
+                     width: max(0, bounds.width - leadingGutter - trailingGutter),
+                     height: min(headerHeight, bounds.height))
         CATransaction.commit()
     }
 

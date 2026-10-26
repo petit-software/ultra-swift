@@ -260,6 +260,13 @@ final class SessionList {
         return viewed
     }
 
+    /// A list with a window, for a session no window shows to be opened into: the key
+    /// window's, else any. Nil with every window closed.
+    static var anyShowing: SessionList? {
+        let lists = lists.allObjects.filter { $0.window != nil }
+        return lists.first { $0.window?.isKeyWindow == true } ?? lists.first
+    }
+
     /// Bring forward the window that has this session, and the session in it. What a click
     /// on "claude is waiting" does.
     static func raise(workspaceID: UUID) -> Bool {

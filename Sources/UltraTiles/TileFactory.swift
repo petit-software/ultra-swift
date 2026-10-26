@@ -65,6 +65,8 @@ public final class TileFactory {
 
     /// This pane's chat, or nil for a pane that is not one.
     public func chatStore(for paneID: PaneID) -> ChatStore? { chats[paneID] }
+    /// Every chat pane built, for the Agents overview to ask which are mid-turn.
+    public func chatPanes() -> Set<PaneID> { Set(chats.keys) }
 
     /// Each todo pane's list. Held here so a menu command — Clear Completed Tasks — can
     /// reach the list the pane is showing rather than open a second store on the same file

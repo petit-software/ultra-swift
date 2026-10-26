@@ -17,7 +17,7 @@ enum PaneCommands {
                                  + layouts + chat + editor + browser
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
                                  + [newShell, openSetup, closeSession, whatsNew]
-                                 + [showAgents, openAgentProject]
+                                 + [showAgents, openAgentProject, openWaiting]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo] : [])
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
@@ -46,6 +46,18 @@ enum PaneCommands {
         isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
             guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
             AgentsOverview.shared.toggle(in: list)
+        }
+
+    /// The pane that has waited longest for an answer, wherever it is: on the overview
+    /// when that is up, else in its session, raised. The keyboard answer to the orange
+    /// dot without opening the grid. ⌥⌘0, beside ⌘0; dims when nothing is asking.
+    static let openWaiting = AppCommand(
+        id: "agents.openWaiting", title: "Open Waiting Agent", symbol: "circle.inset.filled",
+        menuPath: ["View"],
+        binding: KeyBinding("0", [.command, .option]),
+        keywords: ["Needs You", "Answer Agent", "Waiting Agent"],
+        isEnabled: { _ in !AgentsOverview.shared.waiting.isEmpty }) { _ in
+            AgentsOverview.shared.openWaiting()
         }
 
     /// From the overview, the focused pane's project: the pane goes home and its session

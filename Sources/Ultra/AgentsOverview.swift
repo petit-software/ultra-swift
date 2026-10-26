@@ -47,6 +47,11 @@ final class AgentsOverview {
     /// tick between the split and the start.
     private var opened: [PaneID: Date] = [:]
     private static let openingGrace: TimeInterval = 10
+    /// Chat panes on the overview, with the state their strip shows. A chat joins while a
+    /// turn is in flight and STAYS until the overview closes or the pane does: a turn
+    /// ending is the answer arriving, not the chat leaving, and a pane that vanished as
+    /// its answer landed would be the one thing on the grid you could not read.
+    private var chats: [PaneID: AgentState] = [:]
     /// Ultra Dev only: stand-in panes shown to see the overview without three agents
     /// running. See `showDemo`.
     private let demo = DemoPanes()
@@ -87,6 +92,13 @@ final class AgentsOverview {
         // that would build the replacement live.
         store.setPaneKinds({ [] }) { _, _ in }
         store.surfaces.actions.split = { _, _ in NSSound.beep() }
+        // The empty state is a note on the canvas, not a pane: no header, no ring.
+        let named = store.surfaces.onBuild
+        store.surfaces.onBuild = { [weak self] paneID in
+            named?(paneID)
+            guard let self, paneID == placeholder else { return }
+            store.surfaces.existingSurface(for: paneID)?.isPlain = true
+        }
         // Shells hear their settled size from their own factory; the overview's canvas
         // resized them, so it asks each visitor's factory to commit.
         store.onGeometrySettled = { [weak self] in
@@ -121,6 +133,7 @@ final class AgentsOverview {
         for (paneID, home) in store.visitors { home.takeHome(paneID) }
         order = []
         opened = [:]
+        chats = [:]
         demo.ids = []
         rebuild()
         list?.ui?.showsAgents = false
@@ -146,6 +159,7 @@ final class AgentsOverview {
         for (workspaceID, panes) in samples {
             for (paneID, sample) in panes where sample.agent != nil { wanted[paneID] = workspaceID }
         }
+        observeChats(into: &wanted)
         for (paneID, started) in opened where wanted[paneID] != nil || Date().timeIntervalSince(started) > Self.openingGrace {
             opened[paneID] = nil
         }
@@ -168,6 +182,28 @@ final class AgentsOverview {
         dress()
     }
 
+    /// Chat panes mid-turn join; the ones already here stay while their pane exists, and
+    /// their strip says working or done from the turn.
+    private func observeChats(into wanted: inout [PaneID: UUID]) {
+        let now = Date()
+        var seen: Set<PaneID> = []
+        for (workspaceID, tiles) in ShellWorkspace.Registry.tiles {
+            for paneID in tiles.chatPanes() {
+                guard let chat = tiles.chatStore(for: paneID) else { continue }
+                let previous = chats[paneID]
+                if chat.isStreaming {
+                    if case .working = previous {} else { chats[paneID] = .working(since: now) }
+                } else if case .working = previous {
+                    chats[paneID] = .done(at: now, read: true)
+                }
+                guard chats[paneID] != nil else { continue }
+                seen.insert(paneID)
+                wanted[paneID] = workspaceID
+            }
+        }
+        for paneID in chats.keys where !seen.contains(paneID) { chats[paneID] = nil }
+    }
+
     private func rebuild() {
         let panes = order.filter { store.visitors[$0] != nil }
         if panes != shown {
@@ -187,7 +223,7 @@ final class AgentsOverview {
             let session = home.session
             let look = SessionLook.appearance(for: session)
             let tint = SessionTint(storedValue: look.tint)
-            let state = monitor.stateByPane[paneID]
+            let state = monitor.stateByPane[paneID] ?? chats[paneID]
             let age = state?.age(at: monitor.minute)
             let key = [session.workspaceID.uuidString, session.workspaceTitle, look.symbol,
                        look.tint, state.map { "\($0)" } ?? "", age ?? ""].joined(separator: "|")
@@ -271,6 +307,50 @@ final class AgentsOverview {
     private final class DemoPanes {
         var ids: [PaneID] = []
         let factory = PlaceholderPaneFactory(theme: Preferences.resolvedTheme())
+    }
+
+    // MARK: - Going to a pane
+
+    /// Put the keyboard in a pane, wherever it is: on the overview if it is visiting
+    /// there, else in its session, raised — or opened into a window if none shows it.
+    /// What a notification's click and the menu bar's list do.
+    func reveal(_ paneID: PaneID, in workspaceID: UUID? = nil) {
+        if isOpen, store.home(of: paneID) != nil {
+            list?.window?.makeKeyAndOrderFront(nil)
+            store.focus(paneID)
+            store.reclaimKeyboardFocus()
+            return
+        }
+        let session = workspaceID.flatMap { ShellWorkspace.Registry.stores[$0] }
+            ?? ShellWorkspace.Registry.stores.values.first { $0.holder(of: paneID) != nil }
+        guard let session else { return }
+        if !SessionList.raise(workspaceID: session.workspaceID),
+           let directory = session.workspaceDirectory {
+            (list ?? SessionList.anyShowing)?.open(directory: directory)
+        }
+        guard let holder = session.holder(of: paneID) else { return }
+        if let window = PaneWindows.window(for: holder) { window.makeKeyAndOrderFront(nil) }
+        holder.focus(paneID)
+        holder.reclaimKeyboardFocus()
+    }
+
+    /// The panes whose agent is asking, longest-waiting first, each with its session.
+    var waiting: [(paneID: PaneID, session: LayoutStore)] {
+        AgentMonitor.shared.stateByPane
+            .compactMap { paneID, state -> (PaneID, Date)? in
+                if case .needsYou(let since) = state { (paneID, since) } else { nil }
+            }
+            .sorted { $0.1 < $1.1 }
+            .compactMap { paneID, _ in
+                ShellWorkspace.Registry.stores.values.first { $0.holder(of: paneID) != nil }
+                    .map { (paneID, $0) }
+            }
+    }
+
+    /// ⌥⌘0: the pane that has waited longest, wherever it is.
+    func openWaiting() {
+        guard let first = waiting.first else { NSSound.beep(); return }
+        reveal(first.paneID, in: first.session.workspaceID)
     }
 
     // MARK: - Going to a project

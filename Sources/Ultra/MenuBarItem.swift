@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import UltraDesign
+import UltraLayout
 
 /// Ultra in the menu bar.
 ///
@@ -8,7 +9,7 @@ import UltraDesign
 /// buried — which is exactly the situation an agent runs in. It shows the running count and
 /// opens the windows again.
 @MainActor
-final class MenuBarItem: NSObject {
+final class MenuBarItem: NSObject, NSMenuDelegate {
     static let shared = MenuBarItem()
 
     private var item: NSStatusItem?
@@ -63,16 +64,67 @@ final class MenuBarItem: NSObject {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        let open = NSMenuItem(title: "Open Ultra", action: #selector(openUltra(_:)),
-                              keyEquivalent: "")
+        menu.delegate = self
+        fill(menu)
+        return menu
+    }
+
+    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
+        // The item's own menu, reached through the item rather than the argument: the
+        // delegate call is nonisolated, and the menu it hands over cannot cross into the
+        // main actor as a value. It is the same menu — the item has only one.
+        MainActor.assumeIsolated { if let menu = item?.menu { fill(menu) } }
+    }
+
+    /// The menu as it stands now: Open Ultra, the overview, the agents waiting on someone
+    /// — one line each, by session — and Quit. Rebuilt each time it opens
+    /// (`menuNeedsUpdate`), since the waiting list is a different list every minute.
+    private func fill(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let open = NSMenuItem(title: "Open Ultra", action: #selector(openUltra(_:)), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
+        let overview = NSMenuItem(title: "Show Agents", action: #selector(showAgents(_:)), keyEquivalent: "")
+        overview.target = self
+        menu.addItem(overview)
+        menu.addItem(.separator())
+
+        let waiting = AgentsOverview.shared.waiting
+        if waiting.isEmpty {
+            let none = NSMenuItem(title: "No agent is waiting", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        } else {
+            menu.addItem(.sectionHeader(title: waiting.count == 1 ? "Waiting for you"
+                                                                   : "\(waiting.count) waiting for you"))
+            for (paneID, session) in waiting {
+                let agent = ShellWorkspace.Registry.factories[session.workspaceID]?.agentPanes[paneID] ?? "agent"
+                let item = NSMenuItem(title: "\(session.workspaceTitle) › \(agent)",
+                                      action: #selector(revealWaiting(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = [paneID.uuidString, session.workspaceID.uuidString]
+                menu.addItem(item)
+            }
+        }
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Ultra", action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         quit.target = NSApp
         menu.addItem(quit)
-        return menu
+    }
+
+    @objc private func showAgents(_ sender: Any?) {
+        openUltra(sender)
+        guard let list = SessionList.anyShowing else { return }
+        AgentsOverview.shared.open(in: list)
+    }
+
+    @objc private func revealWaiting(_ sender: NSMenuItem) {
+        guard let ids = sender.representedObject as? [String], ids.count == 2,
+              let paneID = PaneID(uuidString: ids[0]), let workspaceID = UUID(uuidString: ids[1])
+        else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        AgentsOverview.shared.reveal(paneID, in: workspaceID)
     }
 
     /// Bring the app to the front and its windows back into view.

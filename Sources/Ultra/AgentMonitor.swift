@@ -76,8 +76,9 @@ final class AgentMonitor {
     }
     /// Title, body, and the session the news is about, so a click on the notification can
     /// go there. Nil for a completion, which no longer has a pane to go to.
-    var announce: (String, String, UUID?) -> Void = { title, body, workspaceID in
-        AgentCompletionNotifier.shared.notify(title: title, body: body, workspaceID: workspaceID)
+    var announce: (String, String, UUID?, PaneID?) -> Void = { title, body, workspaceID, paneID in
+        AgentCompletionNotifier.shared.notify(title: title, body: body,
+                                              workspaceID: workspaceID, paneID: paneID)
     }
 
     private init() {}
@@ -189,7 +190,7 @@ final class AgentMonitor {
             isWatching: isWatching()) else { return }
         let message = AgentCompletionPolicy.message(command: completion.command,
                                                     duration: completion.duration)
-        announce(message.title, message.body, nil)
+        announce(message.title, message.body, nil, nil)
     }
 
     /// A turn that ended: the same gates as a completion, with the bell letting a short
@@ -204,7 +205,7 @@ final class AgentMonitor {
         let message = AgentCompletionPolicy.turnMessage(agent: end.agent,
                                                         duration: end.duration,
                                                         session: session)
-        announce(message.title, message.body, workspaceID)
+        announce(message.title, message.body, workspaceID, end.paneID)
     }
 
     func update(to count: Int) {

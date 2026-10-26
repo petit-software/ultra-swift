@@ -40,18 +40,19 @@ final class AgentCompletionNotifier {
     /// The session a notification is about, carried in its `userInfo` so a click on it can
     /// go there. Read on the notification centre's queue, hence `nonisolated`.
     nonisolated static let workspaceKey = "workspaceID"
+    nonisolated static let paneKey = "paneID"
 
     private var activationObserver: NSObjectProtocol?
     /// Held for as long as the app runs: the centre keeps only a weak reference.
     private let clicks = NotificationClicks()
 
     /// Injectable so tests never touch the real notification centre.
-    var deliver: (String, String, UUID?) -> Void
+    var deliver: (String, String, UUID?, PaneID?) -> Void
     /// Injectable for the same reason as `deliver`.
     var clearDelivered: () -> Void
 
     private init() {
-        deliver = { title, body, workspaceID in
+        deliver = { title, body, workspaceID, paneID in
             guard Self.canNotify else { return }
             // Posted from inside the authorization callback, not beside it. Once the user has
             // answered, this completes at once with the stored answer; before they have, it
@@ -59,6 +60,7 @@ final class AgentCompletionNotifier {
             // instead of being refused while it is pending. The content is built in the
             // callback too: a `UNNotificationRequest` is not Sendable, three strings are.
             let workspace = workspaceID?.uuidString
+            let pane = paneID?.uuidString
             UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound]) { granted, _ in
                     guard granted else { return }
@@ -67,6 +69,7 @@ final class AgentCompletionNotifier {
                     content.body = body
                     if let workspace {
                         content.userInfo = [Self.workspaceKey: workspace]
+                        if let pane { content.userInfo[Self.paneKey] = pane }
                     }
                     let request = UNNotificationRequest(
                         identifier: Self.identifierPrefix + UUID().uuidString,
@@ -89,8 +92,8 @@ final class AgentCompletionNotifier {
         }
     }
 
-    func notify(title: String, body: String, workspaceID: UUID? = nil) {
-        deliver(title, body, workspaceID)
+    func notify(title: String, body: String, workspaceID: UUID? = nil, paneID: PaneID? = nil) {
+        deliver(title, body, workspaceID, paneID)
     }
 
     /// Put the system's permission prompt up, if it has not been answered yet.
@@ -144,11 +147,18 @@ private final class NotificationClicks: NSObject, UNUserNotificationCenterDelega
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse,
                                             withCompletionHandler completion: @escaping () -> Void) {
-        let raw = response.notification.request.content.userInfo[AgentCompletionNotifier.workspaceKey] as? String
-        let workspaceID = raw.flatMap(UUID.init(uuidString:))
+        let info = response.notification.request.content.userInfo
+        let workspaceID = (info[AgentCompletionNotifier.workspaceKey] as? String).flatMap(UUID.init(uuidString:))
+        let paneID = (info[AgentCompletionNotifier.paneKey] as? String).flatMap(PaneID.init(uuidString:))
         Task { @MainActor in
             NSApplication.shared.activate()
-            if let workspaceID { _ = SessionList.raise(workspaceID: workspaceID) }
+            // The pane, where it is: on the Agents overview if that is up, else in its
+            // session, raised. The session alone when the notification named no pane.
+            if let paneID {
+                AgentsOverview.shared.reveal(paneID, in: workspaceID)
+            } else if let workspaceID {
+                _ = SessionList.raise(workspaceID: workspaceID)
+            }
         }
         // Answered here, on the centre's queue: the handler is not Sendable, and the hop
         // above has what it needs already.

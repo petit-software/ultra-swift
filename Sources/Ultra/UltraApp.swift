@@ -607,6 +607,11 @@ struct WorkspaceCommands: Commands {
             }
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(store.map { !PaneCommands.openAgentProject.isEnabled($0) } ?? true)
+            Button(PaneCommands.openWaiting.title) {
+                if let store { PaneCommands.openWaiting.run(store) }
+            }
+            .keyboardShortcut("0", modifiers: [.command, .option])
+            .disabled(store.map { !PaneCommands.openWaiting.isEnabled($0) } ?? true)
             if AgentsOverview.isDevBuild {
                 Button(PaneCommands.agentsDemo.title) {
                     if let store { PaneCommands.agentsDemo.run(store) }
