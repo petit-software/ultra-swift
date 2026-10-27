@@ -12,7 +12,7 @@ struct VisitingStandIn: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "rectangle.grid.2x2.fill")
+            Image(systemName: "circle.grid.2x2.fill")
                 .font(.system(size: 22, weight: .medium))
                 .foregroundStyle(Token.Colour.tertiaryLabel)
             Text("Showing in Agents")

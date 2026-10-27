@@ -64,6 +64,20 @@ public enum DropZone {
         return .edge(paneID, nearestEdge(of: frame, to: point))
     }
 
+    /// What a drop at `point` would do on a canvas whose arrangement is computed — the
+    /// Agents overview's grid. Only a swap: an edge or a root move would put a split in
+    /// the tree that nothing computed, and the next rebuild of the grid would throw it
+    /// away. So the WHOLE of another pane is its swap zone, not its centre alone, and the
+    /// margin is nothing.
+    public static func swapTarget(at point: CGPoint,
+                                  frames: [PaneID: CGRect],
+                                  dragged: PaneID) -> DropTarget? {
+        guard let (paneID, _) = frames.first(where: { $0.value.contains(point) }),
+              paneID != dragged
+        else { return nil }
+        return .swap(paneID)
+    }
+
     /// Which outer edge, if the point is in the canvas's margin band.
     ///
     /// A point in a corner belongs to whichever band it is deeper into, so the two bands

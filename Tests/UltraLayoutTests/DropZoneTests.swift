@@ -121,6 +121,20 @@ struct DropZoneTests {
     func swapPreviewIsTheWholePane() {
         #expect(DropZone.preview(for: .swap(b), frames: frames, canvas: canvas) == frames[b])
     }
+
+    // MARK: A computed arrangement — swaps only
+
+    @Test("on a computed grid, anywhere on another pane swaps with it")
+    func swapOnlyCoversTheWholePane() {
+        func swapTarget(_ x: CGFloat, _ y: CGFloat) -> DropTarget? {
+            DropZone.swapTarget(at: CGPoint(x: x, y: y), frames: frames, dragged: a)
+        }
+        #expect(swapTarget(750, 300) == .swap(b), "the centre")
+        #expect(swapTarget(990, 300) == .swap(b), "where the root band would be")
+        #expect(swapTarget(520, 20) == .swap(b), "where an edge zone would be")
+        #expect(swapTarget(250, 300) == nil, "the dragged pane itself")
+        #expect(swapTarget(1030, 300) == nil, "past the canvas there is no pane to trade with")
+    }
 }
 
 /// A divider that refuses to move is not necessarily broken.

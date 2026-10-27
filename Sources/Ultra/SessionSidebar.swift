@@ -94,23 +94,14 @@ struct SessionSidebar: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 1)
                         .opacity(ui.showsAgents ? 1 : 0))
-            // A hairline between the one row about every project and the projects: the
-            // kinds differ, and a list that runs them together reads the overview as the
-            // first project. Not a row anyone can land on.
-            //
-            // Drawn as the row's BACKGROUND, the way the selection capsule is, with the
-            // capsule's own side padding: content is inset by the list, so a `Divider`
-            // in the row came out shorter than the capsule above it at both ends.
+            // A gap between the one row about every project and the projects: the kinds
+            // differ, and a list that runs them together reads the overview as the first
+            // project. Space rather than a hairline — the line read as one more thing to
+            // look at between two rows that space alone parts. Not a row anyone can land on.
             Color.clear
                 .frame(height: 1)
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                .listRowBackground(
-                    // Six points inside the capsule's edges: flush with them it read as
-                    // the capsule's own top edge rather than a line between rows.
-                    Rectangle()
-                        .fill(Token.Colour.separator)
-                        .frame(height: 1)
-                        .padding(.horizontal, 16))
+                .listRowBackground(Color.clear)
                 .selectionDisabled()
                 .accessibilityHidden(true)
             ForEach(sessions.sessions, id: \.workspaceID) { store in
@@ -404,11 +395,11 @@ enum ProjectControlSize {
 private struct AgentsRow: View {
     let isSelected: Bool
 
-    private var running: Int { AgentMonitor.shared.runningCount }
+    private var running: Int { AgentsOverview.shared.runningCount }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "rectangle.grid.2x2.fill")
+            Image(systemName: "circle.grid.2x2.fill")
                 .font(Token.Type_.tileTitle)
                 .foregroundStyle(running > 0 ? Token.Colour.label : Token.Colour.tertiaryLabel)
                 .frame(width: 20)
@@ -420,11 +411,9 @@ private struct AgentsRow: View {
             // In the slot the session rows keep for their badge, so the column lines up.
             ZStack {
                 if running > 0 {
-                    Text("\(running)")
-                        .font(Token.Type_.tileSubtitle)
-                        .monospacedDigit()
+                    AgentCount(running)
+                        .font(Token.Type_.tileTitle)
                         .foregroundStyle(Token.Colour.secondaryLabel)
-                        .fixedSize()
                 }
             }
             .frame(minWidth: 16, minHeight: 16, maxHeight: 16, alignment: .trailing)
@@ -433,6 +422,25 @@ private struct AgentsRow: View {
         .help("Every working agent's pane, from every project (⌘0)")
         .accessibilityElement(children: .combine)
         .accessibilityLabel(running > 0 ? "Agents, \(running) running" : "Agents, none running")
+    }
+}
+
+/// How many agents are running, as the sidebar's row and the belt's tab show it: the
+/// number in a filled circle, the badge shape the session rows' own states wear. SF
+/// Symbols numbers its circles up to 50; past that, the bare number.
+struct AgentCount: View {
+    let count: Int
+
+    init(_ count: Int) { self.count = count }
+
+    var body: some View {
+        if (0...50).contains(count) {
+            Image(systemName: "\(count).circle.fill")
+        } else {
+            Text("\(count)")
+                .monospacedDigit()
+                .fixedSize()
+        }
     }
 }
 

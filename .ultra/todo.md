@@ -175,3 +175,9 @@ their session too — the grid is complete or it is not an overview.
 - [x] Chat panes with a turn in flight visit too, and stay until the overview closes — the answer arriving is not the chat leaving; the strip says working, then done
 - [x] The overview's grid refuses drags, moves and swaps: a computed arrangement; the drag handle is gone from a visitor
 - [x] The empty state is a plain surface — no header, no ring, no handle — rather than a pane called "Agents"
+- [x] Sidebar and belt: space, not a hairline, parts Agents from the projects
+- [x] The running count is the number in a filled circle (`N.circle.fill`, up to 50; the bare number past that)
+- [x] Agents wears `circle.grid.2x2.fill` everywhere: the sidebar row, the belt tab, the menu, the empty state and the stand-in
+- [x] The Agents demo counts its stand-ins on the sidebar row and the belt tab, as running agents would be
+- [x] Drag a visitor by its strip or its header onto another to trade places: on the overview every drop over a pane is a swap (`DropZone.swapTarget`), never an edge or root split
+- [x] Pane ▸ Swap ▸ Left / Right / Up / Down, ⇧⌥⌘ and the arrows: the keyboard path to the swap, on any canvas

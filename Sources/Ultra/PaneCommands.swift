@@ -13,7 +13,7 @@ import UltraTiles
 /// `.keyboardShortcut` on a view inside a pane would never see the key.
 enum PaneCommands {
 
-    static let all: [AppCommand] = splits + focusMoves + resizes + numbered + others
+    static let all: [AppCommand] = splits + focusMoves + swaps + resizes + numbered + others
                                  + layouts + chat + editor + browser
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
                                  + [newShell, openSetup, closeSession, whatsNew]
@@ -24,7 +24,7 @@ enum PaneCommands {
     /// without running three agents. Not in a release build at all — absent, not dimmed,
     /// since it is for the people building the app and no one else.
     static let agentsDemo = AppCommand(
-        id: "debug.agentsDemo", title: "Demo: Agents Overview", symbol: "rectangle.grid.2x2",
+        id: "debug.agentsDemo", title: "Demo: Agents Overview", symbol: "circle.grid.2x2",
         menuPath: ["View"],
         keywords: ["Debug"],
         isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
@@ -39,7 +39,7 @@ enum PaneCommands {
     /// first session lands on it. ⌃⌘0 is the simulator's Fit Device; nothing with ⌘
     /// reaches a shell.
     static let showAgents = AppCommand(
-        id: "view.agents", title: "Show Agents", symbol: "rectangle.grid.2x2.fill",
+        id: "view.agents", title: "Show Agents", symbol: "circle.grid.2x2.fill",
         menuPath: ["View"],
         binding: KeyBinding("0", [.command]),
         keywords: ["Agents Overview", "All Agents", "Hide Agents"],
@@ -600,6 +600,20 @@ enum PaneCommands {
                    binding: KeyBinding(key, [.command, .option])) { $0.moveFocus(edge) }
     }
 
+    /// The keyboard path to what a pane drag does on its swap zone — and the only drop
+    /// there is on the Agents overview, whose grid trades places and nothing else.
+    static let swaps: [AppCommand] = [
+        (Edge.left, KeyEquivalent.leftArrow), (.right, .rightArrow),
+        (.top, .upArrow), (.bottom, .downArrow),
+    ].map { edge, key in
+        AppCommand(id: "pane.swap.\(edge.rawValue)",
+                   title: "Swap \(edge.actionName)",
+                   symbol: edge == .left || edge == .right ? "arrow.left.arrow.right" : "arrow.up.arrow.down",
+                   menuPath: ["Pane", "Swap"],
+                   binding: KeyBinding(key, [.command, .option, .shift]),
+                   keywords: ["Move Pane", "Trade Places"]) { $0.swapFocused(edge) }
+    }
+
     static let resizes: [AppCommand] = [
         (Edge.left, KeyEquivalent.leftArrow), (.right, .rightArrow),
         (.top, .upArrow), (.bottom, .downArrow),
@@ -859,6 +873,9 @@ struct PaneMenuCommands: Commands {
                 ForEach(PaneCommands.focusMoves) { item($0) }
                 Divider()
                 ForEach(PaneCommands.numbered) { item($0) }
+            }
+            Menu("Swap") {
+                ForEach(PaneCommands.swaps) { item($0) }
             }
             Menu("Resize") {
                 ForEach(PaneCommands.resizes) { item($0) }

@@ -96,15 +96,11 @@ struct SessionTabBelt: View {
                         AgentsTab(isSelected: ui.showsAgents, glass: glass) {
                             AgentsOverview.shared.open(in: sessions)
                         }
-                        // The sidebar's hairline, turned on its side: the overview is not
-                        // one of the sessions, and a belt that ran them together read it
-                        // as the first tab. Inset from the tabs' edges as the sidebar's
-                        // is from the capsule's, a little further apart than the tabs.
-                        Rectangle()
-                            .fill(Token.Colour.separator)
-                            .frame(width: 1)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 4)
+                        // The sidebar's gap, turned on its side: the overview is not one
+                        // of the sessions, and a belt that ran them together read it as the
+                        // first tab. Space, as in the sidebar, a little wider than the tabs'.
+                        Color.clear
+                            .frame(width: 9)
                             .accessibilityHidden(true)
                         ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
                             index, store in
@@ -495,18 +491,17 @@ private struct AgentsTab: View {
     let select: () -> Void
     @State private var isHovering = false
 
-    private var running: Int { AgentMonitor.shared.runningCount }
+    private var running: Int { AgentsOverview.shared.runningCount }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "rectangle.grid.2x2.fill")
+            Image(systemName: "circle.grid.2x2.fill")
                 .font(Token.Type_.body.weight(.semibold))
                 .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .frame(width: 16, height: 16)
             if running > 0 {
-                Text("\(running)")
+                AgentCount(running)
                     .font(Token.Type_.body.weight(.semibold))
-                    .monospacedDigit()
                     .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
             }
         }

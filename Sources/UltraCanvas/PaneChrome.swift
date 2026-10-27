@@ -370,6 +370,13 @@ public final class PaneContainerView: NSView {
     /// The strip a visiting pane wears above its header, saying where it is from. Built
     /// when a strip is first set, dropped when it is cleared.
     private var stripHost: NSHostingView<VisitStripView>?
+    /// The strip's empty band, as the strip measured it: a visitor is picked up by its
+    /// wrapper as readily as by its own header, and on the overview that is how panes
+    /// trade places.
+    private var stripGap: ClosedRange<CGFloat> = 0...0
+    private lazy var stripDragHandle = PaneDragHandleView(paneID: paneID) { [weak self] in
+        self?.paneSnapshot()
+    }
     private var descriptor: PaneDescriptor
     /// What this pane currently is, so its own kind is not offered as a change.
     private var kind: PaneRecord.Kind?
@@ -565,19 +572,26 @@ public final class PaneContainerView: NSView {
         guard let visitStrip else {
             stripHost?.removeFromSuperview()
             stripHost = nil
+            stripDragHandle.removeFromSuperview()
+            stripGap = 0...0
             return
         }
         let close: (() -> Void)? = canClose ? { [weak self] in
             guard let self else { return }
             actions.close(paneID)
         } : nil
-        let view = VisitStripView(strip: visitStrip, close: close)
+        let view = VisitStripView(strip: visitStrip, close: close) { [weak self] gap in
+            guard let self, gap != stripGap else { return }
+            stripGap = gap
+            needsLayout = true
+        }
         if let stripHost {
             stripHost.rootView = view
         } else {
             let host = NSHostingView(rootView: view)
             host.focusRingType = .none
             clip.addSubview(host)
+            clip.addSubview(stripDragHandle, positioned: .above, relativeTo: host)
             stripHost = host
         }
     }
@@ -838,6 +852,12 @@ public final class PaneContainerView: NSView {
         // A visiting pane's strip sits above everything, and the rest moves down by it.
         let stripHeight = stripHost == nil ? 0 : min(headerHeight, bounds.height)
         stripHost?.frame = CGRect(x: 0, y: 0, width: bounds.width, height: stripHeight)
+        if stripHost != nil {
+            stripDragHandle.frame = CGRect(x: stripGap.lowerBound, y: 0,
+                                           width: max(0, min(stripGap.upperBound, bounds.width)
+                                                      - stripGap.lowerBound),
+                                           height: stripHeight)
+        }
         // A pane is header, content, footer — three elements, not one surface with chrome
         // floating on it. The content starts BELOW the header rather than running under it.
         //
@@ -933,6 +953,9 @@ struct VisitStripView: View {
     /// The pane's close, moved up here from its header: the wrapper is what a visitor is
     /// handled by. Nil when the pane cannot be closed — the last pane of its canvas.
     var close: (() -> Void)? = nil
+    /// Where the empty band between the name and the trailing cluster runs, in the
+    /// strip's own width: the container lays its drag handle over exactly that.
+    var onGap: ((ClosedRange<CGFloat>) -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 6) {
@@ -950,7 +973,12 @@ struct VisitStripView: View {
                 .foregroundStyle(Token.Colour.label)
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Spacer(minLength: 4)
+            Color.clear
+                .frame(minWidth: 4, maxWidth: .infinity, maxHeight: .infinity)
+                .onGeometryChange(for: ClosedRange<CGFloat>.self) { proxy in
+                    let frame = proxy.frame(in: .named(Self.space))
+                    return frame.minX...max(frame.minX, frame.maxX)
+                } action: { onGap?($0) }
             if let detail = strip.detail {
                 Text(detail)
                     .font(Token.Type_.tileSubtitle)
@@ -977,9 +1005,12 @@ struct VisitStripView: View {
         // second header of the pane's own. The pane's header below it keeps no fill, as
         // ever; one tint, on the thing that is not the pane.
         .background(Token.Colour.label.opacity(0.05))
+        .coordinateSpace(.named(Self.space))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("From \(strip.title)")
     }
+
+    private static let space = "visitStrip"
 }
 
 #Preview("Visiting strip", traits: .fixedLayout(width: 420, height: 40)) {

@@ -379,6 +379,18 @@ public final class LayoutStore {
         focus(target)
     }
 
+    /// ⇧⌥⌘→ trades the focused pane with its neighbour on the right — the keyboard's way
+    /// of what a drag onto the middle of that pane does. The pane keeps the keyboard and
+    /// goes with it, so pressing again carries it on.
+    public func swapFocused(_ direction: Edge) {
+        guard let target = focusTarget(from: tree.focused, direction: direction,
+                                       frames: layoutResult.frames, memory: navigation) else {
+            NSSound.beep()
+            return
+        }
+        swap(tree.focused, target)
+    }
+
     public func focusPane(atVisualIndex index: Int) {
         let order = layoutResult.visualOrder
         guard order.indices.contains(index) else { NSSound.beep(); return }

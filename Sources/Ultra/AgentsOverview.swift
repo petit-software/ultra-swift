@@ -56,6 +56,13 @@ final class AgentsOverview {
     /// Ultra Dev only: stand-in panes shown to see the overview without three agents
     /// running. See `showDemo`.
     private let demo = DemoPanes()
+    /// How many stand-ins the demo is showing, observed — `DemoPanes` is not — so the
+    /// sidebar's row and the belt's tab count them as they would running agents.
+    private(set) var demoAgents = 0
+
+    /// What the sidebar's row and the belt's tab count: the agents running, or the demo's
+    /// stand-ins while it is up, so the demo shows the whole design and not just the grid.
+    var runningCount: Int { demoAgents > 0 ? demoAgents : AgentMonitor.shared.runningCount }
 
     /// Whether this is a build the demo may show in: Ultra Dev, or a bare `swift run`.
     nonisolated static var isDevBuild: Bool {
@@ -78,7 +85,7 @@ final class AgentsOverview {
             view.focusRingType = .none
             return PaneContent(view: view,
                                record: PaneRecord(kind: .placeholder, title: "Agents",
-                                                  icon: "rectangle.grid.2x2.fill"))
+                                                  icon: "circle.grid.2x2.fill"))
         }
         store.isFixedArrangement = true
         store.workspaceTitle = "Agents"
@@ -136,6 +143,7 @@ final class AgentsOverview {
         opened = [:]
         chats = [:]
         demo.ids = []
+        demoAgents = 0
         rebuild()
         list?.ui?.showsAgents = false
         list?.selected?.reclaimKeyboardFocus()
@@ -289,6 +297,7 @@ final class AgentsOverview {
         open(in: list)
         let ids = (0..<3).map { _ in PaneID() }
         demo.ids = ids
+        demoAgents = ids.count
         order = []
         shown = ids
         store.rearrange(LayoutTree.grid(of: ids)!)
@@ -409,7 +418,7 @@ struct AgentProjectsMenuItems: View {
 struct AgentsEmptyState: View {
     var body: some View {
         VStack(spacing: 10) {
-            Image(systemName: "rectangle.grid.2x2.fill")
+            Image(systemName: "circle.grid.2x2.fill")
                 .font(.system(size: 28, weight: .medium))
                 .foregroundStyle(Token.Colour.tertiaryLabel)
             Text("No agents running")

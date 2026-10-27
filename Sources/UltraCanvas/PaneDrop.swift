@@ -65,11 +65,7 @@ extension SplitCanvasView {
     /// Resolve a drag's position to a target, and show it.
     func updateDrop(_ sender: NSDraggingInfo) -> NSDragOperation {
         guard let dragged = Self.pane(from: sender) else { return [] }
-        let point = convert(sender.draggingLocation, from: nil)
-        guard let target = DropZone.target(at: point,
-                                           frames: currentResult.frames,
-                                           canvas: layoutBounds,
-                                           dragged: dragged) else {
+        guard let target = dropTarget(sender, dragging: dragged) else {
             clearDropHighlight()
             return []
         }
@@ -80,13 +76,20 @@ extension SplitCanvasView {
     func performDrop(_ sender: NSDraggingInfo) -> Bool {
         defer { clearDropHighlight() }
         guard let dragged = Self.pane(from: sender) else { return false }
-        let point = convert(sender.draggingLocation, from: nil)
-        guard let target = DropZone.target(at: point,
-                                           frames: currentResult.frames,
-                                           canvas: layoutBounds,
-                                           dragged: dragged) else { return false }
+        guard let target = dropTarget(sender, dragging: dragged) else { return false }
         store.apply(target, dragging: dragged)
         return true
+    }
+
+    /// Where a drag would land. On a computed arrangement — the Agents overview — panes
+    /// only trade places: see `DropZone.swapTarget`.
+    private func dropTarget(_ sender: NSDraggingInfo, dragging dragged: PaneID) -> DropTarget? {
+        let point = convert(sender.draggingLocation, from: nil)
+        if store.isFixedArrangement {
+            return DropZone.swapTarget(at: point, frames: currentResult.frames, dragged: dragged)
+        }
+        return DropZone.target(at: point, frames: currentResult.frames, canvas: layoutBounds,
+                               dragged: dragged)
     }
 
     /// The pane a drag is carrying, or nil if this drag is not ours.
