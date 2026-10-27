@@ -23,7 +23,7 @@ import UltraTiles
 enum DemoProjects {
 
     /// Bumped when the projects or their arrangements change, so an old set is rebuilt.
-    static let version = 4
+    static let version = 6
 
     static var root: URL {
         AppSupport.directory.appendingPathComponent("Demo Projects", isDirectory: true)
@@ -59,7 +59,11 @@ enum DemoProjects {
                 list.select(id)
                 try? await Task.sleep(for: .milliseconds(150))
             }
-            if let first = opened.first { list.select(first) }
+            // `ULTRA_DEMO_SELECT=<project>` lands on that one: for a screenshot of a
+            // particular arrangement, or a demo that starts on a chosen project.
+            let wanted = ProcessInfo.processInfo.environment["ULTRA_DEMO_SELECT"]
+            let chosen = zip(specs, opened).first { $0.0.name == wanted }?.1 ?? opened.first
+            if let chosen { list.select(chosen) }
         }
     }
 
@@ -155,12 +159,14 @@ enum DemoProjects {
         say() { print -r -- "$@"; }
         step() { say ""; say "${C}⏺${R} $1"; sleep ${2:-1.2}; [[ -n "$3" ]] && say "  ${D}⎿  $3${R}"; sleep 0.6; }
         think() {
+          # Short, and the line is cleared rather than overwritten: a pane that was narrow
+          # while this ran wraps a long spinner into a staircase it never cleans up.
           local secs=${1:-6} i=0 frames=('✶' '✻' '✽' '✶' '✻' '✽')
           while (( i < secs * 4 )); do
-            printf "\r${M}%s${R} ${D}Thinking… (%ds · ↓ %dk tokens)${R}   " "${frames[$((i % 6 + 1))]}" $((i / 4)) $((i / 3 + 2))
+            printf "\r\e[2K${M}%s${R} ${D}Thinking… (%ds)${R}" "${frames[$((i % 6 + 1))]}" $((i / 4))
             sleep 0.25; (( i++ ))
           done
-          printf "\r%-60s\r" ""
+          printf "\r\e[2K"
         }
         say "${B}╭──────────────────────────────────────────────╮${R}"
         say "${B}│${R} ${C}✻${R} Welcome to ${B}Claude Code${R}                        ${B}│${R}"
@@ -274,7 +280,7 @@ enum DemoProjects {
           print -r -- "${D}\$ ${what} build${R}"
           case $what in
             tokens) bar 14 "tokens/colour.css → dist/tokens.css"; bar 9 "components → dist/index.js";;
-            train)  for (( e = 1; e <= 8; e++ )); do printf "epoch %2d/8  loss %10.1f  ${D}%.1fs${R}\n" $e $(( 820000 / (e * e) + RANDOM % 900 )) $(( RANDOM % 4 )).$(( RANDOM % 9 )); sleep 0.9; done;;
+            train)  for (( e = 1; e <= 8; e++ )); do printf "epoch %d/8  loss %8d\n" $e $(( 820000 / (e * e) + RANDOM % 900 )); sleep 0.9; done;;
             *)      bar 20 "compiling";;
           esac
           print -r -- "${G}${B}✔ Build complete${R} ${D}($(( 1 + RANDOM % 4 )).$(( RANDOM % 9 ))s)${R}"
@@ -307,6 +313,136 @@ enum DemoProjects {
           fi
           sleep 0.$(( 4 + RANDOM % 9 )); (( RANDOM % 5 == 0 )) && sleep 1
           (( i++ ))
+        done
+        """#),
+        ("procs.zsh", #"""
+        #!/bin/zsh
+        # The machine's processes as bars, from ps, redrawn every two seconds.
+        B=$'\e[1m'; D=$'\e[2m'; G=$'\e[32m'; Y=$'\e[33m'; Rd=$'\e[31m'; R=$'\e[0m'
+        while true; do
+          printf '\e[H\e[2J'
+          print -r -- "${B}processes by cpu${R}   ${D}$(date +%H:%M:%S) · load $(sysctl -n vm.loadavg | tr -d '{}')${R}"
+          print ""
+          cols=$(tput cols 2>/dev/null || echo 80); barw=$(( cols - 32 )); (( barw < 4 )) && barw=4; (( barw > 30 )) && barw=30
+          ps -Ao pid,pcpu,pmem,comm -r | head -n 13 | tail -n +2 | while read -r pid cpu mem comm; do
+            name=$(basename "$comm" | cut -c1-12)
+            n=$(( ${cpu%.*} * barw / 100 )); (( n > barw )) && n=$barw
+            col=$G; (( ${cpu%.*} >= 30 )) && col=$Y; (( ${cpu%.*} >= 70 )) && col=$Rd
+            printf "%6s %-12s ${col}%-${barw}s${R} %5s%%\n" "$pid" "$name" "$(printf '▇%.0s' $(seq 1 $(( n > 0 ? n : 1 ))))" "$cpu"
+          done
+          sleep 2
+        done
+        """#),
+        ("compose.zsh", #"""
+        #!/bin/zsh
+        # Four services' logs, interleaved, the way compose prints them.
+        C1=$'\e[36m'; C2=$'\e[33m'; C3=$'\e[35m'; C4=$'\e[32m'; D=$'\e[2m'; Rd=$'\e[31m'; R=$'\e[0m'
+        print -r -- "${D}\$ docker compose up${R}"
+        for s in "db_1     ${D}database system is ready to accept connections${R}" "cache_1  ${D}Ready to accept connections tcp${R}" "api_1    ${D}checkout-api listening on 3000${R}" "worker_1 ${D}polling queue orders every 5s${R}"; do
+          print -r -- "$s"; sleep 0.7
+        done
+        i=0
+        while true; do
+          case $(( RANDOM % 7 )) in
+            0|1) print -r -- "${C1}api_1    |${R} GET /orders/$(( 1000 + RANDOM % 90 )) 200 $(( 5 + RANDOM % 40 ))ms";;
+            2)   print -r -- "${C1}api_1    |${R} POST /cart/$(printf '%x' $RANDOM)/items 201 $(( 8 + RANDOM % 30 ))ms";;
+            3)   print -r -- "${C2}worker_1 |${R} processed order $(( 1000 + RANDOM % 90 )) ${D}(stripe: succeeded)${R}";;
+            4)   print -r -- "${C3}db_1     |${R} ${D}checkpoint complete: wrote $(( 10 + RANDOM % 200 )) buffers${R}";;
+            5)   print -r -- "${C4}cache_1  |${R} ${D}$(( RANDOM % 900 + 100 )) keys, $(( RANDOM % 40 + 10 ))M used${R}";;
+            6)   (( RANDOM % 4 == 0 )) && print -r -- "${C2}worker_1 |${R} ${Rd}retry 1/3${R} order $(( 1000 + RANDOM % 90 )): upstream timeout" || print -r -- "${C1}api_1    |${R} GET /health 200 2ms";;
+          esac
+          sleep 0.$(( 3 + RANDOM % 9 )); (( RANDOM % 6 == 0 )) && sleep 1
+        done
+        """#),
+        ("install.zsh", #"""
+        #!/bin/zsh
+        # Dependencies arriving: a spinner, then each package, then the summary.
+        kind=${1:-npm}
+        G=$'\e[32m'; D=$'\e[2m'; B=$'\e[1m'; C=$'\e[36m'; R=$'\e[0m'
+        case $kind in
+          go)  cmd="go mod download"; pkgs=(github.com/spf13/cobra@v1.8.1 github.com/aws/aws-sdk-go-v2@v1.30.3 github.com/aws/aws-sdk-go-v2/service/secretsmanager@v1.32.4 golang.org/x/term@v0.23.0 github.com/1password/onepassword-sdk-go@v0.1.3 gopkg.in/yaml.v3@v3.0.1);;
+          *)   cmd="npm install"; pkgs=(express@4.19.2 pg@8.12.0 stripe@16.2.0 body-parser@1.20.2 debug@4.3.6 qs@6.13.0 cookie@0.6.0 ms@2.1.3 iconv-lite@0.4.24 pg-pool@3.6.2);;
+        esac
+        print -r -- "${D}\$ $cmd${R}"
+        frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏'); i=0
+        while (( i < 24 )); do printf "\r${C}%s${R} resolving…" "${frames[$((i % 10 + 1))]}"; sleep 0.1; (( i++ )); done
+        printf "\r%-30s\r" ""
+        n=${#pkgs}; k=0
+        for pkg in $pkgs; do
+          (( k++ ))
+          printf "  ${G}+${R} %-52s ${D}[%2d/%2d]${R}\n" "$pkg" $k $n
+          sleep 0.$(( 2 + RANDOM % 7 ))
+        done
+        [[ $kind == go ]] && print -r -- "${G}${B}✔${R} go: downloaded $n modules" || { print -r -- "${G}${B}added $n packages${R} in $(( 2 + RANDOM % 5 )).$(( RANDOM % 9 ))s"; print -r -- "${D}found 0 vulnerabilities${R}"; }
+        exec zsh -l
+        """#),
+        ("pods.zsh", #"""
+        #!/bin/zsh
+        # A cluster's pods, the way kubectl --watch shows them, settling as they start.
+        G=$'\e[32m'; Y=$'\e[33m'; D=$'\e[2m'; B=$'\e[1m'; R=$'\e[0m'
+        names=(api-7d9f8b6c4-k2xqz api-7d9f8b6c4-m8v1p worker-5c6d7f8-q4rtw db-0 cache-6b7c8d9-z1y2x ingress-nginx-x9k2m)
+        typeset -A age; for n in $names; do age[$n]=$(( RANDOM % 300 )); done
+        tick=0
+        while true; do
+          printf '\e[H\e[2J'
+          print -r -- "${D}\$ kubectl get pods -n checkout --watch${R}"
+          printf "${B}%-28s %-7s %-18s %-9s %s${R}\n" NAME READY STATUS RESTARTS AGE
+          for n in $names; do
+            a=${age[$n]}; state="${G}Running${R}"; ready="1/1"; restarts=0
+            if [[ $n == api-7d9f8b6c4-m8v1p ]]; then
+              if (( tick < 4 )); then state="${Y}ContainerCreating${R}"; ready="0/1"; elif (( tick < 7 )); then state="${Y}Running${R}"; ready="0/1"; fi
+            fi
+            [[ $n == worker-5c6d7f8-q4rtw ]] && restarts=2
+            if (( a < 60 )); then ages="${a}s"; elif (( a < 3600 )); then ages="$(( a / 60 ))m"; else ages="$(( a / 3600 ))h"; fi
+            printf "%-28s %-7s %-29s %-9s %s\n" "$n" "$ready" "$state" "$restarts" "$ages"
+            age[$n]=$(( a + 2 ))
+          done
+          (( tick++ )); sleep 2
+        done
+        """#),
+        ("download.zsh", #"""
+        #!/bin/zsh
+        # Files arriving with progress bars, then a prompt.
+        G=$'\e[32m'; D=$'\e[2m'; B=$'\e[1m'; R=$'\e[0m'
+        files=("models/housing-v3.bin 182 MB" "data/housing-2025.csv 41 MB" "data/housing-2026.csv 23 MB")
+        cols=$(tput cols 2>/dev/null || echo 80); barw=$(( cols - 40 )); (( barw < 6 )) && barw=6; (( barw > 36 )) && barw=36
+        for entry in $files; do
+          name=${entry%% *}; size=${entry#* }; short=$(basename "$name" | cut -c1-18)
+          print -r -- "${D}\$ curl -O https://assets.example.com/$name${R}"
+          total=$(( 40 + RANDOM % 40 ))
+          for (( i = 0; i <= total; i++ )); do
+            pct=$(( i * 100 / total )); filled=$(( pct * barw / 100 ))
+            printf "\r\e[2K  %-18s [%-${barw}s] %3d%% ${D}%s${R}" "$short" "$(printf '#%.0s' $(seq 1 $(( filled > 0 ? filled : 1 ))))" $pct "$size"
+            sleep 0.$(( 3 + RANDOM % 7 ))
+          done
+          print ""; print -r -- "  ${G}✔${R} $name ${D}($size)${R}"; print ""
+        done
+        print -r -- "${G}${B}✔ 3 files, 246 MB${R}"
+        exec zsh -l
+        """#),
+        ("sql.zsh", #"""
+        #!/bin/zsh
+        # A real database: sqlite, loaded from the project's export, queried as it grows.
+        D=$'\e[2m'; B=$'\e[1m'; R=$'\e[0m'
+        db=/tmp/ultra-demo-events.db
+        rm -f $db
+        sqlite3 $db "create table events (id integer primary key, kind text, user text, cents integer, at text default current_timestamp);"
+        kinds=(signup purchase purchase pageview pageview pageview refund)
+        i=0
+        while true; do
+          for (( k = 0; k < 5; k++ )); do
+            kind=${kinds[$((RANDOM % 7 + 1))]}; cents=0; [[ $kind == purchase ]] && cents=$(( 899 + RANDOM % 12000 ))
+            sqlite3 $db "insert into events (kind, user, cents) values ('$kind', 'u_$(( RANDOM % 40 ))', $cents);"
+          done
+          printf '\e[H\e[2J'
+          print -r -- "${D}sqlite> ${R}${B}select kind, count(*) as n, sum(cents)/100.0 as eur from events group by kind order by n desc;${R}"
+          sqlite3 -header -column $db "select kind, count(*) as n, printf('%.2f', sum(cents)/100.0) as eur from events group by kind order by n desc;"
+          print ""
+          print -r -- "${D}sqlite> ${R}${B}select user, count(*) as events from events group by user order by events desc limit 5;${R}"
+          sqlite3 -header -column $db "select user, count(*) as events from events group by user order by events desc limit 5;"
+          print ""
+          print -r -- "${D}$(sqlite3 $db 'select count(*) from events') rows · refreshed $(date +%H:%M:%S)${R}"
+          sleep 6; (( i++ ))
         done
         """#),
         ("deploy.zsh", #"""
@@ -352,7 +488,10 @@ enum DemoProjects {
             return false
         }
         try? FileManager.default.removeItem(at: folder)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // `.ultra` first: the todo, the context list and the marker all live in it, and a
+        // write into a folder that is not there yet fails without a word.
+        try? FileManager.default.createDirectory(at: folder.appendingPathComponent(".ultra"),
+                                                 withIntermediateDirectories: true)
         for (path, text) in spec.files {
             let url = folder.appendingPathComponent(path)
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
@@ -418,7 +557,7 @@ enum DemoProjects {
         var panes: [PaneID: PaneRecord] = [:]
         let tree = spec.layout(folder, &panes)
         // The line each shell types on start rides in its record, in the shells' order in
-        // the tree — see `ShellPaneFactory.startupInput`. Typed on the first build only.
+        // the tree — see `ShellPaneFactory.startupInput`. Typed on every start.
         let shells = tree.paneIDs.filter { panes[$0]?.kind == .shell }
         for (paneID, command) in zip(shells, spec.startup) where !command.isEmpty {
             panes[paneID]?.tileState = Data(command.utf8)
@@ -667,24 +806,24 @@ enum DemoProjects {
         """,
         context: ["src/routes/orders.js", "src/db.js", "README.md"],
         chat: nil,
-        startup: ["git log --oneline --graph --decorate", "python3 -m http.server 8731", tool("logs.zsh", "http")],
+        startup: ["git log --graph --oneline --decorate --color=always --all", "python3 -m http.server 8731", tool("compose.zsh")],
         layout: { root, panes in
-            // The service at work: a shell, the server under it, the agent fixing the
-            // route, its request log, and the port it is on.
+            // The service at work: history, the server and its port on the left; the
+            // agent fixing the route over the services' logs; the list and the files.
             let work = shell(root, title: "shell", into: &panes)
             let server = shell(root, title: "server", into: &panes)
-            let logs = shell(root, title: "logs", into: &panes)
+            let compose = shell(root, title: "compose", into: &panes)
             let agent = agent(root, "asking", into: &panes)
             let ports = tile(.ports, root, into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
-            var tree = LayoutTree(single: work)
-            tree.split(work, edge: .right, newPane: agent, ratio: 0.42)
-            tree.split(agent, edge: .right, newPane: todo, ratio: 0.36)
-            tree.split(work, edge: .bottom, newPane: server, ratio: 0.45)
-            tree.split(agent, edge: .bottom, newPane: logs, ratio: 0.35)
-            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.5)
-            tree.split(context, edge: .bottom, newPane: ports, ratio: 0.5)
+            var tree = LayoutTree(single: agent)
+            tree.split(agent, edge: .left, newPane: work, ratio: 0.3)
+            tree.split(agent, edge: .right, newPane: todo, ratio: 0.3)
+            tree.split(work, edge: .bottom, newPane: server, ratio: 0.5)
+            tree.split(server, edge: .bottom, newPane: ports, ratio: 0.45)
+            tree.split(agent, edge: .bottom, newPane: compose, ratio: 0.4)
+            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
             tree.focused = agent
             return tree
         })
@@ -792,8 +931,8 @@ enum DemoProjects {
         chat: designSystemChat,
         startup: [tool("build.zsh", "tokens")],
         layout: { root, panes in
-            // Tokens being edited with the build watching them, and the chat about the
-            // dark accent beside the list of what is left.
+            // Tokens being edited with the build watching them; the chat about the dark
+            // accent over the list and the files it is about.
             let files = tile(.fileTree, root, into: &panes)
             let editor = tile(.editor, root, file: "tokens/colour.css", into: &panes)
             let build = shell(root, title: "build", into: &panes)
@@ -802,10 +941,10 @@ enum DemoProjects {
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: editor)
             tree.split(editor, edge: .left, newPane: files, ratio: 0.2)
-            tree.split(editor, edge: .right, newPane: chat, ratio: 0.36)
-            tree.split(editor, edge: .bottom, newPane: build, ratio: 0.3)
-            tree.split(chat, edge: .bottom, newPane: todo, ratio: 0.5)
-            tree.split(todo, edge: .right, newPane: context, ratio: 0.5)
+            tree.split(editor, edge: .right, newPane: chat, ratio: 0.38)
+            tree.split(editor, edge: .bottom, newPane: build, ratio: 0.32)
+            tree.split(chat, edge: .bottom, newPane: todo, ratio: 0.55)
+            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
             tree.focused = editor
             return tree
         })
@@ -968,8 +1107,8 @@ enum DemoProjects {
         chat: nil,
         startup: [tool("tests.zsh", "swift")],
         layout: { root, panes in
-            // A package with its tests running in watch mode, an agent working through
-            // the cache, and the change the Git pane has to show.
+            // The package with its tests in watch mode, an agent working through the
+            // cache, the change the Git pane shows, and the list under the tree.
             let files = tile(.fileTree, root, into: &panes)
             let editor = tile(.editor, root, file: "Sources/Weather/ForecastClient.swift", into: &panes)
             let tests = shell(root, title: "tests", into: &panes)
@@ -978,11 +1117,11 @@ enum DemoProjects {
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: editor)
-            tree.split(editor, edge: .left, newPane: files, ratio: 0.2)
+            tree.split(editor, edge: .left, newPane: files, ratio: 0.24)
             tree.split(editor, edge: .right, newPane: agent, ratio: 0.4)
-            tree.split(editor, edge: .bottom, newPane: tests, ratio: 0.38)
-            tree.split(agent, edge: .bottom, newPane: git, ratio: 0.4)
-            tree.split(files, edge: .bottom, newPane: todo, ratio: 0.5)
+            tree.split(editor, edge: .bottom, newPane: tests, ratio: 0.36)
+            tree.split(agent, edge: .bottom, newPane: git, ratio: 0.35)
+            tree.split(files, edge: .bottom, newPane: todo, ratio: 0.55)
             tree.split(todo, edge: .bottom, newPane: context, ratio: 0.4)
             tree.focused = agent
             return tree
@@ -1112,24 +1251,26 @@ enum DemoProjects {
         """,
         context: ["train.py", "data/housing.csv"],
         chat: nil,
-        startup: [tool("build.zsh", "train"), "top -o cpu -s 2"],
+        startup: [tool("build.zsh", "train"), tool("procs.zsh"), tool("download.zsh")],
         layout: { root, panes in
-            // Training with its loss falling, the machine under it in top and in the
-            // Resources pane, and an agent that has finished its pass over the script.
+            // Training with its loss falling, the machine's processes as bars, the data
+            // arriving, an agent that has finished its pass, and the list beside it.
             let editor = tile(.editor, root, file: "train.py", into: &panes)
             let train = shell(root, title: "train", into: &panes)
-            let top = shell(root, title: "top", into: &panes)
+            let procs = shell(root, title: "procs", into: &panes)
+            let download = shell(root, title: "download", into: &panes)
             let agent = agent(root, "done", into: &panes)
             let resources = tile(.resources, root, into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: editor)
-            tree.split(editor, edge: .right, newPane: agent, ratio: 0.38)
-            tree.split(agent, edge: .right, newPane: todo, ratio: 0.34)
-            tree.split(editor, edge: .bottom, newPane: train, ratio: 0.4)
-            tree.split(train, edge: .right, newPane: top, ratio: 0.5)
-            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.5)
-            tree.split(context, edge: .bottom, newPane: resources, ratio: 0.5)
+            tree.split(editor, edge: .right, newPane: agent, ratio: 0.56)
+            tree.split(agent, edge: .right, newPane: todo, ratio: 0.45)
+            tree.split(editor, edge: .bottom, newPane: train, ratio: 0.45)
+            tree.split(train, edge: .right, newPane: procs, ratio: 0.5)
+            tree.split(agent, edge: .bottom, newPane: download, ratio: 0.3)
+            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.4)
+            tree.split(context, edge: .bottom, newPane: resources, ratio: 0.45)
             tree.focused = train
             return tree
         })
@@ -1208,26 +1349,24 @@ enum DemoProjects {
         """,
         context: ["main.tf", "scripts/deploy.sh"],
         chat: nil,
-        startup: [tool("deploy.zsh"), tool("logs.zsh", "infra"), "ping -i 1 1.1.1.1"],
+        startup: [tool("deploy.zsh"), tool("pods.zsh"), tool("logs.zsh", "infra")],
         layout: { root, panes in
-            // A deploy going through, the account's log beside it, a ping to the edge,
-            // and what the machine and its ports are doing.
+            // A deploy going through, the cluster's pods settling, the account's log,
+            // and the list, the files and the ports.
             let editor = tile(.editor, root, file: "main.tf", into: &panes)
             let deploy = shell(root, title: "deploy", into: &panes)
+            let pods = shell(root, title: "pods", into: &panes)
             let logs = shell(root, title: "logs", into: &panes)
-            let ping = shell(root, title: "ping", into: &panes)
-            let resources = tile(.resources, root, into: &panes)
             let ports = tile(.ports, root, into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: editor)
-            tree.split(editor, edge: .right, newPane: deploy, ratio: 0.42)
-            tree.split(deploy, edge: .right, newPane: todo, ratio: 0.34)
-            tree.split(editor, edge: .bottom, newPane: logs, ratio: 0.35)
-            tree.split(deploy, edge: .bottom, newPane: ping, ratio: 0.3)
+            tree.split(editor, edge: .right, newPane: pods, ratio: 0.58)
+            tree.split(pods, edge: .right, newPane: todo, ratio: 0.45)
+            tree.split(editor, edge: .bottom, newPane: deploy, ratio: 0.45)
+            tree.split(pods, edge: .bottom, newPane: logs, ratio: 0.5)
             tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
-            tree.split(context, edge: .bottom, newPane: resources, ratio: 0.5)
-            tree.split(resources, edge: .right, newPane: ports, ratio: 0.5)
+            tree.split(context, edge: .bottom, newPane: ports, ratio: 0.4)
             tree.focused = deploy
             return tree
         })
@@ -1301,20 +1440,20 @@ enum DemoProjects {
         """,
         context: ["posts/2026-10-terminal-for-agents.md", "drafts/outline.md"],
         chat: blogChat,
-        startup: ["wc -w posts/*.md drafts/*.md; git log --oneline --stat | head -n 20"],
+        startup: ["vim drafts/outline.md"],
         layout: { root, panes in
-            // Writing: the post as a page, the chat about its opening, the word counts,
-            // and the list and the files the post is about.
+            // Writing: the post as a page over the outline open in vim; the chat about
+            // its opening, the list and the files the post is about.
             let editor = tile(.editor, root, file: "posts/2026-10-terminal-for-agents.md", into: &panes)
+            let vim = shell(root, title: "vim", into: &panes)
             let chat = chatPane(root, blogChat, into: &panes)
-            let words = shell(root, title: "words", into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: editor)
-            tree.split(editor, edge: .right, newPane: chat, ratio: 0.38)
-            tree.split(editor, edge: .bottom, newPane: words, ratio: 0.28)
-            tree.split(chat, edge: .bottom, newPane: todo, ratio: 0.4)
-            tree.split(todo, edge: .right, newPane: context, ratio: 0.5)
+            tree.split(editor, edge: .right, newPane: chat, ratio: 0.42)
+            tree.split(editor, edge: .bottom, newPane: vim, ratio: 0.4)
+            tree.split(chat, edge: .bottom, newPane: todo, ratio: 0.5)
+            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
             tree.focused = editor
             return tree
         })
@@ -1381,25 +1520,25 @@ enum DemoProjects {
         """,
         context: ["load.py", "sql/002_daily.sql"],
         chat: nil,
-        startup: [tool("tests.zsh", "node"), "cat sql/002_daily.sql; git diff --stat", "top -o mem -s 3"],
+        startup: [tool("sql.zsh"), tool("tests.zsh", "node"), tool("install.zsh", "npm")],
         layout: { root, panes in
-            // The loader's tests, the SQL in hand, memory in top, and the diff the Git
-            // pane shows beside what is left to do.
+            // A live database queried as it grows, the loader's tests, dependencies
+            // arriving, the diff the Git pane shows, and the SQL in hand.
+            let sql = shell(root, title: "sqlite", into: &panes)
             let tests = shell(root, title: "tests", into: &panes)
-            let psql = shell(root, title: "psql", into: &panes)
-            let top = shell(root, title: "top", into: &panes)
+            let install = shell(root, title: "install", into: &panes)
             let git = tile(.git, root, into: &panes)
             let editor = tile(.editor, root, file: "sql/002_daily.sql", into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
-            var tree = LayoutTree(single: editor)
-            tree.split(editor, edge: .left, newPane: git, ratio: 0.3)
-            tree.split(editor, edge: .right, newPane: tests, ratio: 0.38)
-            tree.split(git, edge: .bottom, newPane: todo, ratio: 0.5)
+            var tree = LayoutTree(single: sql)
+            tree.split(sql, edge: .left, newPane: git, ratio: 0.28)
+            tree.split(sql, edge: .right, newPane: tests, ratio: 0.36)
+            tree.split(git, edge: .bottom, newPane: todo, ratio: 0.55)
             tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
-            tree.split(editor, edge: .bottom, newPane: psql, ratio: 0.4)
-            tree.split(tests, edge: .bottom, newPane: top, ratio: 0.5)
-            tree.focused = tests
+            tree.split(sql, edge: .bottom, newPane: editor, ratio: 0.35)
+            tree.split(tests, edge: .bottom, newPane: install, ratio: 0.5)
+            tree.focused = sql
             return tree
         })
 
@@ -1521,22 +1660,22 @@ enum DemoProjects {
         """,
         context: ["main.go", ".env.example"],
         chat: nil,
-        startup: [tool("tests.zsh", "go"), "go version 2>/dev/null || echo 'go is not installed here'; ls -la; git log --oneline"],
+        startup: [tool("install.zsh", "go"), tool("tests.zsh", "go")],
         layout: { root, panes in
-            // A CLI: the tree, an agent working on the store, the tests in watch mode, a
-            // shell, and the list and files beside them.
+            // A CLI: the tree over the list and the files, an agent working on the
+            // store, the modules arriving and the tests in watch mode.
             let files = tile(.fileTree, root, into: &panes)
+            let install = shell(root, title: "install", into: &panes)
             let tests = shell(root, title: "tests", into: &panes)
-            let work = shell(root, title: "shell", into: &panes)
             let agent = agent(root, "working", into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
             var tree = LayoutTree(single: agent)
-            tree.split(agent, edge: .left, newPane: files, ratio: 0.2)
-            tree.split(agent, edge: .right, newPane: tests, ratio: 0.4)
-            tree.split(tests, edge: .bottom, newPane: work, ratio: 0.45)
+            tree.split(agent, edge: .left, newPane: files, ratio: 0.26)
+            tree.split(agent, edge: .right, newPane: install, ratio: 0.38)
+            tree.split(install, edge: .bottom, newPane: tests, ratio: 0.5)
             tree.split(files, edge: .bottom, newPane: todo, ratio: 0.55)
-            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.4)
+            tree.split(todo, edge: .bottom, newPane: context, ratio: 0.45)
             tree.focused = agent
             return tree
         })

@@ -38,6 +38,7 @@
 - [x] Ultra Dev only: View ▸ Demo: Eight Projects, and `--demo` at launch, open eight generated projects, each a real folder with files, a git history with uncommitted changes, a todo list, a context list and, for some, a chat — so every tile reads real data (`DemoProjects`)
 - [x] Each project has its own pane composition: trees, editors on real files, shells that run a command on start, a Git pane, Ports and Resources, a browser on a server one of the shells started (`ShellPaneFactory.startupInput`)
 - [x] The projects are made once under Application Support ▸ Ultra Dev ▸ Demo Projects, and made again when the demo's version changes
+- [x] A shell's start-up line runs on every start and such a pane restores no history; `ULTRA_DEMO_SELECT=<project>` lands the demo on a chosen project; bars and spinners size themselves to the pane
 - [x] Every project has a Todo and a Context pane on its own data; agent panes run a stand-in — zsh copied as `claude`, printing a transcript — that settles working, asking or done, so the sidebar, the overview and the notification see real agents; shells run live things: a test runner in watch mode, a build that rebuilds, a request log, a deploy, top, ping, a server (`DemoProjects.scripts`)
 
 ## Menu cleanup

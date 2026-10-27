@@ -129,15 +129,16 @@ public final class ShellPaneFactory {
         //
         // Only a pane being RESTORED gets its history back: a brand new pane has none, and a
         // pane whose id happened to match a file would be showing someone else's session.
-        if record != nil, let history = scrollback?.load(for: paneID) {
-            pendingHistory[paneID] = history
-        }
         // A shell record can carry a line to type on start in its `tileState` — the
-        // demo projects' servers and tails. Read once, here: the record this returns
-        // carries none, so the line is typed on the first build and never again.
-        if let data = record?.tileState, let line = String(data: data, encoding: .utf8),
-           !line.isEmpty, startupInput[paneID] == nil {
-            startupInput[paneID] = line
+        // demo projects' servers and tails. Typed on EVERY start: the pane is a pane
+        // that runs that thing, and the record keeps the line (below) so a relaunch runs
+        // it again. Such a pane restores no history either — what it printed last time
+        // is what it is about to print, and a stack of "restored" separators over a
+        // server's startup is noise.
+        let startup = record?.tileState.flatMap { String(data: $0, encoding: .utf8) }.flatMap { $0.isEmpty ? nil : $0 }
+        if let startup { startupInput[paneID] = startup }
+        if record != nil, startup == nil, let history = scrollback?.load(for: paneID) {
+            pendingHistory[paneID] = history
         }
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)
@@ -151,7 +152,9 @@ public final class ShellPaneFactory {
         // on a layout pass.
         view.onFirstLayout = { [weak self] in self?.startPendingShell(paneID) }
 
-        return (container, Self.record(for: spec, agent: agent, cwd: cwd))
+        var fresh = Self.record(for: spec, agent: agent, cwd: cwd)
+        fresh.tileState = startup.map { Data($0.utf8) }
+        return (container, fresh)
     }
 
     /// Start any shell that has not started yet. Idempotent.
@@ -183,8 +186,8 @@ public final class ShellPaneFactory {
     }
 
     /// A line to type and submit in a pane's shell the moment it starts — a dev server, a
-    /// log tail — so a pane can open DOING something. Consumed once; a pane restored on a
-    /// later launch starts at a plain prompt, as it should. What the demo projects use.
+    /// log tail — so a pane can open DOING something. Carried in the shell's record, so
+    /// every start of that pane runs it. What the demo projects use.
     public var startupInput: [PaneID: String] = [:]
 
     /// A closed pane's history is DISCARDED, not saved.
