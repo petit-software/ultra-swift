@@ -451,7 +451,7 @@ public final class PaneContainerView: NSView {
         }
         guard Appearance.paneGlass else {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            let shade = switch (isDark, isFocused) {
+            let shade = switch (isDark, showsFocus) {
             case (true, true): Appearance.frostFocusedTintDark
             case (true, false): Appearance.frostUnfocusedTintDark
             case (false, true): Appearance.frostFocusedTintLight
@@ -546,9 +546,17 @@ public final class PaneContainerView: NSView {
             guard isPlain != oldValue else { return }
             header.isHidden = isPlain
             dragHandle.isHidden = isPlain
+            applyBackdrop()
             refresh()
         }
     }
+
+    /// Whether the pane wears focus: the ring, the lift, and glass off, the deeper wash.
+    /// Never for a plain surface. The overview's note is the only pane on its canvas and
+    /// so always the focused one — and it took the focused pane's darker frost, a
+    /// surface a shade off every unfocused pane in a project with nothing to be focused
+    /// on. A note wears the material a pane at rest does.
+    private var showsFocus: Bool { isFocused && !isPlain }
 
     /// Which session a pane shown away from home belongs to, and the way back — worn as
     /// a strip above the pane's own header while the pane is visiting the Agents
@@ -742,10 +750,10 @@ public final class PaneContainerView: NSView {
         // Handed the accent as an `NSColor`, still dynamic: `PaneRingView` resolves it
         // against its OWN appearance, which is the only one that can be right for it.
         ring.tint = Token.Colour.focusBorder.nsColor
-        ring.isHidden = !isFocused || isPlain
+        ring.isHidden = !showsFocus
         // Colour never carries a signal alone here: the focused pane also lifts, which is
         // what keeps focus legible for anyone who cannot separate the accent from grey.
-        layer?.shadowOpacity = isFocused
+        layer?.shadowOpacity = showsFocus
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
     }

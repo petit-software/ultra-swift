@@ -1,3 +1,11 @@
+## Drops, Agents row, Todo footer
+
+- [x] A file dropped on a shell pane lands as its escaped path, typed and not submitted (`ShellQuote`, `ShellTerminalView`)
+- [x] The sidebar's Agents selection capsule is as tall as a project's: the row is filled to the list's minimum before the gap goes under it
+- [x] The Agents icon is grey in the sidebar row and the belt tab, selected or not
+- [x] The Todo footer's clear-all button, after the path, is `minus.circle.fill`; the menu item matches
+- [x] The Agents view's empty-state surface wears an unfocused pane's frost and no lift, not the focused pane's (`PaneContainerView.showsFocus`)
+
 ## Menu cleanup
 
 

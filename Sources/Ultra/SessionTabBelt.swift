@@ -500,9 +500,12 @@ private struct AgentsTab: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            // Grey whether or not it is selected, as the sidebar's row has it: a session
+            // tab's icon is its tint, and this one is no session. Selection is the glass
+            // capsule and the count beside it.
             Image(systemName: "circle.grid.2x2.fill")
                 .font(Token.Type_.body.weight(.semibold))
-                .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
+                .foregroundStyle(Token.Colour.secondaryLabel)
                 .frame(width: 16, height: 16)
             if running > 0 {
                 AgentCount(running)

@@ -85,6 +85,8 @@ struct SessionSidebar: View {
 
     /// The space between the Agents row and the first project.
     private static let agentsGap: CGFloat = 6
+    /// The content height every list row is at least stretched to; see the Agents row.
+    @Environment(\.defaultMinListRowHeight) private var minRowHeight
 
     private var list: some View {
         List(selection: selection) {
@@ -97,6 +99,13 @@ struct SessionSidebar: View {
             // a list row is never shorter than the list's minimum row height, so an empty
             // one opened a whole row's worth of nothing.
             AgentsRow(isSelected: ui.showsAgents)
+                // Filled to a row's minimum BEFORE the gap goes under it. A list never
+                // makes a row shorter than `defaultMinListRowHeight` of content, and the
+                // session rows, shorter than that, are stretched to it — but the gap
+                // counted as this row's content, so this row was never stretched at all,
+                // and its capsule, drawn from the cell's edges, came out shorter than a
+                // session's by the gap. Measured: 25pt against 30pt.
+                .frame(minHeight: minRowHeight)
                 .padding(.bottom, Self.agentsGap)
                 .tag(AgentsOverview.selectionID)
                 .listRowBackground(
@@ -401,9 +410,11 @@ private struct AgentsRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            // Grey, in every state: the session rows' icons are their tints, and the one
+            // row that is not a session wears no tint — it is the view of them all.
             Image(systemName: "circle.grid.2x2.fill")
                 .font(Token.Type_.tileTitle)
-                .foregroundStyle(running > 0 ? Token.Colour.label : Token.Colour.tertiaryLabel)
+                .foregroundStyle(running > 0 ? Token.Colour.secondaryLabel : Token.Colour.tertiaryLabel)
                 .frame(width: 20)
             Text("Agents")
                 .font(Token.Type_.tileTitle)

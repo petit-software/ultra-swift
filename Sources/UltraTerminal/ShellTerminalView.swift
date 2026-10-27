@@ -165,6 +165,8 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         terminalDelegate = self
         process = LocalProcess(delegate: self)
         apply(theme: spec.theme)
+        // Files from the Finder land as their paths — see `performDragOperation`.
+        registerForDraggedTypes([.fileURL])
     }
 
     @available(*, unavailable)
@@ -209,6 +211,39 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public func inject(_ text: String, submit: Bool = false) {
         let payload = Array((submit ? text + "\r" : text).utf8)
         send(source: self, data: payload[...])
+    }
+
+    // MARK: - Dropped files
+
+    /// A file dragged from the Finder, or from the file tree, lands in the shell as its
+    /// path, typed at the prompt and not submitted — the point of dropping an image on an
+    /// agent's pane is to put the path where a prompt about it is being written.
+    ///
+    /// Files ONLY. A pane being dragged across the canvas carries its own type, and the
+    /// canvas is the view that takes that; by claiming nothing but file URLs this view is
+    /// passed over for everything else, so a pane dropped onto a shell still moves the
+    /// pane. The keyboard path is the one the Context tile already has — "send to shell"
+    /// types the same path — and the path itself can always be typed.
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.droppedPaths(from: sender).isEmpty || !isRunning ? [] : .copy
+    }
+
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
+
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let paths = Self.droppedPaths(from: sender)
+        guard isRunning, !paths.isEmpty else { return false }
+        inject(ShellQuote.line(paths))
+        return true
+    }
+
+    /// The file paths on a drag's pasteboard, in the order they were picked up.
+    static func droppedPaths(from sender: NSDraggingInfo) -> [String] {
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                         options: [.urlReadingFileURLsOnly: true])
+        return (urls as? [URL] ?? []).map(\.path)
     }
 
     // MARK: - Scrollback

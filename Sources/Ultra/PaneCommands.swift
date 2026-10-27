@@ -309,7 +309,7 @@ enum PaneCommands {
         },
         // Asks first — see `removeAllAfterConfirming` — hence the ellipsis. The footer's z
         // beside the list's path is the same verb.
-        AppCommand(id: "todo.clearAll", title: "Clear Todo List…", symbol: "z.circle.fill",
+        AppCommand(id: "todo.clearAll", title: "Clear Todo List…", symbol: "minus.circle.fill",
                    menuPath: ["Pane", "Todo"], keywords: ["Delete All Tasks", "Empty List"],
                    isEnabled: { !(ShellWorkspace.todoStore(in: $0)?.document.isBlank ?? true) }) {
             ShellWorkspace.todoStore(in: $0)?.removeAllAfterConfirming()

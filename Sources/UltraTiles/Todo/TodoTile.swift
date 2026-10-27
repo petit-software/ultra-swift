@@ -210,7 +210,7 @@ public struct TodoTile: View {
         } trailing: {
             // Beside the path, because it empties the file the path names. Asks first; also
             // Pane ▸ Todo ▸ Clear Todo List….
-            TileFooterButton(symbol: "z.circle.fill",
+            TileFooterButton(symbol: "minus.circle.fill",
                              help: "Clear the whole list",
                              isEnabled: !store.document.isBlank) {
                 store.removeAllAfterConfirming()

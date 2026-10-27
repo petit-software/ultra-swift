@@ -102,6 +102,24 @@ struct PaneAppearanceTests {
         #expect(focused.alphaComponent != unfocused.alphaComponent)
     } }
 
+    @Test("glass off, a plain surface is washed as a pane at rest, focused or not")
+    func plainSurfaceRestsWithoutGlass() throws { try withGlass(false) {
+        // The Agents overview's note: the only pane on its canvas, so the focused one,
+        // and the one surface that must not look it.
+        let store = store(appearance: .dark)
+        let pane = store.surfaces.surface(for: try #require(store.tree.paneIDs.first))
+        pane.appearance = NSAppearance(named: .darkAqua)
+        pane.isFocused = true
+        pane.isPlain = true
+        let plain = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+        #expect(abs(plain.alphaComponent - Appearance.frostUnfocusedTintDark) < 0.01)
+        #expect(pane.layer?.shadowOpacity == Float(Token.Space.paneShadowOpacity))
+        // And back: a surface that stops being plain is a focused pane again.
+        pane.isPlain = false
+        let focused = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+        #expect(abs(focused.alphaComponent - Appearance.frostFocusedTintDark) < 0.01)
+    } }
+
     @Test("an old document with no appearance field still decodes")
     func decodesOldRecords() throws {
         let json = #"{"kind":"shell","title":"zsh","icon":"apple.terminal"}"#
