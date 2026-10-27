@@ -141,7 +141,9 @@ struct ShellLauncherTests {
         #expect(agent.kind == .agent)
         #expect(agent.isShell)
         #expect(agent.command == "claude --resume")
-        #expect(agent.title == "claude --resume")
+        // Titled with the agent's NAME, not its command line; an unknown binary keeps its name.
+        #expect(agent.title == "Claude Code")
+        #expect(ShellPaneFactory.record(for: spec, agent: "aider --model gpt", cwd: "/tmp").title == "aider")
         #expect(agent.icon == "sparkles")
     }
 

@@ -33,6 +33,13 @@
 - [x] The waiting notification is titled with the project and says who is waiting by name: "ultra-swift" / "Claude Code is waiting for you. Worked for 2m 10s." (`AgentCompletionPolicy.turnMessage`, `AgentDefinition.displayName`)
 - [x] The menu bar’s waiting rows and the finished notification use the same display name
 
+## Demo mode (demo branch)
+
+- [x] Ultra Dev only: View ▸ Demo: Eight Projects, and `--demo` at launch, open eight generated projects, each a real folder with files, a git history with uncommitted changes, a todo list, a context list and, for some, a chat — so every tile reads real data (`DemoProjects`)
+- [x] Each project has its own pane composition: trees, editors on real files, shells that run a command on start, a Git pane, Ports and Resources, a browser on a server one of the shells started (`ShellPaneFactory.startupInput`)
+- [x] The projects are made once under Application Support ▸ Ultra Dev ▸ Demo Projects, and made again when the demo's version changes
+- [x] Every project has a Todo and a Context pane on its own data; agent panes run a stand-in — zsh copied as `claude`, printing a transcript — that settles working, asking or done, so the sidebar, the overview and the notification see real agents; shells run live things: a test runner in watch mode, a build that rebuilds, a request log, a deploy, top, ping, a server (`DemoProjects.scripts`)
+
 ## Menu cleanup
 
 

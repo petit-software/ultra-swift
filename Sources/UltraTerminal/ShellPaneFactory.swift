@@ -132,6 +132,13 @@ public final class ShellPaneFactory {
         if record != nil, let history = scrollback?.load(for: paneID) {
             pendingHistory[paneID] = history
         }
+        // A shell record can carry a line to type on start in its `tileState` — the
+        // demo projects' servers and tails. Read once, here: the record this returns
+        // carries none, so the line is typed on the first build and never again.
+        if let data = record?.tileState, let line = String(data: data, encoding: .utf8),
+           !line.isEmpty, startupInput[paneID] == nil {
+            startupInput[paneID] = line
+        }
         shells[paneID] = view
         let container = ShellPaneContainer(terminal: view)
 
@@ -165,7 +172,20 @@ public final class ShellPaneFactory {
         }
         shell.start()
         onAgentActivityChange?(runningAgentCount)
+        // Typed once the prompt is up. A second is longer than any login shell takes to
+        // print one, and a line sent before it is read as part of the login, not the prompt.
+        if let text = startupInput.removeValue(forKey: paneID) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak shell] in
+                guard let shell, shell.isRunning else { return }
+                shell.inject(text, submit: true)
+            }
+        }
     }
+
+    /// A line to type and submit in a pane's shell the moment it starts — a dev server, a
+    /// log tail — so a pane can open DOING something. Consumed once; a pane restored on a
+    /// later launch starts at a plain prompt, as it should. What the demo projects use.
+    public var startupInput: [PaneID: String] = [:]
 
     /// A closed pane's history is DISCARDED, not saved.
     ///
@@ -226,8 +246,12 @@ public final class ShellPaneFactory {
         // A shell pane is identified by WHERE IT IS. The folder name alone is ambiguous
         // across checkouts, and name-plus-path said the same thing twice, so the header
         // carries the path and nothing else. An agent pane still says which agent it runs.
+        // An agent pane is titled with the agent's NAME — "Claude Code" — rather than
+        // its command line: the line is how it was started, and a header reading
+        // `claude --model opus --resume` is a header reading a shell history.
         PaneRecord(kind: agent == nil ? .shell : .agent,
-                   title: agent ?? (cwd.map { abbreviate($0) } ?? "shell"),
+                   title: agent.map { AgentDefinition.displayName(forBinary: AgentDefinition(name: "", command: $0).binary) }
+                       ?? (cwd.map { abbreviate($0) } ?? "shell"),
                    subtitle: agent == nil ? nil : cwd.map { abbreviate($0) },
                    icon: agent == nil ? "apple.terminal" : "sparkles",
                    cwd: cwd,

@@ -20,7 +20,7 @@ enum PaneCommands {
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
                                  + [showAgents, openAgentProject, openWaiting]
-                                 + (AgentsOverview.isDevBuild ? [agentsDemo] : [])
+                                 + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
     /// without running three agents. Not in a release build at all — absent, not dimmed,
@@ -32,6 +32,18 @@ enum PaneCommands {
         isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
             guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
             AgentsOverview.shared.showDemo(in: list)
+        }
+
+    /// Ultra Dev only: eight generated projects, each a real folder with its own pane
+    /// composition, for looking at the app full rather than at one project
+    /// (`DemoProjects`). Like `agentsDemo`, absent from a release build.
+    static let projectsDemo = AppCommand(
+        id: "debug.projectsDemo", title: "Demo: Eight Projects", symbol: "square.grid.3x3.fill",
+        menuPath: ["View"],
+        keywords: ["Debug", "Demo Projects", "Sample Projects"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            guard let list = SessionList.holding(store) else { return }
+            DemoProjects.show(in: list)
         }
 
     /// The Agents overview: every working agent's pane, from every project, on one

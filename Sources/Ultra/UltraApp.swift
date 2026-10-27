@@ -226,6 +226,11 @@ final class WorkspaceModel {
     /// actually survived, and idempotent because a `.task` can run again.
     func openInitialSessions() {
         guard sessions.isEmpty else { return }
+        // `--demo`, on a dev build: the eight demo projects and nothing of the last run.
+        if DemoProjects.isRequestedAtLaunch {
+            DemoProjects.show(in: sessions)
+            return
+        }
         let requested = WorkspaceModel.pendingDirectories
         WorkspaceModel.pendingDirectories = []
         let files = WorkspaceModel.pendingFiles
@@ -620,6 +625,10 @@ struct WorkspaceCommands: Commands {
                     if let store { PaneCommands.agentsDemo.run(store) }
                 }
                 .disabled(store.map { !PaneCommands.agentsDemo.isEnabled($0) } ?? true)
+                Button(PaneCommands.projectsDemo.title) {
+                    if let store { PaneCommands.projectsDemo.run(store) }
+                }
+                .disabled(store.map { !PaneCommands.projectsDemo.isEnabled($0) } ?? true)
             }
 
             Divider()

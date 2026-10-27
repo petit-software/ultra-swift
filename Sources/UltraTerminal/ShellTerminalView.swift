@@ -118,7 +118,13 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
             // agent because it was launched as one or because the tty named one — but a
             // sample that reported nil here would read as an agent EXITING, so the
             // unreachable branch is the one worth being explicit about.
-            agent: isAgent ? (activity?.command ?? spec.agentCommand ?? "agent") : nil,
+            // The tty's name when it IS an agent's; else the configured command's binary —
+            // a pane launched as `python3 agent.py` is reported as that, not as "Python".
+            agent: isAgent
+                ? ((activity?.isAgent == true ? activity?.command : nil)
+                   ?? spec.agentCommand.map { AgentDefinition(name: "", command: $0).binaryName }
+                   ?? "agent")
+                : nil,
             lastOutputAt: lastOutputAt,
             lastBellAt: lastBellAt,
             screen: isAgent ? screenTail(AgentPrompt.lines) : [])
