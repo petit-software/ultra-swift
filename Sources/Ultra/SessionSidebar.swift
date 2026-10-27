@@ -83,27 +83,29 @@ struct SessionSidebar: View {
         }
     }
 
+    /// The space between the Agents row and the first project.
+    private static let agentsGap: CGFloat = 6
+
     private var list: some View {
         List(selection: selection) {
             // Above every session: the one view that is about all of them.
+            //
+            // A gap under it parts it from the projects: the kinds differ, and a list that
+            // runs them together reads the overview as the first project. Space rather than
+            // a hairline — the line read as one more thing to look at between two rows that
+            // space alone parts. Padding on this row rather than an empty row of its own:
+            // a list row is never shorter than the list's minimum row height, so an empty
+            // one opened a whole row's worth of nothing.
             AgentsRow(isSelected: ui.showsAgents)
+                .padding(.bottom, Self.agentsGap)
                 .tag(AgentsOverview.selectionID)
                 .listRowBackground(
                     Capsule(style: .continuous)
                         .fill(Token.Colour.selectionWash)
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 1)
+                        .padding(.top, 1)
+                        .padding(.bottom, 1 + Self.agentsGap)
                         .opacity(ui.showsAgents ? 1 : 0))
-            // A gap between the one row about every project and the projects: the kinds
-            // differ, and a list that runs them together reads the overview as the first
-            // project. Space rather than a hairline — the line read as one more thing to
-            // look at between two rows that space alone parts. Not a row anyone can land on.
-            Color.clear
-                .frame(height: 1)
-                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                .listRowBackground(Color.clear)
-                .selectionDisabled()
-                .accessibilityHidden(true)
             ForEach(sessions.sessions, id: \.workspaceID) { store in
                 SessionRow(store: store,
                            ui: ui,

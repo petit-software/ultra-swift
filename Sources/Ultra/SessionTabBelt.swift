@@ -96,11 +96,16 @@ struct SessionTabBelt: View {
                         AgentsTab(isSelected: ui.showsAgents, glass: glass) {
                             AgentsOverview.shared.open(in: sessions)
                         }
-                        // The sidebar's gap, turned on its side: the overview is not one
-                        // of the sessions, and a belt that ran them together read it as the
-                        // first tab. Space, as in the sidebar, a little wider than the tabs'.
-                        Color.clear
-                            .frame(width: 9)
+                        // A hairline: the overview is not one of the sessions, and a belt
+                        // that ran them together read it as the first tab. The sidebar parts
+                        // them with space alone, but tabs sit closer than rows and a gap
+                        // among them reads as a loose one. Inset from the tabs' top and
+                        // bottom, a little further apart than the tabs.
+                        Rectangle()
+                            .fill(Token.Colour.separator)
+                            .frame(width: 1)
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 4)
                             .accessibilityHidden(true)
                         ForEach(Array(sessions.sessions.enumerated()), id: \.element.workspaceID) {
                             index, store in
