@@ -271,7 +271,7 @@ private struct PaletteRow: View {
     }
 }
 
-private extension View {
+extension View {
     /// Glass for the palette, with the opaque fallback Reduce Transparency asks for.
     ///
     /// Not `ultraChromeGlass`: that draws in a `ConcentricRectangle`, which takes its
@@ -289,7 +289,7 @@ private extension View {
 }
 
 /// Subsequence match — "spr" finds "Split Right".
-private func fuzzyMatch(_ needle: String, _ haystack: String) -> Bool {
+func fuzzyMatch(_ needle: String, _ haystack: String) -> Bool {
     var remaining = Substring(haystack.lowercased())
     for character in needle.lowercased() {
         guard let index = remaining.firstIndex(of: character) else { return false }

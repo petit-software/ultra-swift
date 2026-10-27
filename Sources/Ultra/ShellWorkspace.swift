@@ -205,6 +205,12 @@ enum ShellWorkspace {
         // Keyed by workspace, not a singleton: with tabs there are several live factories
         // at once and a menu command must reach the one belonging to the focused tab.
         factory.onAgentActivityChange = { _ in updateSleepGuard() }
+        // `@` and `/` at the start of an agent's prompt open a picker in the pane — see
+        // `PromptMenu`. Off by preference, the key goes through as typed.
+        factory.onPromptTrigger = { paneID, trigger in
+            guard Preferences.promptMenus else { return false }
+            return PromptMenu.present(trigger, pane: paneID, workspace: workspaceID)
+        }
 
         // The agent control channel. Scoped to this workspace: its socket lives in the
         // project, and every path an agent names is resolved against this root.

@@ -431,7 +431,51 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
 
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         lastInputAt = Date()
+        promptLength = PromptInput.length(after: data, from: promptLength)
         process.send(data: data)
+    }
+
+    // MARK: - Prompt menus
+
+    /// The characters that open a picker at an agent's prompt instead of being typed:
+    /// `@` for a file, `/` for a command. See `promptTrigger`.
+    public static let promptTriggers: Set<Character> = ["@", "/"]
+
+    /// Asked when one of `promptTriggers` is typed as the first character of a line while
+    /// an agent owns the tty. Answering true means the picker took the key and the
+    /// terminal sends nothing; false, or no handler, and the character goes through as
+    /// typed. Never asked in a plain shell, or mid-line: a plain key is the shell's, and
+    /// this is the one narrow case where it is not — see `PromptInput`.
+    public var promptTrigger: ((Character) -> Bool)?
+
+    /// How much of the current line the user has typed. Zero at a fresh prompt.
+    public private(set) var promptLength = 0
+
+    /// Whether a key event is a trigger this view's picker takes, asked by
+    /// `PromptKeyMonitor` before the event reaches `keyDown` — SwiftTerm's `keyDown` is
+    /// not overridable from outside its module, and a local event monitor sees the key
+    /// first anyway. True means the handler showed its picker and the key is consumed.
+    public func handlesPromptKey(_ event: NSEvent) -> Bool {
+        guard promptTrigger != nil, promptLength == 0, isRunningAgent,
+              let characters = event.characters, characters.count == 1,
+              let character = characters.first, Self.promptTriggers.contains(character),
+              // ⇧ is how `@` is typed; anything else is a chord, and a chord is not a character.
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.shift).isEmpty
+        else { return false }
+        return promptTrigger?(character) == true
+    }
+
+    /// Where the caret is, in this view's coordinates: the cell the next character lands
+    /// in. For a picker to open beside. SwiftTerm keeps its caret view to itself, so the
+    /// cell is computed from the grid: the view's size over its columns and rows.
+    public var caretRect: CGRect {
+        guard let terminal, terminal.cols > 0, terminal.rows > 0 else { return .zero }
+        let width = bounds.width / CGFloat(terminal.cols)
+        let height = bounds.height / CGFloat(terminal.rows)
+        let column = CGFloat(terminal.buffer.x)
+        let row = CGFloat(terminal.buffer.y)
+        let y = isFlipped ? row * height : bounds.height - (row + 1) * height
+        return CGRect(x: column * width, y: y, width: width, height: height)
     }
 
     public func scrolled(source: TerminalView, position: Double) {}

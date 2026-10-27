@@ -180,6 +180,15 @@ public enum Preferences {
         set { setFlag("audibleBell", newValue, current: audibleBell) }
     }
 
+    /// Whether `@` and `/` at the start of an agent's prompt open a picker — a file, a
+    /// command — in place of the character. On by default: it only ever acts on the first
+    /// character of a line in a pane an agent owns, and the character is one key away
+    /// either way. See `ShellTerminalView.promptTrigger`.
+    public static var promptMenus: Bool {
+        get { flag("promptMenus", default: true) }
+        set { setFlag("promptMenus", newValue, current: promptMenus) }
+    }
+
     public static var showsHiddenFiles: Bool {
         get { flag("showsHiddenFiles", default: true) }
         set { setFlag("showsHiddenFiles", newValue, current: showsHiddenFiles) }
@@ -330,7 +339,7 @@ public enum Preferences {
 
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
-                    "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell",
+                    "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell", "promptMenus",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
                     // The two What's New keys are gone with the launch-time dialog, and

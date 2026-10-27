@@ -18,7 +18,7 @@ enum PaneCommands {
                                  + layouts + chat + editor + browser
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + context + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
-                                 + [nextSession, previousSession]
+                                 + [nextSession, previousSession] + prompt
                                  + [showAgents, openAgentProject, openWaiting]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo] : [])
 
@@ -160,6 +160,32 @@ enum PaneCommands {
                 }
         }
     }
+
+    /// The pickers `@` and `/` open at an agent's prompt (`PromptMenu`), from the menu:
+    /// the key path when the preference is off, or the prompt is mid-line, or the pane is
+    /// a plain shell. They land in the shell a tile's send would — the focused one, else
+    /// the last used — and focus it. No chord: the trigger itself is the key.
+    static let prompt: [AppCommand] = [
+        AppCommand(id: "prompt.files", title: "Insert File Reference…", symbol: "at",
+                   menuPath: ["Pane"],
+                   keywords: ["Mention File", "@ File", "Attach File", "Pick File"],
+                   isEnabled: { ShellWorkspace.Registry.injectionTarget(in: $0.workspaceID) != nil }) { store in
+            guard let target = ShellWorkspace.Registry.injectionTarget(in: store.workspaceID) else { return }
+            store.focus(target)
+            PromptMenu.present("@", pane: target, workspace: store.workspaceID)
+        },
+        AppCommand(id: "prompt.commands", title: "Insert Agent Command…", symbol: "slash.circle",
+                   menuPath: ["Pane"],
+                   keywords: ["Slash Command", "/ Command", "Agent Commands"],
+                   isEnabled: { store in
+                       guard let target = ShellWorkspace.Registry.injectionTarget(in: store.workspaceID) else { return false }
+                       return ShellWorkspace.Registry.factories[store.workspaceID]?.shells[target]?.isRunningAgent ?? false
+                   }) { store in
+            guard let target = ShellWorkspace.Registry.injectionTarget(in: store.workspaceID) else { return }
+            store.focus(target)
+            PromptMenu.present("/", pane: target, workspace: store.workspaceID)
+        },
+    ]
 
     /// A session on no project — one shell, in the home folder, called "New shell". The
     /// belt's `+` after its last tab is this; so is File ▸ New Shell Session, drawn from
@@ -957,6 +983,8 @@ struct PaneMenuCommands: Commands {
             ForEach(PaneCommands.splits) { item($0) }
             Divider()
             ForEach(PaneCommands.others) { item($0) }
+            Divider()
+            ForEach(PaneCommands.prompt) { item($0) }
             Divider()
             Menu("Focus") {
                 ForEach(PaneCommands.focusMoves) { item($0) }

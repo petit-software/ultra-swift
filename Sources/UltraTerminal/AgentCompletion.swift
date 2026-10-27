@@ -95,18 +95,27 @@ public enum AgentCompletionPolicy {
     }
 
     /// The agent's own name, because "an agent finished" is useless to anyone running two.
+    /// Its NAME — "Claude Code finished" — rather than its executable, which can be a
+    /// version number (`AgentDefinition.displayName`).
     public static func message(command: String,
                                duration: TimeInterval) -> (title: String, body: String) {
-        ("\(command) finished", "Ran for \(elapsed(duration)).")
+        ("\(AgentDefinition.displayName(forBinary: command)) finished", "Ran for \(elapsed(duration)).")
     }
 
-    /// "claude is waiting" — a turn's end is a request for input, not a completion — and
-    /// which session, since the whole point is that the user is looking elsewhere.
+    /// A turn's end is a request for input, not a completion, and the whole point is that
+    /// the user is looking elsewhere — so the PROJECT is the title, which is what they
+    /// scan a stack of notifications for, and the body says who is waiting, by name, and
+    /// for how long it worked. With no project — a scratch shell — the agent takes the
+    /// title.
     public static func turnMessage(agent: String,
                                    duration: TimeInterval,
                                    session: String?) -> (title: String, body: String) {
-        let place = session.map { " in \($0)" } ?? ""
-        return ("\(agent) is waiting", "Worked for \(elapsed(duration))\(place).")
+        let name = AgentDefinition.displayName(forBinary: agent)
+        let worked = "Worked for \(elapsed(duration))."
+        if let session {
+            return (session, "\(name) is waiting for you. \(worked)")
+        }
+        return ("\(name) is waiting for you", worked)
     }
 
     static func elapsed(_ duration: TimeInterval) -> String {

@@ -26,6 +26,9 @@ public final class ShellPaneFactory {
     /// Called when a shell starts or exits, with the number of AGENT panes still running.
     /// Drives the keep-awake assertion — see `SleepGuard`.
     public var onAgentActivityChange: ((Int) -> Void)?
+    /// `@` or `/` typed at the start of an agent's prompt in a pane — see
+    /// `ShellTerminalView.promptTrigger`. Answers whether a picker took the key.
+    public var onPromptTrigger: ((PaneID, Character) -> Bool)?
 
     /// Panes running an agent CLI, not plain shells. A plain interactive shell sitting at a
     /// prompt is not work, and holding the machine awake for one would be wrong.
@@ -114,6 +117,10 @@ public final class ShellPaneFactory {
         let view = ShellTerminalView(spec: spec, font: Preferences.terminalFont)
         if let agentSocketPath { view.extraEnvironment["ULTRA_AGENT_SOCK"] = agentSocketPath }
         view.shellDelegate = self
+        view.promptTrigger = { [weak self] character in
+            self?.onPromptTrigger?(paneID, character) ?? false
+        }
+        PromptKeyMonitor.install()
         // Held rather than fed here. A view that has not been laid out yet reports SwiftTerm's
         // default 80 columns, so history written now hard-wraps at 80 and STAYS wrapped once
         // the pane turns out to be wider — the same "no real size yet" problem the deferred

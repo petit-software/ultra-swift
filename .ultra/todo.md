@@ -19,6 +19,20 @@
 - [x] Next Session and Previous Session are registry commands, in the palette as "Next Project" too (`session.next`, `session.previous`)
 - [x] Go to Session: one palette entry per open session, by its name, and the same list under View ▸ Go to Session (`PaneCommands.sessionJumps`)
 
+## Prompt menus: @ and / at an agent's prompt
+
+- [x] `@` or `/` typed as the first character of an agent's prompt opens a picker at the caret instead of reaching the terminal; anywhere else — a shell, mid-line — the character goes through (`ShellTerminalView.promptTrigger`, `PromptInput`)
+- [x] `@` lists the Context pane's files first, then the project's files by fuzzy name, and inserts `@path` (`ProjectFiles`)
+- [x] `/` lists the running agent's commands — built in, and the project's and user's own from `.claude/commands` and `.claude/skills` — and inserts `/name` (`AgentCommands`)
+- [x] Typing the trigger again, or ↩ on no match, sends what was typed literally; Esc sends nothing; the terminal gets the keyboard back either way (`PromptMenu`)
+- [x] Settings ▸ Terminal ▸ Prompt menus, on by default; Pane ▸ Insert File Reference… and Insert Agent Command… are the palette's way to the same pickers (`Preferences.promptMenus`)
+
+## Notifications: the project, and the agent by name
+
+- [x] An agent whose binary is versioned — Claude Code's native install runs `~/.local/share/claude/versions/2.1.311` — is recognised from its path, so the tty no longer reports it as "2.1.311" and `claude` typed at a prompt counts as an agent again (`ForegroundProcess.agent(forExecutable:)`)
+- [x] The waiting notification is titled with the project and says who is waiting by name: "ultra-swift" / "Claude Code is waiting for you. Worked for 2m 10s." (`AgentCompletionPolicy.turnMessage`, `AgentDefinition.displayName`)
+- [x] The menu bar’s waiting rows and the finished notification use the same display name
+
 ## Menu cleanup
 
 

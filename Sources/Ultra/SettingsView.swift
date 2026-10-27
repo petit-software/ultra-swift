@@ -217,6 +217,19 @@ private struct TerminalSettings: View {
             }
 
             Section {
+                Toggle("Prompt menus for @ and /",
+                       isOn: prefs.flag({ Preferences.promptMenus },
+                                        { Preferences.promptMenus = $0 }))
+            } header: {
+                Text("Agent prompts")
+            } footer: {
+                SettingNote("Typing @ or / as the first character of an agent's prompt opens "
+                            + "a picker at the caret: @ for a file from the Context pane or the "
+                            + "project, / for one of the agent's commands. Anywhere else the "
+                            + "character is typed as usual, and typing it twice types it once.")
+            }
+
+            Section {
                 Toggle("Draw terminals on the GPU",
                        isOn: prefs.flag({ Preferences.useMetalRenderer },
                                         { Preferences.useMetalRenderer = $0 }))

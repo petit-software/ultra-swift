@@ -40,6 +40,20 @@ public struct AgentDefinition: Codable, Equatable, Sendable, Identifiable {
     public var binary: String {
         String(command.split(separator: " ").first ?? "")
     }
+
+    /// The bare name of the binary, however it was configured: `claude` for
+    /// `/opt/homebrew/bin/claude --resume`.
+    public var binaryName: String {
+        (binary as NSString).lastPathComponent
+    }
+
+    /// What to call an agent in a sentence: the known agent's name — "Claude Code" for
+    /// `claude` — or the executable as it is, for one this list has never heard of.
+    public static func displayName(forBinary name: String,
+                                   in agents: [AgentDefinition] = known) -> String {
+        let bare = (name as NSString).lastPathComponent
+        return agents.first { $0.binaryName == bare }?.name ?? name
+    }
 }
 
 /// The agents a project knows about, in `<project>/.ultra/agents.json`.

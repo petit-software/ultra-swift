@@ -103,10 +103,10 @@ struct AgentCompletionPolicyTests {
                                                    isWatching: false))
     }
 
-    @Test("the message names the agent and how long it ran")
+    @Test("the message names the agent, by its name, and how long it ran")
     func messageNamesTheAgent() {
         let (title, body) = AgentCompletionPolicy.message(command: "claude", duration: 125)
-        #expect(title == "claude finished")
+        #expect(title == "Claude Code finished")
         #expect(body == "Ran for 2m 5s.")
     }
 
@@ -143,13 +143,21 @@ struct AgentCompletionPolicyTests {
                                                            isEnabled: true, isWatching: true))
     }
 
-    @Test("the turn message says who is waiting, for how long, and where")
+    /// The project is the title — it is what a stack of notifications is scanned for —
+    /// and the agent is named as a person would name it, not as its executable, which for
+    /// Claude Code's native install is a version number.
+    @Test("the turn message is titled with the project and says who is waiting, by name")
     func turnMessage() {
         let (title, body) = AgentCompletionPolicy.turnMessage(agent: "claude", duration: 130,
                                                               session: "ultra-swift")
-        #expect(title == "claude is waiting")
-        #expect(body == "Worked for 2m 10s in ultra-swift.")
-        #expect(AgentCompletionPolicy.turnMessage(agent: "codex", duration: 45, session: nil).body
-                == "Worked for 45s.")
+        #expect(title == "ultra-swift")
+        #expect(body == "Claude Code is waiting for you. Worked for 2m 10s.")
+        let scratch = AgentCompletionPolicy.turnMessage(agent: "codex", duration: 45, session: nil)
+        #expect(scratch.title == "Codex is waiting for you")
+        #expect(scratch.body == "Worked for 45s.")
+        // An agent the list has never heard of keeps its executable's name.
+        #expect(AgentCompletionPolicy.turnMessage(agent: "aider", duration: 45, session: nil).title
+                == "aider is waiting for you")
+        #expect(AgentCompletionPolicy.message(command: "claude", duration: 40).title == "Claude Code finished")
     }
 }

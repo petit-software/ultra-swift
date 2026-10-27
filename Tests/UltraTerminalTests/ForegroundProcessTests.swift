@@ -57,6 +57,35 @@ struct ForegroundProcessTests {
         #expect(ForegroundProcess.isAgent("/opt/homebrew/bin/claude", in: agents))
     }
 
+    /// Claude Code's native installer runs a file named for its VERSION in a folder named
+    /// for the agent. Matched by the folder, so the pane counts as an agent — and says
+    /// "claude", not "2.1.311", which is what a notification once called it.
+    @Test("a versioned binary under the agent's folder is that agent, by name")
+    func versionedBinaryUnderAgentFolder() {
+        let path = "/Users/me/.local/share/claude/versions/2.1.311"
+        #expect(ForegroundProcess.isAgent(path))
+        let activity = ForegroundProcess.activity(forExecutable: path)
+        #expect(activity.isAgent)
+        #expect(activity.command == "claude")
+    }
+
+    @Test("npm's Codex runs a platform-suffixed binary, and is Codex")
+    func platformSuffixedBinary() {
+        let path = "/opt/homebrew/lib/node_modules/@openai/codex/bin/codex-aarch64-apple-darwin"
+        #expect(ForegroundProcess.activity(forExecutable: path) == PaneActivity(command: "codex", isAgent: true))
+    }
+
+    /// A folder named for an agent is not enough on its own: only a version-looking file
+    /// is matched by its folders.
+    @Test("a user called claude running python is not an agent")
+    func folderAloneIsNotEnough() {
+        let activity = ForegroundProcess.activity(forExecutable: "/Users/claude/.venv/bin/python")
+        #expect(!activity.isAgent)
+        #expect(activity.command == "python")
+        #expect(ForegroundProcess.isVersionLike("2.1.311"))
+        #expect(!ForegroundProcess.isVersionLike("python3.12"))
+    }
+
     @Test("an empty name matches nothing")
     func emptyMatchesNothing() {
         #expect(!ForegroundProcess.isAgent(""))

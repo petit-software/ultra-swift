@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UltraCore
 import UltraDesign
 import UltraLayout
 
@@ -98,7 +99,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             menu.addItem(.sectionHeader(title: waiting.count == 1 ? "Waiting for you"
                                                                    : "\(waiting.count) waiting for you"))
             for (paneID, session) in waiting {
-                let agent = ShellWorkspace.Registry.factories[session.workspaceID]?.agentPanes[paneID] ?? "agent"
+                let agent = ShellWorkspace.Registry.factories[session.workspaceID]?.agentPanes[paneID]
+                    .map { AgentDefinition.displayName(forBinary: $0) } ?? "agent"
                 let item = NSMenuItem(title: "\(session.workspaceTitle) › \(agent)",
                                       action: #selector(revealWaiting(_:)), keyEquivalent: "")
                 item.target = self
