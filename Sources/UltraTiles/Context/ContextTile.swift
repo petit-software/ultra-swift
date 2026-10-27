@@ -1,18 +1,25 @@
 import AppKit
+import Quartz
 import QuickLookThumbnailing
 import SwiftUI
 import UltraDesign
 import UniformTypeIdentifiers
 
 /// Files and folders gathered for the agent in the next pane.
+///
+/// A click selects a row, the way a click selects a file in Finder; Space then shows it in
+/// Quick Look and a double click sends its `@path` to the shell. The keys are handled by
+/// `ContextHostingView`, which is the pane's first responder when it is focused.
 public struct ContextTile: View {
-    @State private var model: ContextModel
+    let model: ContextModel
     @State private var isTargeted = false
-    private let context: TileContext
+    let context: TileContext
+    /// Where each row is, for the Quick Look panel to zoom out of. See `ContextRowFrames`.
+    let frames = ContextRowFrames()
 
-    public init(context: TileContext) {
+    public init(context: TileContext, model: ContextModel? = nil) {
         self.context = context
-        _model = State(initialValue: ContextModel(root: context.root))
+        self.model = model ?? ContextModel(root: context.root)
     }
 
     public var body: some View {
@@ -24,6 +31,8 @@ public struct ContextTile: View {
                     LazyVStack(alignment: .leading, spacing: ContextRow.spacing) {
                         ForEach(model.items) { item in
                             ContextRow(item: item,
+                                        isSelected: model.selection == item.id,
+                                        select: { model.select(item) },
                                         remove: { model.remove(item) },
                                         togglePin: { model.togglePin(item) },
                                         reveal: { context.revealInFinder(item.url) },
@@ -32,6 +41,9 @@ public struct ContextTile: View {
                                              ContextModel.reference(for: item,
                                                                     relativeTo: context.root))
                                         })
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                                    frames.rects[item.id] = $0
+                                }
                         }
                     }
                     .padding(.horizontal, ContextRow.inset)
@@ -125,6 +137,8 @@ private struct ContextRow: View {
     static let thumbnailSide: CGFloat = 40
 
     let item: ContextModel.Item
+    let isSelected: Bool
+    let select: () -> Void
     let remove: () -> Void
     let togglePin: () -> Void
     let reveal: () -> Void
@@ -183,11 +197,16 @@ private struct ContextRow: View {
         .padding(.horizontal, 10)
         .frame(height: Self.height)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // The one enclosure, and only under the pointer: a wash, no hairline. A border on
-        // every row made a list of boxes; a wash on the hovered one says "this row" and
-        // nothing about the others.
+        // The one enclosure: a wash, no hairline. A border on every row made a list of
+        // boxes; a wash on the hovered row says "this row" and nothing about the others,
+        // and the accent's wash on the selected one says "this is the row Space previews
+        // and ↩ sends" — the file tree's selection, so a selected file looks the same in
+        // both tiles.
         .background {
-            if isHovering {
+            if isSelected {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .fill(Token.Colour.accentWashStrong)
+            } else if isHovering {
                 RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                     .fill(Token.Colour.label.opacity(0.06))
             }
@@ -223,16 +242,18 @@ private struct ContextRow: View {
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
         .contentShape(.rect)
-        // The row itself is the verb: one click sends the file to the shell, the thing this
-        // tile is for, so the common case needs no aim at a pill that has not appeared yet;
-        // two clicks show it in Finder, the way two clicks open a thing anywhere on the Mac.
-        // Double first, so a second click is read as the pair and not as two sends. A
-        // missing file has no reference to type and nothing for Finder to show, so neither
-        // does anything — the pill's own controls are dimmed to say the same.
-        .onTapGesture(count: 2) { if !item.isMissing { reveal() } }
-        .onTapGesture { if !item.isMissing { send() } }
+        // Finder's grammar: one click picks the row out, and Space then shows the file in
+        // Quick Look; two clicks DO the thing, which here is sending the file to the shell,
+        // the thing this tile is for. One click used to send, and a list you cannot look
+        // at without typing into the prompt is a list you cannot look at. Double first, so
+        // a second click is read as the pair and not as two selects. A missing file can
+        // still be selected — to be removed by key, one day — but has no reference to type,
+        // so the double click does nothing and the pill's send is dimmed to say the same.
+        .onTapGesture(count: 2) { if !item.isMissing { send() } }
+        .onTapGesture { select() }
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityLabel(item.isMissing
                             ? "\(item.name), missing"
                             : "\(item.name), \(item.caption), tokens")
@@ -309,6 +330,178 @@ private struct ContextThumbnail: View {
                                                    representationTypes: .thumbnail)
         return try? await QLThumbnailGenerator.shared
             .generateBestRepresentation(for: request).cgImage
+    }
+}
+
+/// Where each row sits in the tile, by item, in the hosting view's coordinates.
+///
+/// The Quick Look panel zooms out of the thing it previews — the row's thumbnail in Finder —
+/// and asks the delegate for that rectangle on screen. The rows know where they are and the
+/// hosting view knows where the window is, so this is the handoff between them. A class
+/// rather than state so that writing a frame does not redraw the list that reported it.
+@MainActor
+final class ContextRowFrames {
+    var rects: [UUID: CGRect] = [:]
+}
+
+/// The pane's content, and its keyboard.
+///
+/// Takes the keyboard when the pane is focused — the canvas looks for the first view that
+/// will — so the keys Finder gives a selected file work here: Space shows it in Quick Look,
+/// ↑ and ↓ move the selection, ↩ sends the file to the shell. Plain keys, and deliberately
+/// not menu items: they are what a list does when it has the keyboard, and the terminal is
+/// not first responder while this pane is. The menu's Quick Look, ⌘Y, lands here too.
+///
+/// Also the Quick Look panel's controller. The panel finds its controller by walking the
+/// responder chain from the key window's first responder, which is this view while the
+/// pane is focused, and it asks the controller for the items and which one to show. Focus
+/// moving to another pane takes the keyboard with it, and the panel closes: a preview that
+/// floats over a terminal nobody asked it about is a preview in the way.
+final class ContextHostingView: NSHostingView<ContextTile> {
+    private let model: ContextModel
+    private let context: TileContext
+    private let frames: ContextRowFrames
+
+    init(tile: ContextTile) {
+        model = tile.model
+        context = tile.context
+        frames = tile.frames
+        super.init(rootView: tile)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    @available(*, unavailable)
+    required init(rootView: ContextTile) { fatalError("use init(tile:)") }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.numericPad).isEmpty
+        else { return super.keyDown(with: event) }
+        switch event.keyCode {
+        case Self.spaceKey: toggleQuickLook()
+        case Self.upKey: moveSelection(by: -1)
+        case Self.downKey: moveSelection(by: 1)
+        case Self.returnKey, Self.enterKey: sendSelection()
+        default: super.keyDown(with: event)
+        }
+    }
+
+    static let spaceKey: UInt16 = 49
+    static let returnKey: UInt16 = 36
+    static let enterKey: UInt16 = 76
+    static let upKey: UInt16 = 126
+    static let downKey: UInt16 = 125
+
+    // MARK: Verbs
+
+    /// Show the selected file in Quick Look, or hide the panel if it is up. With nothing
+    /// selected the first file is previewed, and selected, so the panel and the list agree.
+    func toggleQuickLook() {
+        guard let panel = QLPreviewPanel.shared() else { return }
+        if panel.isVisible, controls(panel) {
+            panel.orderOut(nil)
+            return
+        }
+        guard !model.previewableItems.isEmpty else { NSSound.beep(); return }
+        if model.selectedItem.map(\.isMissing) ?? true {
+            model.select(model.previewableItems.first)
+        }
+        // The panel asks the key window's first responder to be its controller. The canvas
+        // puts the keyboard here when the pane is focused, but a menu command can arrive
+        // before that has happened, so make sure.
+        if let window, window.firstResponder !== self { window.makeFirstResponder(self) }
+        panel.makeKeyAndOrderFront(nil)
+        showSelectionInPanel()
+    }
+
+    /// Whether Space would show something.
+    var canQuickLook: Bool { !model.previewableItems.isEmpty }
+
+    private func moveSelection(by offset: Int) {
+        model.moveSelection(by: offset)
+        showSelectionInPanel()
+    }
+
+    private func sendSelection() {
+        guard let item = model.selectedItem, !item.isMissing else { NSSound.beep(); return }
+        context.injectIntoShell(ContextModel.reference(for: item, relativeTo: context.root))
+    }
+
+    /// Keep the panel on the selected row. The panel's own index moves only here, so the
+    /// list is the one source of truth for what is being looked at.
+    private func showSelectionInPanel() {
+        guard let panel = QLPreviewPanel.shared(), panel.isVisible, controls(panel),
+              let index = model.previewableItems.firstIndex(where: { $0.id == model.selection })
+        else { return }
+        panel.reloadData()
+        panel.currentPreviewItemIndex = index
+    }
+
+    // MARK: Quick Look panel control
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.delegate = self
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        panel.delegate = nil
+    }
+
+    override func resignFirstResponder() -> Bool {
+        // The keyboard is leaving this pane, and the preview goes with it. Checked for
+        // existence first: asking for the shared panel creates it.
+        if QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared(),
+           panel.isVisible, controls(panel) {
+            panel.orderOut(nil)
+        }
+        return super.resignFirstResponder()
+    }
+
+    /// Whether the panel is showing THIS pane's list. `currentController` is untyped.
+    private func controls(_ panel: QLPreviewPanel) -> Bool {
+        (panel.currentController as AnyObject?) === self
+    }
+}
+
+// `@preconcurrency`: the panel calls its data source and delegate on the main thread,
+// where the model lives, which the protocols predate saying; a call from elsewhere traps.
+extension ContextHostingView: @preconcurrency QLPreviewPanelDataSource, @preconcurrency QLPreviewPanelDelegate {
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        model.previewableItems.count
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        let items = model.previewableItems
+        guard items.indices.contains(index) else { return nil }
+        return items[index].url as NSURL
+    }
+
+    /// ↑ and ↓ while the panel is key move the list's selection, as they do in Finder, and
+    /// the panel follows the list. Everything else is the panel's own.
+    func previewPanel(_ panel: QLPreviewPanel!, handle event: NSEvent!) -> Bool {
+        guard event.type == .keyDown else { return false }
+        switch event.keyCode {
+        case Self.upKey: moveSelection(by: -1); return true
+        case Self.downKey: moveSelection(by: 1); return true
+        default: return false
+        }
+    }
+
+    /// The row's frame on screen, so the panel zooms out of the row and back into it.
+    func previewPanel(_ panel: QLPreviewPanel!, sourceFrameOnScreenFor item: (any QLPreviewItem)!) -> NSRect {
+        guard let url = item.previewItemURL,
+              let row = model.previewableItems.first(where: { $0.url == url }),
+              let rect = frames.rects[row.id], let window else { return .zero }
+        // SwiftUI reports the frame in the hosting view's space with the origin at the top;
+        // the hosting view is flipped, so the same numbers are AppKit's.
+        return window.convertToScreen(convert(rect, to: nil))
     }
 }
 

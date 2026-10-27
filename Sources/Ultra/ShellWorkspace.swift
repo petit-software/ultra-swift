@@ -559,6 +559,29 @@ enum ShellWorkspace {
         return store.tree.paneIDs.first { todos.contains($0) }.flatMap { tiles.todoStore(for: $0) }
     }
 
+    /// The pane a Context command should act on: the focused context pane, else the first
+    /// one. Nil when there is none, and the menu items say so by dimming.
+    static func contextPane(in store: LayoutStore) -> PaneID? {
+        guard let tiles = Registry.tiles[store.workspaceID] else { return nil }
+        let contexts = tiles.contextPanes()
+        let focused = store.tree.focused
+        if contexts.contains(focused) { return focused }
+        return store.tree.paneIDs.first { contexts.contains($0) }
+    }
+
+    static func contextModel(in store: LayoutStore) -> ContextModel? {
+        guard let pane = contextPane(in: store) else { return nil }
+        return Registry.tiles[store.workspaceID]?.contextModel(for: pane)
+    }
+
+    /// Show the context list's selected file in Quick Look. Focuses the pane first: the
+    /// panel belongs to the pane with the keyboard, and Space in it is what closes it.
+    static func quickLook(in store: LayoutStore) {
+        guard let pane = contextPane(in: store), let tiles = Registry.tiles[store.workspaceID] else { return }
+        store.focus(pane)
+        tiles.quickLook(pane)
+    }
+
     /// The device a Simulator command should act on: the simulator pane a device would
     /// open in. Nil when there is none, and the menu items say so by dimming.
     static func simulatorSession(in store: LayoutStore) -> SimulatorSession? {

@@ -6,6 +6,19 @@
 - [x] The Todo footer's clear-all button, after the path, is `minus.circle.fill`; the menu item matches
 - [x] The Agents view's empty-state surface wears an unfocused pane's frost and no lift, not the focused pane's (`PaneContainerView.showsFocus`)
 
+## Context: select, Quick Look, double-click sends
+
+- [x] A click on a Context row selects it; a double click sends its `@path` to the shell (`ContextModel.selection`, `ContextRow`)
+- [x] Space on the focused Context pane opens the selected file in Quick Look, Space or Esc closes it; ↑/↓ move the selection, in the pane and in the panel; ↩ sends the selected file (`ContextHostingView`)
+- [x] Pane ▸ Context ▸ Quick Look, ⌘Y: the menu and palette path to the same preview (`context.quickLook`)
+- [x] The Context list lives in the factory, like Todo's, so a command can reach the pane's selection (`TileFactory.contextModel`)
+
+## Palette: projects and sessions
+
+- [x] New Project…, Open Project… and New Shell Session are registry commands, so the palette finds them by "project" and "shell" (`project.new`, `project.open`, `session.newShell`)
+- [x] Next Session and Previous Session are registry commands, in the palette as "Next Project" too (`session.next`, `session.previous`)
+- [x] Go to Session: one palette entry per open session, by its name, and the same list under View ▸ Go to Session (`PaneCommands.sessionJumps`)
+
 ## Menu cleanup
 
 

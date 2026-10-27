@@ -63,7 +63,9 @@ struct CommandPalette: View {
     /// field and nothing else, and the list grows under it as the query narrows.
     private var matches: [AppCommand] {
         guard !query.isEmpty else { return [] }
-        return PaneCommands.all.filter { command in
+        // The registry, then one row per open session: those are built here because the
+        // list of sessions is not a constant.
+        return (PaneCommands.all + PaneCommands.sessionJumps(in: store)).filter { command in
             fuzzyMatch(query, command.title) || command.keywords.contains { fuzzyMatch(query, $0) }
         }
     }

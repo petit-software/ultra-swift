@@ -1,3 +1,4 @@
+import AppKit
 import Testing
 import Foundation
 @testable import UltraTiles
@@ -235,5 +236,114 @@ struct ContextTests {
         #expect(ContextModel.Item.compact(1250) == "1.2k")
         #expect(ContextModel.Item.compact(25000) == "25k")
         #expect(ContextModel.Item.compact(123_456) == "123k")
+    }
+}
+
+/// A click selects, Space previews, ↑/↓ move, ↩ sends — Finder's grammar for a list of
+/// files. The selection is on the model so the menu's Quick Look can find it, and it never
+/// points at a row that has gone.
+@Suite("Context selection")
+@MainActor
+struct ContextSelectionTests {
+
+    private func makeProject(files: [String]) throws -> (URL, ContextModel) {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-context-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let model = ContextModel(root: root)
+        for name in files {
+            try "x".write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+            model.add(root.appendingPathComponent(name))
+        }
+        return (root, model)
+    }
+
+    @Test("arrows move the selection from the ends and stop at them")
+    func arrows() throws {
+        let (root, model) = try makeProject(files: ["a.txt", "b.txt", "c.txt"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        #expect(model.selection == nil)
+        model.moveSelection(by: 1)
+        #expect(model.selectedItem?.name == "a.txt", "↓ with nothing selected starts at the top")
+        model.moveSelection(by: 1)
+        model.moveSelection(by: 1)
+        model.moveSelection(by: 1)
+        #expect(model.selectedItem?.name == "c.txt", "the list does not wrap")
+        model.moveSelection(by: -1)
+        #expect(model.selectedItem?.name == "b.txt")
+        model.select(nil)
+        model.moveSelection(by: -1)
+        #expect(model.selectedItem?.name == "c.txt", "↑ with nothing selected starts at the bottom")
+    }
+
+    @Test("removing the selected row clears the selection; removing another keeps it")
+    func removalPrunes() throws {
+        let (root, model) = try makeProject(files: ["a.txt", "b.txt"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = try #require(model.items.first { $0.name == "a.txt" })
+        let b = try #require(model.items.first { $0.name == "b.txt" })
+        model.select(b)
+        model.remove(a)
+        #expect(model.selectedItem?.name == "b.txt")
+        model.remove(b)
+        #expect(model.selection == nil)
+        model.select(a)
+        #expect(model.selectedItem == nil, "a row that is gone cannot be the selection")
+    }
+
+    @Test("Clear keeps a pinned selection and drops an unpinned one")
+    func clearPrunes() throws {
+        let (root, model) = try makeProject(files: ["a.txt", "b.txt"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = try #require(model.items.first { $0.name == "a.txt" })
+        model.togglePin(a)
+        model.select(model.items.first { $0.name == "a.txt" })
+        model.removeAllUnpinned()
+        #expect(model.selectedItem?.name == "a.txt")
+        model.select(model.items.first)
+        model.togglePin(model.items[0])
+        model.removeAllUnpinned()
+        #expect(model.selection == nil)
+    }
+
+    @Test("a missing file is not previewable, so it is skipped by Quick Look")
+    func previewable() throws {
+        let (root, model) = try makeProject(files: ["here.txt", "gone.txt"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.removeItem(at: root.appendingPathComponent("gone.txt"))
+        let reloaded = ContextModel(root: root)
+        #expect(reloaded.items.count == 2)
+        #expect(reloaded.previewableItems.map(\.name) == ["here.txt"])
+    }
+
+    /// The hosting view is the pane's keyboard: it has to take the keyboard for the canvas
+    /// to hand it over, and the plain keys a selected file has in Finder act on the list.
+    @Test("the pane's view takes the keyboard, and ↑ ↓ ↩ act on the selection")
+    func keys() throws {
+        let (root, model) = try makeProject(files: ["a.txt", "b.txt"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        var sent: [String] = []
+        let context = TileContext(root: root, injectIntoShell: { sent.append($0) })
+        let view = ContextHostingView(tile: ContextTile(context: context, model: model))
+        #expect(view.acceptsFirstResponder)
+        #expect(view.canQuickLook)
+
+        view.keyDown(with: key(ContextHostingView.downKey))
+        #expect(model.selectedItem?.name == "a.txt")
+        view.keyDown(with: key(ContextHostingView.downKey))
+        #expect(model.selectedItem?.name == "b.txt")
+        view.keyDown(with: key(ContextHostingView.upKey))
+        #expect(model.selectedItem?.name == "a.txt")
+        view.keyDown(with: key(ContextHostingView.returnKey))
+        #expect(sent == ["@a.txt"], "↩ sends the selected file's @path, not the whole list")
+        // A chord is not the list's: ⌘↓ is left for whoever else wants it.
+        view.keyDown(with: key(ContextHostingView.downKey, modifiers: .command))
+        #expect(model.selectedItem?.name == "a.txt")
+    }
+
+    private func key(_ code: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+        NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+                         windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
+                         isARepeat: false, keyCode: code)!
     }
 }

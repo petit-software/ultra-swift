@@ -1,4 +1,5 @@
 import SwiftUI
+import UltraDesign
 import UltraCanvas
 import UltraCore
 import UltraLayout
@@ -15,8 +16,9 @@ enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + swaps + resizes + numbered + others
                                  + layouts + chat + editor + browser
-                                 + (TileFactory.offersSimulator ? simulator : []) + todo + paneKinds + folders
-                                 + [newShell, openSetup, closeSession, whatsNew]
+                                 + (TileFactory.offersSimulator ? simulator : []) + todo + context + paneKinds + folders
+                                 + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
+                                 + [nextSession, previousSession]
                                  + [showAgents, openAgentProject, openWaiting]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo] : [])
 
@@ -85,6 +87,80 @@ enum PaneCommands {
             Task { await WhatsNewChecker.shared.show { ui.whatsNew = $0 } }
         }
 
+    /// A project that does not exist yet: the New Project sheet (`NewProjectSheet`). The
+    /// sidebar's `+` and File ▸ New Project… are this. In the registry so the palette finds
+    /// it by "project" — it was a menu item only, and the palette, which is where someone
+    /// who has forgotten ⇧⌘N looks, had no row for it.
+    static let newProject = AppCommand(
+        id: "project.new", title: "New Project…", symbol: "folder.badge.plus",
+        menuPath: ["File"],
+        binding: KeyBinding("n", [.command, .shift]),
+        keywords: ["Create Project", "Add Project", "New Folder"],
+        isEnabled: { SessionList.holding($0)?.ui != nil }) { store in
+            SessionList.holding(store)?.ui?.isCreatingProject = true
+        }
+
+    /// A project that is already a folder: the open panel, and a session on each folder
+    /// chosen — or the session already on it, selected. File ▸ Open Folder… and ⌘T's New
+    /// Session… are both this (`WorkspaceCommands.chooseFolder`); here under the name the
+    /// sidebar uses, since a session IS a project, with the menu's words as keywords.
+    static let openProject = AppCommand(
+        id: "project.open", title: "Open Project…", symbol: "folder",
+        menuPath: ["File"],
+        binding: KeyBinding("o", [.command, .shift]),
+        keywords: ["Open Folder", "New Session", "Add Project", "Open Existing Project"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            guard let list = SessionList.holding(store) else { return }
+            for folder in chooseProjectFolders() { list.open(directory: folder) }
+        }
+
+    /// Which session is on screen, from the keyboard: the next one down the sidebar, or
+    /// up, wrapping through the Agents overview (`SessionList.step`). View ▸ Next Session
+    /// draws from these. In the registry so the palette answers "next project" and
+    /// "switch project", which it did not: moving between open projects was the one thing
+    /// the sidebar could do that the palette could not name.
+    static let nextSession = AppCommand(
+        id: "session.next", title: "Next Session", symbol: "arrow.down.to.line",
+        menuPath: ["View"],
+        binding: KeyBinding("]", [.command, .option]),
+        keywords: ["Next Project", "Switch Project", "Switch Session"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            SessionList.holding(store)?.selectNext()
+        }
+
+    static let previousSession = AppCommand(
+        id: "session.previous", title: "Previous Session", symbol: "arrow.up.to.line",
+        menuPath: ["View"],
+        binding: KeyBinding("[", [.command, .option]),
+        keywords: ["Previous Project", "Switch Project", "Switch Session"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            SessionList.holding(store)?.selectPrevious()
+        }
+
+    /// One command per open session: "Go to <project>", so a project is reached by typing
+    /// its name into the palette rather than stepping past the ones between. Built when
+    /// asked — the list changes as projects open and close, and a static registry cannot
+    /// hold it — and listed under View ▸ Go to Session, so the menu teaches the same names.
+    /// The session on screen is dimmed rather than dropped: a row that vanishes is one the
+    /// eye goes looking for.
+    @MainActor static func sessionJumps(in store: LayoutStore) -> [AppCommand] {
+        guard let list = SessionList.holding(store) else { return [] }
+        return list.sessions.map { session in
+            let id = session.workspaceID
+            return AppCommand(
+                id: "session.goto.\(id.uuidString)",
+                title: "Go to \(list.title(of: session))",
+                symbol: SessionSymbols.resolved(SessionLook.appearance(for: session).symbol),
+                menuPath: ["View", "Go to Session"],
+                keywords: ["Switch to \(list.title(of: session))", "Open \(list.title(of: session))", "Project"],
+                isEnabled: { store in
+                    SessionList.holding(store).map { $0.selectedID != id || $0.ui?.showsAgents == true } ?? false
+                }) { store in
+                    SessionList.holding(store)?.select(id)
+                }
+        }
+    }
+
     /// A session on no project — one shell, in the home folder, called "New shell". The
     /// belt's `+` after its last tab is this; so is File ▸ New Shell Session, drawn from
     /// here so the two cannot come to say different things.
@@ -96,7 +172,7 @@ enum PaneCommands {
         id: "session.newShell", title: "New Shell Session", symbol: "plus",
         menuPath: ["File"],
         binding: KeyBinding("t", [.command, .shift]),
-        keywords: ["New Shell", "Scratch Shell"],
+        keywords: ["New Shell", "Open Shell", "Scratch Shell", "Add Shell"],
         isEnabled: { SessionList.holding($0) != nil }) { store in
             SessionList.holding(store)?.openShell()
         }
@@ -313,6 +389,19 @@ enum PaneCommands {
                    menuPath: ["Pane", "Todo"], keywords: ["Delete All Tasks", "Empty List"],
                    isEnabled: { !(ShellWorkspace.todoStore(in: $0)?.document.isBlank ?? true) }) {
             ShellWorkspace.todoStore(in: $0)?.removeAllAfterConfirming()
+        },
+    ]
+
+    /// The context list's verbs. Quick Look is Space in the pane, as it is in Finder, and
+    /// Finder's ⌘Y here, since a plain key cannot be a menu item: the pane has to have the
+    /// keyboard for Space to mean anything, and the menu is how it gets there from anywhere.
+    static let context: [AppCommand] = [
+        AppCommand(id: "context.quickLook", title: "Quick Look", symbol: "eye",
+                   menuPath: ["Pane", "Context"],
+                   binding: KeyBinding("y", [.command]),
+                   keywords: ["Preview", "Space"],
+                   isEnabled: { ShellWorkspace.contextModel(in: $0)?.previewableItems.isEmpty == false }) {
+            ShellWorkspace.quickLook(in: $0)
         },
     ]
 
@@ -896,6 +985,9 @@ struct PaneMenuCommands: Commands {
             }
             Menu("Todo") {
                 ForEach(PaneCommands.todo) { item($0) }
+            }
+            Menu("Context") {
+                ForEach(PaneCommands.context) { item($0) }
             }
             Divider()
             ForEach(PaneCommands.layouts) { item($0) }

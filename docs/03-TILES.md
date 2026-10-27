@@ -330,9 +330,18 @@ The drop target. Files, folders, and links that the agent should know about.
   references into the focused shell **without submitting**, so the user types their sentence
   around them. Multi-select joins with spaces. Absolute paths are used when the target is
   outside the project. The footer sends the whole list; **each row sends just itself**, in the
-  same `@path` form — one click on the row, or its hover control — and a double click shows
-  it in Finder. A list gathered over a session usually holds more than the one file the
-  next prompt is about. A missing file's send is dimmed.
+  same `@path` form — a double click on the row, ↩ on the selected row, or its hover
+  control. A list gathered over a session usually holds more than the one file the next
+  prompt is about. A missing file's send is dimmed.
+- **Finder's grammar for the rows.** One click selects a row (the file tree's accent wash);
+  **Space shows the selected file in Quick Look**, and Space or Esc puts it away; ↑ and ↓
+  move the selection, in the pane and while the panel is up. The pane's hosting view
+  (`ContextHostingView`) is the pane's first responder when it is focused, so these are
+  plain keys handled there — the terminal is not first responder while the list is — and
+  it is the Quick Look panel's controller through the responder chain, as a Finder window
+  is. Focus leaving the pane closes the panel. The menu path is Pane ▸ Context ▸ Quick
+  Look, ⌘Y, which focuses the pane and does what Space does; the list is held by the
+  factory (`TileFactory.contextModel`) so the command can reach the selection.
 - **Also**: "Copy as prompt" (paths plus a short preamble), pin/unpin, remove, reveal in Finder.
   Remove is a **minus**, not a trash can: it takes a row off a list and never touches the file.
 - Stored per project alongside the layout.

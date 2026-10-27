@@ -79,6 +79,23 @@ public final class TileFactory {
     /// Which panes are todo lists, so the app can find one for a command.
     public func todoPanes() -> Set<PaneID> { Set(todos.keys) }
 
+    /// Each context pane's list, held here for the todo list's reason: Quick Look is a menu
+    /// command, and it has to reach the selection of the list the pane is showing.
+    private var contexts: [PaneID: ContextModel] = [:]
+
+    /// This pane's list, or nil for a pane that is not a context.
+    public func contextModel(for paneID: PaneID) -> ContextModel? { contexts[paneID] }
+
+    /// Which panes are context lists, so the app can find one for a command.
+    public func contextPanes() -> Set<PaneID> { Set(contexts.keys) }
+
+    /// Show this context pane's selected file in Quick Look, or hide the panel if it is
+    /// up — the Space key, from the menu. The pane's view does it, because the panel is
+    /// controlled through the responder chain and the view is the responder.
+    public func quickLook(_ paneID: PaneID) {
+        (hosts[paneID] as? ContextHostingView)?.toggleQuickLook()
+    }
+
     /// Each browser pane's pages, held here for the same reason: a pane rebuilt for any
     /// reason must not reload what it was showing.
     private var browsers: [PaneID: BrowserTabs] = [:]
@@ -208,7 +225,9 @@ public final class TileFactory {
         case .git:
             view = NSHostingView(rootView: GitTile(context: paneContext))
         case .context:
-            view = NSHostingView(rootView: ContextTile(context: paneContext))
+            let model = contexts[paneID] ?? ContextModel(root: root)
+            contexts[paneID] = model
+            view = ContextHostingView(tile: ContextTile(context: paneContext, model: model))
         case .chat:
             // The PROJECT's root, not the shell's folder: a chat is about the project, and
             // its transcripts live beside the project's todo and context files.
@@ -284,6 +303,7 @@ public final class TileFactory {
         browsers.removeValue(forKey: paneID)?.closeAll()
         simulators.removeValue(forKey: paneID)?.close()
         todos.removeValue(forKey: paneID)
+        contexts.removeValue(forKey: paneID)
     }
 
     /// Keep a simulator pane's header on its device, and its record on the device's UDID,

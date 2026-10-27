@@ -80,6 +80,35 @@ public final class ContextModel {
     public private(set) var items: [Item] = []
     public var totalTokens: Int { items.reduce(0) { $0 + $1.tokens } }
 
+    /// The row a click picked out, and the one Space previews, ↩ sends and ↑/↓ move from.
+    /// Held on the model rather than in the view so the menu's Quick Look can find it.
+    /// Never points at a row that has gone: every removal checks.
+    public private(set) var selection: UUID?
+
+    public var selectedItem: Item? { items.first { $0.id == selection } }
+
+    public func select(_ item: Item?) { selection = item?.id }
+
+    /// Move the selection one row up (`-1`) or down (`+1`), from the first row when nothing
+    /// is selected, and no further than the ends — a list that wraps is a list you cannot
+    /// hold ↓ to reach the bottom of.
+    public func moveSelection(by offset: Int) {
+        guard !items.isEmpty else { return }
+        guard let index = items.firstIndex(where: { $0.id == selection }) else {
+            selection = (offset < 0 ? items.last : items.first)?.id
+            return
+        }
+        selection = items[max(0, min(items.count - 1, index + offset))].id
+    }
+
+    /// What Quick Look can show: a missing file has nothing to preview, and the panel
+    /// would say so with a blank page.
+    public var previewableItems: [Item] { items.filter { !$0.isMissing } }
+
+    private func pruneSelection() {
+        if selection != nil, !items.contains(where: { $0.id == selection }) { selection = nil }
+    }
+
     private var bookmarks: [UUID: Data] = [:]
     public private(set) var storeURL: URL
     private let root: URL
@@ -102,6 +131,7 @@ public final class ContextModel {
         items.removeAll()
         bookmarks.removeAll()
         load()
+        pruneSelection()
     }
 
     public func resetLocation() {
@@ -110,6 +140,7 @@ public final class ContextModel {
         items.removeAll()
         bookmarks.removeAll()
         load()
+        pruneSelection()
     }
 
     static func defaultsKey(for root: URL) -> String {
@@ -152,6 +183,7 @@ public final class ContextModel {
     public func remove(_ item: Item) {
         items.removeAll { $0.id == item.id }
         bookmarks[item.id] = nil
+        pruneSelection()
         save()
     }
 
@@ -165,6 +197,7 @@ public final class ContextModel {
     public func removeAllUnpinned() {
         for item in items where !item.isPinned { bookmarks[item.id] = nil }
         items.removeAll { !$0.isPinned }
+        pruneSelection()
         save()
     }
 

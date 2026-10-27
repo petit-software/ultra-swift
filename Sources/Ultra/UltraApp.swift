@@ -448,7 +448,8 @@ struct WorkspaceCommands: Commands {
             // ⌘N is New Window here as it is everywhere, and ⇧⌘N is Finder's New Folder,
             // which is half of what this does. Nothing in the reserved terminal table uses
             // it — see `ReservedTerminalKeys`.
-            Button("New Project…") { ui?.isCreatingProject = true }
+            // From the registry, which is what puts it in the palette as well.
+            Button(PaneCommands.newProject.title) { ui?.isCreatingProject = true }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
                 // Dims rather than vanishing: a command that disappears is a command nobody
                 // learns. There is no window to open the result in until one exists.
@@ -456,6 +457,8 @@ struct WorkspaceCommands: Commands {
 
             Divider()
 
+            // The registry calls this Open Project…, which is what the palette shows; the
+            // menu keeps the word the open panel uses, and the registry knows both.
             Button("Open Folder…") { chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
 
@@ -625,12 +628,24 @@ struct WorkspaceCommands: Commands {
             // menu is where a Mac app keeps what is shown. They were under File ▸ Session,
             // between opening a project and closing one, where nobody looked for a way to
             // the next tab.
-            Button("Next Session") { sessions?.selectNext() }
+            // From the registry, which is what puts them in the palette as well.
+            Button(PaneCommands.nextSession.title) { sessions?.selectNext() }
                 .keyboardShortcut("]", modifiers: [.command, .option])
                 .disabled(sessions == nil)
-            Button("Previous Session") { sessions?.selectPrevious() }
+            Button(PaneCommands.previousSession.title) { sessions?.selectPrevious() }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 .disabled(sessions == nil)
+            // Every open session by name, for the one that is not next or previous. The
+            // same rows the palette shows for "go to"; the session on screen is dimmed.
+            Menu("Go to Session") {
+                if let store {
+                    ForEach(PaneCommands.sessionJumps(in: store)) { command in
+                        Button(command.title) { command.run(store) }
+                            .disabled(!command.isEnabled(store))
+                    }
+                }
+            }
+            .disabled(sessions?.isEmpty ?? true)
 
             // The same two keys as switching, plus shift: ⌥⌘] goes to the next session,
             // ⇧⌥⌘] takes the session WITH you. Kept beside Next and Previous so the menu
