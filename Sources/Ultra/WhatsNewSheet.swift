@@ -62,37 +62,73 @@ struct WhatsNewContent: Identifiable, Equatable {
     var id: String { version }
 }
 
-/// The dialog. Laid out like the Customize sheet — a title, the content, Done — so the
-/// app's few sheets read as one family.
+/// The dialog: the app's icon on the left, and on the right the title and the release's
+/// list, with Release Notes and Done under them. The icon is the way an About box and an
+/// installer say "this app" — a sheet of text alone read as a message from nowhere.
+/// The buttons are the Customize sheet's, so the app's few sheets read as one family.
 struct WhatsNewSheet: View {
     let content: WhatsNewContent
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("What's New in Ultra \(content.version)")
-                .font(.title3.weight(.semibold))
-                .frame(maxWidth: .infinity)
+    /// The running copy's own icon — Ultra's, or Ultra Dev's on a dev build — rather than
+    /// an asset of this view's, so the two cannot drift.
+    private var icon: NSImage {
+        NSApp?.applicationIconImage ?? NSImage(named: NSImage.applicationIconName) ?? NSImage()
+    }
 
-            if content.items.isEmpty {
-                Text("This release's list could not be fetched. The release notes have the whole story.")
-                    .foregroundStyle(Token.Colour.secondaryLabel)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(content.items, id: \.self) { item in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Image(systemName: "sparkle")
-                                .font(.caption)
-                                .foregroundStyle(Token.Colour.accent)
-                            Text(item)
-                                .fixedSize(horizontal: false, vertical: true)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 18) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("What's New in Ultra")
+                            .font(.title2.weight(.semibold))
+                        Text("Version \(content.version)")
+                            .font(.callout)
+                            .foregroundStyle(Token.Colour.secondaryLabel)
+                    }
+                    .padding(.top, 4)
+
+                    if content.items.isEmpty {
+                        Text("This release's list could not be fetched. The release notes have the whole story.")
+                            .foregroundStyle(Token.Colour.secondaryLabel)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        // A dash, as the release's own list is written: a sparkle in
+                        // front of every line made each one read as a feature flagged
+                        // special, when the list is the plain record of what changed.
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(content.items, id: \.self) { item in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text("–")
+                                        .foregroundStyle(Token.Colour.secondaryLabel)
+                                    Text(item)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
                         }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            // A hairline parts the list from the buttons, as the Customize sheet's footer
+            // is parted from its form: the buttons are the sheet's, not the list's.
+            Rectangle()
+                .fill(Token.Colour.separator)
+                .frame(height: 1)
+                .padding(.horizontal, -20)
+
+            // No focus ring on either: the sheet opens with the keyboard on its first
+            // button, and a ring round Release Notes read as "press Return for the web
+            // page" when Return is Done. Both stay reachable by Tab with Full Keyboard
+            // Access; only the ring is gone, and Return and Esc are the keys that matter.
             HStack {
                 // Plain, in the accent, like the Customize sheet's secondary action.
                 Button("Release Notes") {
@@ -103,6 +139,7 @@ struct WhatsNewSheet: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Token.Colour.accent)
                 .controlSize(.large)
+                .focusEffectDisabled()
                 Spacer()
                 Button {
                     dismiss()
@@ -114,23 +151,25 @@ struct WhatsNewSheet: View {
                 .controlSize(.large)
                 .tint(Token.Colour.accent)
                 .keyboardShortcut(.defaultAction)
+                .focusEffectDisabled()
             }
         }
         .padding(20)
-        .frame(width: 440)
+        .frame(width: 520)
         // Escape closes it, like every sheet here; Return is Done.
         .onExitCommand { dismiss() }
     }
 }
 
-#Preview("What's new", traits: .fixedLayout(width: 480, height: 300)) {
-    WhatsNewSheet(content: WhatsNewContent(version: "0.32.0", items: [
-        "A window that closes keeps its sessions, and gives them back",
-        "⌘W on a project's last pane closes the project",
-        "Close Session, in the palette",
+#Preview("What's new", traits: .fixedLayout(width: 560, height: 320)) {
+    WhatsNewSheet(content: WhatsNewContent(version: "0.40.0", items: [
+        "A click selects a Context row, Space shows it in Quick Look, a double click sends it",
+        "@ and / at an agent's prompt open a picker at the caret",
+        "The palette opens, makes and moves between projects",
+        "The waiting notification names the project and the agent",
     ]))
 }
 
-#Preview("What's new — nothing fetched", traits: .fixedLayout(width: 480, height: 200)) {
+#Preview("What's new — nothing fetched", traits: .fixedLayout(width: 560, height: 220)) {
     WhatsNewSheet(content: WhatsNewContent(version: "0.32.0", items: []))
 }

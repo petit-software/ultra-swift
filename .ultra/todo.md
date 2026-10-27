@@ -41,6 +41,10 @@
 
 ## What's New
 
+- [x] The sheet is the app's icon on the left and, on the right, the title, the version and the release's list; Release Notes and Done under them (`WhatsNewSheet`)
+- [x] Neither button wears a focus ring when the sheet opens; Return is Done and Esc closes, Tab still reaches both
+- [x] The list's bullets are dashes, and a hairline parts the list from the buttons
+
 
 ## Notify when an agent goes quiet
 
