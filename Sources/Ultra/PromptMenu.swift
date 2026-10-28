@@ -25,8 +25,9 @@ final class PromptMenuModel {
     var items: [PromptMenuItem] = []
     var isLoading = true
     var selection: String?
-    /// Told the list changed height, so the presenter can resize the host.
-    @ObservationIgnored var layoutChanged: (() -> Void)?
+    /// Told the picker's size, every time SwiftUI lays it out, so the presenter can size
+    /// its window to it.
+    @ObservationIgnored var layoutChanged: ((CGSize) -> Void)?
     /// The outcome: text to type at the prompt, or nil for nothing.
     @ObservationIgnored var finish: ((String?) -> Void)?
 
@@ -86,26 +87,33 @@ final class PromptMenuModel {
 /// inserts nothing, and the trigger typed again inserts the trigger itself, so the key is
 /// never dead. The terminal has the keyboard back the moment the picker goes.
 ///
-/// Placed at the caret, on a layer over the whole window rather than inside the pane: a
-/// pane clips to its rounded frame, and a list that opens near a pane's edge was cut off
-/// at it. The layer is the window's, so the picker can hang over neighbouring panes, and
-/// it goes when the pane goes — the layer re-places it on every layout and finds no
-/// terminal to place it by.
+/// A menu, so a window of its own: a borderless panel that is a child of the terminal's
+/// window, the way the system's menus and completions are. Nothing in the window can
+/// clip it — not the pane's rounded frame, not the window's edge — only the screen's
+/// bounds, which it is kept inside. It opens at the caret cell and stays anchored to that
+/// cell: the agent redrawing its prompt, or the list growing as its rows arrive, does not
+/// move it. It follows its pane when the layout moves the pane, and goes when the pane
+/// goes, when the window closes, or when the keyboard goes elsewhere.
 @MainActor
 final class PromptMenu {
     static let shared = PromptMenu()
 
+    private var panel: PromptMenuPanel?
     private var host: NSHostingView<PromptMenuView>?
-    private var layer: PromptMenuLayer?
     private var model: PromptMenuModel?
     private weak var terminal: ShellTerminalView?
+    /// The caret cell the picker opened at, in the terminal's coordinates.
+    private var anchor: CGRect = .zero
+    /// The picker's own size, as SwiftUI last laid it out.
+    private var contentSize: CGSize = .zero
+    private var observers: [any NSObjectProtocol] = []
 
     /// Show the picker for a trigger in a pane. False when it could not be shown — no
     /// such pane, or one with no terminal — in which case the key goes through as typed.
     @discardableResult
     static func present(_ trigger: Character, pane paneID: PaneID, workspace workspaceID: UUID) -> Bool {
         guard let factory = ShellWorkspace.Registry.factories[workspaceID],
-              let terminal = factory.shells[paneID], terminal.superview != nil else { return false }
+              let terminal = factory.shells[paneID], terminal.window != nil else { return false }
         let store = ShellWorkspace.Registry.stores[workspaceID]
         let root = store?.workspaceDirectory.map { URL(fileURLWithPath: $0) }
             ?? ShellWorkspace.Registry.workingDirectory(in: workspaceID, fallback: URL(fileURLWithPath: NSHomeDirectory()))
@@ -129,22 +137,28 @@ final class PromptMenu {
     private func show(trigger: Character, in terminal: ShellTerminalView,
                       items: @escaping @Sendable () async -> [PromptMenuItem]) {
         dismiss(inserting: nil)
-        guard let contentView = terminal.window?.contentView else { return }
+        guard let window = terminal.window else { return }
         self.terminal = terminal
+        anchor = terminal.caretRect
         let model = PromptMenuModel(trigger: trigger)
         self.model = model
         let host = NSHostingView(rootView: PromptMenuView(model: model))
         host.sizingOptions = [.intrinsicContentSize]
         self.host = host
-        let layer = PromptMenuLayer(frame: contentView.bounds)
-        layer.autoresizingMask = [.width, .height]
-        layer.onLayout = { [weak self] in self?.place() }
-        layer.addSubview(host)
-        contentView.addSubview(layer, positioned: .above, relativeTo: nil)
-        self.layer = layer
-        model.layoutChanged = { [weak self] in self?.place() }
+        contentSize = host.intrinsicContentSize
+        let panel = PromptMenuPanel()
+        panel.contentView = host
+        self.panel = panel
+        model.layoutChanged = { [weak self] size in
+            self?.contentSize = size
+            self?.place()
+        }
         model.finish = { [weak self] text in self?.dismiss(inserting: text) }
+        // Placed before it is shown: a child window is on screen the moment it is added.
         place()
+        window.addChildWindow(panel, ordered: .above)
+        panel.makeKeyAndOrderFront(nil)
+        watch(terminal: terminal, window: window, panel: panel)
         Task { [weak model] in
             let loaded = await items()
             guard let model else { return }
@@ -154,39 +168,86 @@ final class PromptMenu {
         }
     }
 
-    /// Below the caret when there is room, above it otherwise, and never past the window's
-    /// edges. The layer is flipped, so y grows downward. A terminal that has left the
-    /// window — its pane closed under the picker — takes the picker with it.
+    /// What moves or ends the picker. The pane's frame, or any frame above it, changing
+    /// is the layout moving the pane: the picker is placed again by its anchor. The
+    /// window's every update is a cheap check that the terminal is still in it — a pane
+    /// closed under the picker posts no frame change of its own. The panel losing the
+    /// keyboard — a click on a pane, another app coming forward — is the picker nobody is
+    /// typing into, in the way.
+    private func watch(terminal: ShellTerminalView, window: NSWindow, panel: NSPanel) {
+        let center = NotificationCenter.default
+        var view: NSView? = terminal
+        while let current = view {
+            observers.append(center.addObserver(forName: NSView.frameDidChangeNotification,
+                                                object: current, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.place() }
+            })
+            view = current.superview
+        }
+        observers.append(center.addObserver(forName: NSWindow.didUpdateNotification,
+                                            object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.place() }
+        })
+        observers.append(center.addObserver(forName: NSWindow.willCloseNotification,
+                                            object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismiss(inserting: nil) }
+        })
+        observers.append(center.addObserver(forName: NSWindow.didResignKeyNotification,
+                                            object: panel, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismiss(inserting: nil) }
+        })
+    }
+
+    /// Below the anchor cell when there is room on the screen, above it otherwise, and
+    /// never past the screen's edges. A terminal that has left the window — its pane
+    /// closed under the picker — takes the picker with it.
     private func place() {
-        guard let host, let layer else { return }
-        guard let terminal, terminal.window === layer.window else { dismiss(inserting: nil); return }
-        let caret = layer.convert(terminal.caretRect, from: terminal)
-        let size = host.fittingSize
-        let width = min(size.width, max(200, layer.bounds.width - 16))
-        let height = min(size.height, max(80, layer.bounds.height - 16))
-        var x = caret.minX
-        x = max(8, min(x, layer.bounds.width - width - 8))
-        let below = caret.maxY + 4
-        let y = below + height <= layer.bounds.height - 8
+        guard let panel else { return }
+        guard let terminal, let parent = terminal.window,
+              panel.parent == nil || panel.parent === parent else { dismiss(inserting: nil); return }
+        let caret = parent.convertToScreen(terminal.convert(anchor, to: nil))
+        let bounds = (parent.screen ?? NSScreen.main)?.visibleFrame ?? parent.frame
+        let frame = Self.frame(for: contentSize, at: caret, within: bounds)
+        guard frame != panel.frame else { return }
+        panel.setFrame(frame, display: true)
+        panel.invalidateShadow()
+    }
+
+    /// Where a picker of `size` goes for a caret cell, in screen coordinates: under the
+    /// cell with its left edge on the cell's, above it when the screen has no room
+    /// below, and clamped to `bounds` — the screen's visible frame — with a margin.
+    static func frame(for size: CGSize, at caret: CGRect, within bounds: CGRect) -> CGRect {
+        let margin: CGFloat = 8
+        let gap: CGFloat = 4
+        let width = min(size.width, bounds.width - 2 * margin)
+        let height = min(size.height, bounds.height - 2 * margin)
+        let x = max(bounds.minX + margin, min(caret.minX, bounds.maxX - margin - width))
+        let below = caret.minY - gap - height
+        let y = below >= bounds.minY + margin
             ? below
-            : max(8, caret.minY - 4 - height)
-        host.frame = CGRect(x: x, y: y, width: width, height: height)
+            : min(bounds.maxY - margin - height, caret.maxY + gap)
+        return CGRect(x: x, y: y, width: width, height: height)
     }
 
     /// Take the picker down, typing `text` at the prompt if there is any, and give the
     /// terminal the keyboard back.
     private func dismiss(inserting text: String?) {
-        guard let host else { return }
-        host.removeFromSuperview()
-        layer?.removeFromSuperview()
-        layer = nil
-        self.host = nil
+        guard let panel else { return }
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        let parent = panel.parent
+        parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+        panel.contentView = nil
+        self.panel = nil
+        host = nil
         model = nil
         if let terminal {
             if let text, !text.isEmpty {
                 // A file reference composes with what follows; a command takes its own arguments.
                 terminal.inject(text.hasPrefix("@") ? text + " " : text)
             }
+            parent?.makeKey()
             terminal.window?.makeFirstResponder(terminal)
         }
         terminal = nil
@@ -225,29 +286,30 @@ final class PromptMenu {
     }
 }
 
-/// The window-sized, flipped layer the picker sits on. It takes no clicks of its own —
-/// anything outside the picker falls through to the pane underneath — and it tells the
-/// presenter to place the picker again whenever the window lays out.
+/// The picker's window: borderless, clear behind the glass, with the system's shadow
+/// cut to the picker's shape. It takes the keyboard — the field is typed into — but is
+/// never the main window, so the terminal's window stays the one the app is about.
 @MainActor
-private final class PromptMenuLayer: NSView {
-    var onLayout: (() -> Void)?
-
-    override var isFlipped: Bool { true }
-
-    override func layout() {
-        super.layout()
-        onLayout?()
+private final class PromptMenuPanel: NSPanel {
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        isReleasedWhenClosed = false
+        hidesOnDeactivate = false
+        isExcludedFromWindowsMenu = true
+        animationBehavior = .none
+        isMovable = false
     }
 
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        let hit = super.hitTest(point)
-        return hit === self ? nil : hit
-    }
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 /// The picker: a field with the trigger in front of it, and the rows under it. Drawn
 /// like the command palette, smaller, since it is a thing of the pane rather than of the
-/// window.
+/// window. No shadow of its own: the window it sits in casts one, cut to its shape.
 struct PromptMenuView: View {
     @Bindable var model: PromptMenuModel
     @FocusState private var isFocused: Bool
@@ -306,7 +368,7 @@ struct PromptMenuView: View {
         .frame(width: Self.width)
         .clipShape(shape)
         .paletteGlass(in: shape)
-        .shadow(color: .black.opacity(0.3), radius: 18, y: 8)
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { model.layoutChanged?($0) }
         .onAppear { isFocused = true }
         .task {
             for _ in 0..<8 where !isFocused {
@@ -324,9 +386,7 @@ struct PromptMenuView: View {
             // The trigger again is the trigger itself, typed: `@@` or `//` is one literal.
             if query == String(model.trigger) { model.finish?(String(model.trigger)); return }
             model.selection = model.matches.first?.id
-            model.layoutChanged?()
         }
-        .onChange(of: model.items.count) { model.layoutChanged?() }
         .onExitCommand { model.cancel() }
     }
 
@@ -368,5 +428,5 @@ struct PromptMenuView: View {
         PromptMenuItem(symbol: "slash.circle", title: $0.name, detail: $0.detail, insert: "/" + $0.name)
     }
     model.isLoading = false
-    return PromptMenuView(model: model).padding()
+    return PromptMenuView(model: model).shadow(color: .black.opacity(0.3), radius: 18, y: 8).padding()
 }
