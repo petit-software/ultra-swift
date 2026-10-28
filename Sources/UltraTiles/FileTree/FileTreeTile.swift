@@ -132,9 +132,11 @@ private struct ParentRow: View {
 
     var body: some View {
         HStack(spacing: 5) {
+            // The size of the icons in the pane's header and footer: it is a control, and
+            // reads as one of them.
             Image(systemName: "arrow.turn.left.up")
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 10)
+                .font(.system(size: ChromeIconLabel.size - 2, weight: .semibold))
+                .frame(width: 16)
             Image(systemName: "folder")
                 .font(.system(size: 11))
                 .frame(width: 14)
@@ -147,7 +149,7 @@ private struct ParentRow: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(Token.Colour.tertiaryLabel)
-        .padding(.leading, 8)
+        .padding(.leading, 10)
         .padding(.trailing, 8)
         .padding(.vertical, 3)
         .help("Show the enclosing folder")
@@ -176,14 +178,16 @@ private struct FileTreeRow: View {
             // A fixed-width well, so names line up whether or not a row has a chevron.
             Group {
                 if row.node.isDirectory {
+                    // The size of the icons in the pane's header and footer, like the
+                    // `..` row's arrow: the grey marks down the left are controls.
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: ChromeIconLabel.size - 2, weight: .semibold))
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 } else {
                     Color.clear
                 }
             }
-            .frame(width: 10)
+            .frame(width: 16)
             .foregroundStyle(Token.Colour.tertiaryLabel)
 
             Image(systemName: icon)
@@ -224,7 +228,7 @@ private struct FileTreeRow: View {
             }
             .font(.system(size: 11))
         }
-        .padding(.leading, 8 + CGFloat(row.depth) * 13)
+        .padding(.leading, 10 + CGFloat(row.depth) * 13)
         .padding(.trailing, 8)
         .padding(.vertical, 3)
         .contentShape(.rect)

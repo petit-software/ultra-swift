@@ -67,8 +67,12 @@ struct SessionSidebar: View {
         // explains itself. The editor's sidebar has two sections because it holds two kinds.
         .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
         .overlay(alignment: .trailing) {
+            // Fainter than a separator: the window's own material shows through both
+            // sides of it, and a full-strength line read as an edge between two surfaces
+            // rather than a fold in one. Opaque under Increase Contrast, like `divider`.
             Rectangle()
-                .fill(Token.Colour.separator)
+                .fill(NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+                      ? Token.Colour.separator : Token.Colour.separator.opacity(0.35))
                 .frame(width: 1)
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
@@ -109,12 +113,8 @@ struct SessionSidebar: View {
                 .padding(.bottom, Self.agentsGap)
                 .tag(AgentsOverview.selectionID)
                 .listRowBackground(
-                    Capsule(style: .continuous)
-                        .fill(Token.Colour.selectionWash)
-                        .padding(.horizontal, 10)
-                        .padding(.top, 1)
-                        .padding(.bottom, 1 + Self.agentsGap)
-                        .opacity(ui.showsAgents ? 1 : 0))
+                    SelectedProjectGlass(isSelected: ui.showsAgents)
+                        .padding(.bottom, Self.agentsGap))
             ForEach(sessions.sessions, id: \.workspaceID) { store in
                 SessionRow(store: store,
                            ui: ui,
@@ -128,11 +128,7 @@ struct SessionSidebar: View {
                     .tag(store.workspaceID)
                     // The selection, drawn here as a capsule — see `.tint(.clear)` below.
                     .listRowBackground(
-                        Capsule(style: .continuous)
-                            .fill(Token.Colour.selectionWash)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 1)
-                            .opacity(!ui.showsAgents && sessions.selectedID == store.workspaceID ? 1 : 0))
+                        SelectedProjectGlass(isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID))
             }
             // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
             // is possible, including the insertion line and the drag image.
@@ -159,6 +155,26 @@ struct SessionSidebar: View {
         // The list draws nothing of its own behind the rows: the surface is the ZStack's.
         .scrollContentBackground(.hidden)
         .accessibilityLabel("Sessions")
+    }
+}
+
+/// A selected row's capsule — a project's, or the Agents row's: the same glass the belt's
+/// selected tab wears, so every place that says "this one" says it the same way. Under
+/// Reduce Transparency, the neutral wash.
+private struct SelectedProjectGlass: View {
+    let isSelected: Bool
+
+    var body: some View {
+        Group {
+            if Token.Environment_.reduceTransparency {
+                Capsule(style: .continuous).fill(Token.Colour.selectionWash)
+            } else {
+                Color.clear.glassEffect(.regular.interactive(), in: .capsule)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 1)
+        .opacity(isSelected ? 1 : 0)
     }
 }
 

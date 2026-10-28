@@ -47,6 +47,11 @@
 
 ## Tabs and footers
 
+- [x] The file tree's grey marks on the left — a folder's disclosure chevron and the `..` row's up arrow — are two points under the size of the pane header's and footer's icons (`ChromeIconLabel.size - 2`), and the rows start 2pt further from the left edge; the file and folder glyphs stay as they were (`FileTreeRow`, `ParentRow`)
+- [x] The Todo pane's section chevron is the file tree's: the same size, well and left inset (`TodoHeadingRow`)
+- [x] A task row starts 2pt inside the heading's inset, so its checkbox lines up with the section chevron (`TodoRow`)
+- [x] The sidebar's selected row — a project or Agents — wears the belt's glass capsule (`SelectedProjectGlass`)
+- [x] The sidebar's right hairline is the separator at 35%, opaque under Increase Contrast (`SessionSidebar`)
 
 ## What's New
 

@@ -544,7 +544,8 @@ private struct TodoRow: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Token.Colour.tertiaryLabel)
-        .padding(.leading, 12 + CGFloat(item.indent) * 6)
+        // Two points under the heading's inset, which puts the checkbox on the chevron's line.
+        .padding(.leading, 10 + CGFloat(item.indent) * 6)
         .padding(.trailing, 10)
         .padding(.vertical, 3)
         .contentShape(.rect)
@@ -604,10 +605,12 @@ private struct TodoHeadingRow: View {
             // Its own target, ahead of the title: the title's click already means "add tasks
             // here", and folding is a different question.
             Button(action: toggleCollapsed) {
+                // The file tree's disclosure chevron, at its size and in its well: two
+                // points under the pane chrome's icons.
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: ChromeIconLabel.size - 2, weight: .semibold))
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .frame(width: 10)
+                    .frame(width: 16)
             }
             .buttonStyle(.plain)
             .foregroundStyle(Token.Colour.tertiaryLabel)
@@ -618,7 +621,10 @@ private struct TodoHeadingRow: View {
 
             title
         }
-        .padding(.horizontal, 12)
+        // The same inset as the file tree's rows, so the chevrons of the two panes sit on
+        // one line when they are stacked.
+        .padding(.leading, 10)
+        .padding(.trailing, 12)
         .padding(.top, 10)
         .padding(.bottom, 3)
         .contentShape(.rect)
