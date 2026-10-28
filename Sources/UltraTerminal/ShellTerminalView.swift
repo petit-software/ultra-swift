@@ -437,7 +437,6 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
 
     public func send(source: TerminalView, data: ArraySlice<UInt8>) {
         lastInputAt = Date()
-        promptLength = PromptInput.length(after: data, from: promptLength)
         process.send(data: data)
     }
 
@@ -454,15 +453,26 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// this is the one narrow case where it is not — see `PromptInput`.
     public var promptTrigger: ((Character) -> Bool)?
 
-    /// How much of the current line the user has typed. Zero at a fresh prompt.
-    public private(set) var promptLength = 0
+    /// Whether the caret is at the start of a line: nothing drawn before it on its row but
+    /// the agent's prompt marker — see `PromptInput.isLineStart`.
+    ///
+    /// SwiftTerm hands out rows of the DISPLAYED screen, which is the live one only when
+    /// the view is at the bottom. Scrolled up into the history, the view is brought back
+    /// down first — which is what a typed key does anyway, so this changes nothing the
+    /// user would not see from the key itself.
+    public var caretIsAtLineStart: Bool {
+        guard let terminal else { return false }
+        if canScroll, scrollPosition < 1 { scroll(toPosition: 1) }
+        guard let line = terminal.getLine(row: terminal.buffer.y) else { return false }
+        return PromptInput.isLineStart(before: line.translateToString(trimRight: false, startCol: 0, endCol: terminal.buffer.x))
+    }
 
     /// Whether a key event is a trigger this view's picker takes, asked by
     /// `PromptKeyMonitor` before the event reaches `keyDown` — SwiftTerm's `keyDown` is
     /// not overridable from outside its module, and a local event monitor sees the key
     /// first anyway. True means the handler showed its picker and the key is consumed.
     public func handlesPromptKey(_ event: NSEvent) -> Bool {
-        guard promptTrigger != nil, promptLength == 0, isRunningAgent,
+        guard promptTrigger != nil, isRunningAgent, caretIsAtLineStart,
               let characters = event.characters, characters.count == 1,
               let character = characters.first, Self.promptTriggers.contains(character),
               // ⇧ is how `@` is typed; anything else is a chord, and a chord is not a character.
