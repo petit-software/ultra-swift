@@ -86,13 +86,17 @@ final class PromptMenuModel {
 /// inserts nothing, and the trigger typed again inserts the trigger itself, so the key is
 /// never dead. The terminal has the keyboard back the moment the picker goes.
 ///
-/// Placed in the pane, at the caret, as a view of the pane's container rather than a
-/// window of its own: it belongs to that prompt, and goes with the pane if the pane goes.
+/// Placed at the caret, on a layer over the whole window rather than inside the pane: a
+/// pane clips to its rounded frame, and a list that opens near a pane's edge was cut off
+/// at it. The layer is the window's, so the picker can hang over neighbouring panes, and
+/// it goes when the pane goes — the layer re-places it on every layout and finds no
+/// terminal to place it by.
 @MainActor
 final class PromptMenu {
     static let shared = PromptMenu()
 
     private var host: NSHostingView<PromptMenuView>?
+    private var layer: PromptMenuLayer?
     private var model: PromptMenuModel?
     private weak var terminal: ShellTerminalView?
 
@@ -125,16 +129,21 @@ final class PromptMenu {
     private func show(trigger: Character, in terminal: ShellTerminalView,
                       items: @escaping @Sendable () async -> [PromptMenuItem]) {
         dismiss(inserting: nil)
-        guard let container = terminal.superview else { return }
+        guard let contentView = terminal.window?.contentView else { return }
         self.terminal = terminal
         let model = PromptMenuModel(trigger: trigger)
         self.model = model
         let host = NSHostingView(rootView: PromptMenuView(model: model))
         host.sizingOptions = [.intrinsicContentSize]
         self.host = host
+        let layer = PromptMenuLayer(frame: contentView.bounds)
+        layer.autoresizingMask = [.width, .height]
+        layer.onLayout = { [weak self] in self?.place() }
+        layer.addSubview(host)
+        contentView.addSubview(layer, positioned: .above, relativeTo: nil)
+        self.layer = layer
         model.layoutChanged = { [weak self] in self?.place() }
         model.finish = { [weak self] text in self?.dismiss(inserting: text) }
-        container.addSubview(host)
         place()
         Task { [weak model] in
             let loaded = await items()
@@ -145,18 +154,20 @@ final class PromptMenu {
         }
     }
 
-    /// Below the caret when there is room, above it otherwise, and never past the pane's
-    /// right edge. The container is flipped, so y grows downward.
+    /// Below the caret when there is room, above it otherwise, and never past the window's
+    /// edges. The layer is flipped, so y grows downward. A terminal that has left the
+    /// window — its pane closed under the picker — takes the picker with it.
     private func place() {
-        guard let host, let terminal, let container = terminal.superview else { return }
-        let caret = container.convert(terminal.caretRect, from: terminal)
+        guard let host, let layer else { return }
+        guard let terminal, terminal.window === layer.window else { dismiss(inserting: nil); return }
+        let caret = layer.convert(terminal.caretRect, from: terminal)
         let size = host.fittingSize
-        let width = min(size.width, max(200, container.bounds.width - 16))
-        let height = min(size.height, max(80, container.bounds.height - 16))
+        let width = min(size.width, max(200, layer.bounds.width - 16))
+        let height = min(size.height, max(80, layer.bounds.height - 16))
         var x = caret.minX
-        x = max(8, min(x, container.bounds.width - width - 8))
+        x = max(8, min(x, layer.bounds.width - width - 8))
         let below = caret.maxY + 4
-        let y = below + height <= container.bounds.height - 8
+        let y = below + height <= layer.bounds.height - 8
             ? below
             : max(8, caret.minY - 4 - height)
         host.frame = CGRect(x: x, y: y, width: width, height: height)
@@ -167,6 +178,8 @@ final class PromptMenu {
     private func dismiss(inserting text: String?) {
         guard let host else { return }
         host.removeFromSuperview()
+        layer?.removeFromSuperview()
+        layer = nil
         self.host = nil
         model = nil
         if let terminal {
@@ -209,6 +222,26 @@ final class PromptMenu {
                            detail: command.detail ?? (command.origin == .project ? "Project" : command.origin == .user ? "Yours" : nil),
                            insert: "/" + command.name)
         }
+    }
+}
+
+/// The window-sized, flipped layer the picker sits on. It takes no clicks of its own —
+/// anything outside the picker falls through to the pane underneath — and it tells the
+/// presenter to place the picker again whenever the window lays out.
+@MainActor
+private final class PromptMenuLayer: NSView {
+    var onLayout: (() -> Void)?
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        onLayout?()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
     }
 }
 

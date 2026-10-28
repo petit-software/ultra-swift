@@ -26,6 +26,7 @@
 - [x] `/` lists the running agent's commands — built in, and the project's and user's own from `.claude/commands` and `.claude/skills` — and inserts `/name` (`AgentCommands`)
 - [x] Typing the trigger again, or ↩ on no match, sends what was typed literally; Esc sends nothing; the terminal gets the keyboard back either way (`PromptMenu`)
 - [x] Settings ▸ Terminal ▸ Prompt menus, on by default; Pane ▸ Insert File Reference… and Insert Agent Command… are the palette's way to the same pickers (`Preferences.promptMenus`)
+- [x] The picker sits on a layer over the whole window, not inside the pane, so a pane's rounded frame no longer cuts it off; it goes when its pane goes (`PromptMenuLayer`)
 - [x] "First character of a line" is read from the screen — nothing but the agent's prompt marker before the caret — not counted from the bytes sent: Claude Code turns on the kitty keyboard protocol, so ^C, ^U and Esc arrive as `CSI u` sequences the count skipped, and after one clear `@` and `/` never opened again (`PromptInput.isLineStart`, `ShellTerminalView.caretIsAtLineStart`)
 
 ## Notifications: the project, and the agent by name
