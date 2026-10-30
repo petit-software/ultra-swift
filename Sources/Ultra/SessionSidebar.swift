@@ -27,6 +27,13 @@ struct SessionSidebar: View {
     /// The folder picker lives in the app's command layer, so the bar asks for it rather
     /// than opening its own — two `NSOpenPanel`s configured separately drift apart.
     let openFolder: () -> Void
+    /// Bumped when a project's look or the aurora setting changes — see `Aurora`.
+    @State private var lookRevision = 0
+
+    private var auroraColour: NSColor? {
+        _ = lookRevision
+        return Aurora.colour(sessions: sessions, ui: ui)
+    }
 
     private var selection: Binding<UUID?> {
         Binding(get: { ui.showsAgents ? AgentsOverview.selectionID : sessions.selectedID },
@@ -57,11 +64,20 @@ struct SessionSidebar: View {
                 Token.Colour.tileBackground.ignoresSafeArea()
             } else {
                 // The LEFT corners only: those are the window's, and the right edge meets
-                // the canvas along the hairline.
-                WindowSurface(corners: [.layerMinXMinYCorner, .layerMinXMaxYCorner])
+                // the canvas along the hairline. With the project's colour, since this
+                // surface covers the window's own: the aurora is placed by the window, so
+                // the part of its arc that falls on the sidebar is drawn here.
+                WindowSurface(corners: [.layerMinXMinYCorner, .layerMinXMaxYCorner],
+                              aurora: auroraColour)
                     .ignoresSafeArea()
             }
             list
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SessionAppearanceStore.didChange)) { _ in
+            lookRevision &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+            lookRevision &+= 1
         }
         // One kind of thing in one group, so a header would be a word explaining a list that
         // explains itself. The editor's sidebar has two sections because it holds two kinds.

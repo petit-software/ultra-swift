@@ -46,6 +46,10 @@ public struct SessionAppearance: Codable, Equatable, Sendable {
 /// several ways — trailing slash from a drag, `~` from a config, a symlink from `/tmp` —
 /// and three spellings would be three icons for one project.
 public enum SessionAppearanceStore {
+    /// Posted after a project's look is written, with no object: whoever draws in a
+    /// project's colour away from its row — the window's aurora — hears it here.
+    public static let didChange = Notification.Name("SessionAppearanceStore.didChange")
+
     public static func key(forDirectory directory: String) -> String {
         "ultra.sessionAppearance." + WorkspaceDocument.canonical(directory)
     }
@@ -72,6 +76,7 @@ public enum SessionAppearanceStore {
                            defaults: UserDefaults = .standard) {
         guard let directory else { return }
         let key = key(forDirectory: directory)
+        defer { NotificationCenter.default.post(name: didChange, object: nil) }
         guard !appearance.isDefault else {
             defaults.removeObject(forKey: key)
             return

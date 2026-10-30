@@ -148,7 +148,7 @@ public struct TileStoreMenu: View {
     }
 
     public var body: some View {
-        ChromeMenuButton(symbol: "folder", help: help) {
+        ChromeMenuButton(symbol: "folder.fill", help: help) {
             [.caption(TileFactory.abbreviate(path)),
              .separator,
              .item(title: "Choose Location…", action: choose),
@@ -184,7 +184,7 @@ public struct TileFolderMenu: View {
 
     public var body: some View {
         let help = "Folder — " + TileFactory.abbreviate(context.root.path)
-        return ChromeMenuButton(symbol: "folder", help: help) {
+        return ChromeMenuButton(symbol: "folder.fill", help: help) {
             let here = context.root.standardizedFileURL.path
             let shell = context.currentDirectory().standardizedFileURL
             let project = context.projectRoot.standardizedFileURL

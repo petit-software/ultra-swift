@@ -56,6 +56,25 @@ private struct AppearanceSettings: View {
             } footer: {
                 SettingNote("Follow System changes with the Mac's own appearance.")
             }
+            Section {
+                Toggle("Aurora", isOn: prefs.flag({ Appearance.aurora }, { Appearance.aurora = $0 }))
+                LabeledContent("Strength") {
+                    HStack {
+                        Slider(value: prefs.number({ Appearance.auroraStrength },
+                                                   { Appearance.auroraStrength = $0 }),
+                               in: 0...1, step: 0.01)
+                            .frame(width: 170)
+                        Text("\(Int((Appearance.auroraStrength * 100).rounded()))%")
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 46, alignment: .trailing)
+                    }
+                }
+                .disabled(!Appearance.aurora)
+            } footer: {
+                SettingNote("A glow in the project's colour — the one its sidebar row wears — "
+                            + "low across the window, under the panes.")
+            }
             LightModeSections()
         }
         .formStyle(.grouped)

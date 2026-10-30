@@ -930,7 +930,7 @@ struct PaneKind: Identifiable, Sendable {
     static let all: [PaneKind] = [
         PaneKind(kind: .shell, title: "Shell", symbol: "apple.terminal"),
         PaneKind(kind: .agent, title: "Agent", symbol: "sparkles"),
-        PaneKind(kind: .fileTree, title: "File Tree", symbol: "folder"),
+        PaneKind(kind: .fileTree, title: "File Tree", symbol: "folder.fill"),
         PaneKind(kind: .editor, title: "Editor", symbol: "doc.text"),
         PaneKind(kind: .todo, title: "Todo", symbol: "checklist"),
         PaneKind(kind: .git, title: "Git", symbol: "arrow.trianglehead.branch"),

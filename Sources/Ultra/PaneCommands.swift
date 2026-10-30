@@ -117,7 +117,7 @@ enum PaneCommands {
     /// Session… are both this (`WorkspaceCommands.chooseFolder`); here under the name the
     /// sidebar uses, since a session IS a project, with the menu's words as keywords.
     static let openProject = AppCommand(
-        id: "project.open", title: "Open Project…", symbol: "folder",
+        id: "project.open", title: "Open Project…", symbol: "folder.fill",
         menuPath: ["File"],
         binding: KeyBinding("o", [.command, .shift]),
         keywords: ["Open Folder", "New Session", "Add Project", "Open Existing Project"],
@@ -219,7 +219,7 @@ enum PaneCommands {
     /// the toast that asks (`ProjectSetupOffers`). Dimmed when nothing is being offered.
     /// No chord: it answers a question on screen, and the palette is one ⌘K away.
     static let openSetup = AppCommand(
-        id: "session.openSetup", title: "Open Ultra Setup", symbol: "folder",
+        id: "session.openSetup", title: "Open Ultra Setup", symbol: "folder.fill",
         menuPath: ["File"],
         keywords: ["Open Project Here", "Open This Folder"],
         isEnabled: { ProjectSetupOffers.shared.offer(for: $0) != nil }) { store in
@@ -664,7 +664,7 @@ enum PaneCommands {
     /// chords nobody remembers — the palette is how these are found.
     static let folders: [AppCommand] = [
         AppCommand(id: "pane.folder.choose", title: "Set Pane Folder…",
-                   symbol: "folder", menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
+                   symbol: "folder.fill", menuPath: ["Pane", "Folder"], isEnabled: canRetargetFocused) { store in
             guard let root = ShellWorkspace.tileRoot(store.tree.focused, in: store),
                   let url = chooseTileFolder(title: "Pane Folder", directory: root) else { return }
             ShellWorkspace.setFolder(url, of: store.tree.focused, in: store)

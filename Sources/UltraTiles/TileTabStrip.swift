@@ -108,7 +108,7 @@ private struct TileTabView<ID: Hashable>: View {
                 } else {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 10))
-                        .foregroundStyle(isSelected ? Token.Colour.accent : Token.Colour.secondaryLabel)
+                        .foregroundStyle(isSelected ? Token.Colour.accentInk : Token.Colour.secondaryLabel)
                 }
             }
             .frame(width: 14, height: 14)
@@ -122,7 +122,7 @@ private struct TileTabView<ID: Hashable>: View {
 
             if tab.isDirty {
                 Circle()
-                    .fill(Token.Colour.accent)
+                    .fill(Token.Colour.accentInk)
                     .frame(width: 5, height: 5)
                     .help("Unsaved changes")
             }

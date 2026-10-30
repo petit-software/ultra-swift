@@ -213,10 +213,15 @@ public struct WindowSurface: NSViewRepresentable {
     /// against another inside the window — the session sidebar's — rounds only the corners
     /// that are the window's own, or its square edge would show as a notch.
     private let corners: CACornerMask
+    /// The project's colour for the aurora at the foot of the surface, or nil for none —
+    /// the sidebar's surface, the Agents overview, a window with no project.
+    private let aurora: NSColor?
 
     public init(corners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
-                                         .layerMinXMaxYCorner, .layerMaxXMaxYCorner]) {
+                                         .layerMinXMaxYCorner, .layerMaxXMaxYCorner],
+                aurora: NSColor? = nil) {
         self.corners = corners
+        self.aurora = aurora
     }
 
     public func makeNSView(context: Context) -> NSVisualEffectView {
@@ -224,11 +229,14 @@ public struct WindowSurface: NSViewRepresentable {
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
         view.corners = corners
+        view.auroraColour = aurora
         return view
     }
 
     public func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        (nsView as? WindowSurfaceView)?.corners = corners
+        guard let surface = nsView as? WindowSurfaceView else { return }
+        surface.corners = corners
+        surface.auroraColour = aurora
         nsView.needsLayout = true
     }
 }
@@ -240,8 +248,16 @@ final class WindowSurfaceView: NSVisualEffectView {
     /// A sublayer rather than a background colour: `NSVisualEffectView` paints its material
     /// over its own layer's background, so a tint set there would simply not be visible.
     private let tint = CALayer()
+    /// The aurora: a radial wash of the project's colour, centred on the bottom edge and
+    /// gone by the window's middle. Over the tint, under everything the window holds.
+    /// See `Appearance.aurora`.
+    private let aurora = CAGradientLayer()
     var corners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
                                  .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+    /// The project's colour, or nil for no aurora.
+    var auroraColour: NSColor? {
+        didSet { guard auroraColour != oldValue else { return }; needsLayout = true }
+    }
 
     /// Its own observer, deliberately.
     ///
@@ -283,6 +299,22 @@ final class WindowSurfaceView: NSVisualEffectView {
         tint.cornerRadius = Token.Space.windowRadius
         tint.cornerCurve = .continuous
         tint.maskedCorners = corners
+        if aurora.superlayer == nil { layer.addSublayer(aurora) }
+        // Wider than the window and centred on its bottom edge, so the glow is a low arc
+        // across the foot rather than a disc in the corner of its own frame. Unit
+        // coordinates, origin at the layer's bottom left: the centre sits on the bottom
+        // edge's midpoint and the ellipse reaches half the window up.
+        //
+        // The WINDOW's bounds, not this view's: the sidebar lays its own copy of this
+        // surface inside its column, and an arc centred on the column's foot would be a
+        // second, smaller aurora beside the first. Placed by the window, the two surfaces
+        // draw one arc between them, and the sidebar shows the part that falls on it.
+        let frame = window?.contentView.map { convert($0.bounds, from: $0) } ?? bounds
+        aurora.frame = frame.insetBy(dx: -frame.width * 0.25, dy: 0)
+        aurora.type = .radial
+        aurora.startPoint = CGPoint(x: 0.5, y: 0)
+        aurora.endPoint = CGPoint(x: 1.0, y: 0.5)
+        aurora.locations = [0, 0.45, 1]
         applyColours()
         CATransaction.commit()
         // The shadow is cast from the window's alpha, so it is recomputed whenever the
@@ -301,6 +333,16 @@ final class WindowSurfaceView: NSVisualEffectView {
     private func applyColours() {
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
             tint.backgroundColor = Token.Colour.windowTint.cgColor
+            // Off, or no project, or a look that asks for no decoration: the layer is kept
+            // but drawn with nothing.
+            // Nil is no colour at all, not clear at some strength: `.clear` is black with
+            // no alpha, and black at 45% is a shadow in the sidebar's corner.
+            let colour = auroraColour ?? .black
+            let strength = auroraColour != nil && Appearance.aurora
+                && !Token.Environment_.increaseContrast ? Appearance.auroraStrength : 0
+            aurora.colors = [colour.withAlphaComponent(strength).cgColor,
+                             colour.withAlphaComponent(strength * 0.35).cgColor,
+                             colour.withAlphaComponent(0).cgColor]
         }
     }
 

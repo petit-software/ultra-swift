@@ -268,7 +268,7 @@ final class PromptMenu {
         for path in paths {
             let insert = "@" + path
             guard seen.insert(insert).inserted else { continue }
-            items.append(PromptMenuItem(symbol: path.hasSuffix("/") ? "folder" : "doc",
+            items.append(PromptMenuItem(symbol: path.hasSuffix("/") ? "folder.fill" : "text.page.fill",
                                         title: path, detail: nil, insert: insert))
         }
         return items

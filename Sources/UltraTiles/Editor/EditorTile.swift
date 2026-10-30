@@ -62,7 +62,7 @@ public struct EditorTile: View {
         TileFooter(summary: sessions.selected.map(summary(for:)) ?? "No file",
                    truncation: .head) {
             TileFooterButton(symbol: "plus.circle", help: "New file (⌃⌘N)") { sessions.newFile() }
-            TileFooterButton(symbol: "folder", help: "Open another file") { openPanel() }
+            TileFooterButton(symbol: "folder.fill", help: "Open another file") { openPanel() }
             if let session = sessions.selected,
                case .file(let document) = session.content, !document.isBinary {
                 // A new file can be saved while it is still empty: that is how a file gets

@@ -244,7 +244,18 @@ their session too — the grid is complete or it is not an overview.
 
 ## Light mode
 
-- [x] Light mode's panes are paper, not grey: the frost's wash is white in light appearance — 90% on the focused pane, 75% on the rest, tuned in Settings ▸ Appearance — and the window's frame takes less white (30%), so panes sit lighter than the frame the way dark panes sit darker (`PaneChrome.applyBackdrop`, `Appearance.frost…TintLight`, `windowTintLight`)
+- [x] Light mode's panes are paper, not grey: the frost's wash is white in light appearance — 90% on the focused pane, 75% on the rest, tuned in Settings ▸ Appearance — and the window's frame takes 80% white (`PaneChrome.applyBackdrop`, `Appearance.frost…TintLight`, `windowTintLight`)
 - [x] The accent as ink turns over with the appearance everywhere: every glyph or word drawn in the bare accent — Stage All, the staged tick, the todo's return, the pin, the toasts' actions, the sheets' plain buttons — reads `accentInk`, so the white accent is black on a light pane (`Token.Colour.accentInk`)
 - [x] Settings ▸ Appearance: the theme picker is back — Dark, Light, Follow System — with a Light mode section of the three light-only values, Copy Values and Reset Light Mode (`AppearanceSettings`, `LightModeSections`)
 - [ ] Look at the rest in light: the command palette, the @ and / picker, the belt, the Agents overview, the chat's bubbles, Settings itself
+
+## Aurora: the project's colour, low in the window
+
+- [x] A radial wash of the selected project's tint — the colour its sidebar row wears — centred on the window's bottom edge and gone by its middle, on the window's surface under the panes and the belt, so the frosted panes carry it too; placed by the window, so the sidebar's own surface draws the part of the arc that falls on it; none on the Agents overview or under Increase Contrast (`WindowSurfaceView.aurora`, `Appearance.aurora`, `auroraStrength`, `Aurora.colour`)
+- [x] It follows the project: picking a new tint posts `SessionAppearanceStore.didChange`, and the window's surface resolves its colour again
+- [x] Settings ▸ Appearance ▸ Aurora: on by default at 45%, with a strength slider
+- [x] A belt tab under the pointer wears the selected tab's label colour, and its X is the filled circle the sidebar's row closes with (`SessionTab.label(showsClose:isLit:)`)
+- [x] An unselected belt tab's icon is grey like its name; only the selected tab's icon wears the project's tint
+- [x] A double-click anywhere on the header strip zooms, fills or minimises the window as the system's titlebar setting says, and a drag there moves it: a view of the band's own under the title, since the canvas lets every click through and AppKit's window-background rules only held for the title (`TitleBarGestures`, `NSWindow.performTitleBarDoubleClick`)
+- [x] The file tree's folder icons are the same grey as its files — they were the bare accent, a white folder on white paper — and the rest found by the same sweep are ink: the tab strip's selected icon and unsaved dot, the browser's progress line, the Git pane's status letters, a port that is ours, the customiser's Save (`FileTreeRow`, `accentInk`)
+- [x] Every folder and file glyph is the filled one — `folder.fill` and `text.page.fill` — in the tree, the @ picker, the footers, the menus and the pane kinds; the outline forms were thin at the tree's size

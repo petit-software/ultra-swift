@@ -385,7 +385,7 @@ private struct SessionTab: View {
     }
 
     var body: some View {
-        label(showsClose: isHovering && !isPlaceholder)
+        label(showsClose: isHovering && !isPlaceholder, isLit: isHovering)
             // The dragged tab's place: the same size, nothing in it. The icon and name are
             // under the pointer; showing them here as well said the tab was in two places.
             .opacity(isPlaceholder ? 0 : 1)
@@ -443,15 +443,17 @@ private struct SessionTab: View {
     }
 
     /// The icon and the name, padded to a tab's size. Shared by the tab and its drag preview,
-    /// so what is under the pointer is the tab that left the belt.
-    private func label(showsClose: Bool) -> some View {
+    /// so what is under the pointer is the tab that left the belt. Lit — under the pointer
+    /// — the name takes the full label colour the selected tab has, and the X is the
+    /// filled circle the sidebar's row closes with.
+    private func label(showsClose: Bool, isLit: Bool = false) -> some View {
         HStack(spacing: 7) {
             // One slot, two occupants: the session's icon, or — under the pointer — the X.
             // Both 16pt wide, so the name never moves as the pointer crosses the tab.
             ZStack {
                 if showsClose, canClose {
                     Button(action: close) {
-                        Image(systemName: "xmark")
+                        Image(systemName: "xmark.circle.fill")
                             .frame(width: 16, height: 16)
                             .contentShape(.rect)
                     }
@@ -459,8 +461,14 @@ private struct SessionTab: View {
                     .foregroundStyle(Token.Colour.label)
                     .help("Close session")
                 } else {
+                    // The tint on the selected tab only. An unselected tab is grey through —
+                    // icon and name alike — so the belt is one row of grey with one tab in
+                    // colour, and the colour says which, instead of eight icons each in
+                    // their own hue competing for it.
                     Image(systemName: SessionSymbols.resolved(appearance.symbol))
-                        .foregroundStyle(SessionTint(storedValue: appearance.tint).color)
+                        .foregroundStyle(isSelected
+                                         ? SessionTint(storedValue: appearance.tint).color
+                                         : Token.Colour.secondaryLabel)
                 }
             }
             .font(Token.Type_.body.weight(.semibold))
@@ -474,7 +482,7 @@ private struct SessionTab: View {
             Text(store.workspaceTitle)
                 .font(Token.Type_.body)
                 .fontWeight(.semibold)
-                .foregroundStyle(isSelected ? Token.Colour.label : Token.Colour.secondaryLabel)
+                .foregroundStyle(isSelected || isLit ? Token.Colour.label : Token.Colour.secondaryLabel)
                 .lineLimit(1)
         }
         // As wide as its name: no minimum, so a short name makes a short tab. 10 a side

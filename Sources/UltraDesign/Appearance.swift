@@ -204,7 +204,7 @@ public enum Appearance {
     /// light the wash lifts instead — the frost material alone is a mid grey, and a light
     /// mode whose panes are grey slabs on a white frame is a grey mode. The focused pane
     /// takes the most white and reads as the sheet of paper on top; the rest sit a shade
-    /// greyer, still paper, still lighter than the frame around them.
+    /// greyer, still paper. Tuned in the app and pasted back, with `windowTintLight`.
     public static var frostFocusedTintDark: CGFloat {
         get { PreferenceStore.number(key("frostFocusedTintDark"), default: 0.5, in: 0...1) }
         set { PreferenceStore.setNumber(key("frostFocusedTintDark"), newValue,
@@ -367,7 +367,7 @@ public enum Appearance {
     /// more of itself to read as a surface than black needs to read as smoke, which is why
     /// the two defaults are not the same number.
     public static var windowTintLight: CGFloat {
-        get { PreferenceStore.number(key("windowTintLight"), default: 0.30, in: 0...1) }
+        get { PreferenceStore.number(key("windowTintLight"), default: 0.80, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowTintLight"), newValue,
                                         current: windowTintLight, in: 0...1) }
     }
@@ -388,6 +388,25 @@ public enum Appearance {
             PreferenceStore.setNumber(key("windowRadius"), newValue, current: windowRadius,
                                       in: Token.Space.systemWindowRadius...44)
         }
+    }
+
+    // MARK: - Aurora
+
+    /// A glow in the project's colour, low in the window: the session's tint — the colour
+    /// its sidebar row and belt tab wear — laid as a soft radial wash across the foot of
+    /// the window's surface, under the panes and the belt. The one place the window itself
+    /// says which project it is showing, and a little light in a frame that is otherwise
+    /// one flat material. Off, the frame is the material alone.
+    public static var aurora: Bool {
+        get { PreferenceStore.flag(key("aurora"), default: true) }
+        set { PreferenceStore.setFlag(key("aurora"), newValue, current: aurora) }
+    }
+
+    /// How strong the glow is at its centre; it fades to nothing by the window's middle.
+    public static var auroraStrength: CGFloat {
+        get { PreferenceStore.number(key("auroraStrength"), default: 0.45, in: 0...1) }
+        set { PreferenceStore.setNumber(key("auroraStrength"), newValue,
+                                        current: auroraStrength, in: 0...1) }
     }
 
     // MARK: - Pane headers
@@ -429,6 +448,7 @@ public enum Appearance {
         "focusRingWidth", "focusRingStrength",
         "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",
         "headerBlurRadius", "headerTintOpacity",
+        "aurora", "auroraStrength",
     ]
 
     public static func reset() {

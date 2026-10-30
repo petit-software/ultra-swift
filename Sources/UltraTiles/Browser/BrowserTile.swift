@@ -194,7 +194,7 @@ private struct BrowserPage: View {
     private var progressLine: some View {
         GeometryReader { proxy in
             Capsule()
-                .fill(Token.Colour.accent)
+                .fill(Token.Colour.accentInk)
                 .frame(width: max(0, proxy.size.width * session.progress), height: 2)
                 .frame(maxHeight: .infinity, alignment: .bottom)
         }

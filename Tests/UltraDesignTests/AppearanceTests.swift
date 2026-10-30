@@ -35,7 +35,7 @@ struct AppearanceTests {
 
             #expect(Appearance.windowMaterial == .hudWindow)
             #expect(Appearance.windowTintDark == 0.80)
-            #expect(Appearance.windowTintLight == 0.30)
+            #expect(Appearance.windowTintLight == 0.80)
             #expect(Appearance.windowRadius == Token.Space.systemWindowRadius)
             #expect(Appearance.windowPadding == 8)
 
@@ -50,6 +50,8 @@ struct AppearanceTests {
             #expect(Appearance.frostUnfocusedTintDark == 0.25)
             #expect(Appearance.frostFocusedTintLight == 0.90)
             #expect(Appearance.frostUnfocusedTintLight == 0.75)
+            #expect(Appearance.aurora == true)
+            #expect(Appearance.auroraStrength == 0.45)
         }
     }
 
@@ -143,6 +145,8 @@ struct AppearanceTests {
             Appearance.frostUnfocusedTintDark = 0.6
             Appearance.frostFocusedTintLight = 0.3
             Appearance.frostUnfocusedTintLight = 0.6
+            Appearance.aurora = false
+            Appearance.auroraStrength = 0.9
 
             // Every key this namespace owns now holds something.
             for name in Appearance.keys {

@@ -519,7 +519,7 @@ public final class TileFactory {
 
     public static func icon(for kind: PaneRecord.Kind) -> String {
         switch kind {
-        case .fileTree: "folder"
+        case .fileTree: "folder.fill"
         case .editor: "doc.text"
         case .todo: "checklist"
         case .ports: "network"

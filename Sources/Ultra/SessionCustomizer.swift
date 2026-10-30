@@ -195,7 +195,7 @@ struct SessionCustomizer: View {
             .accessibilityLabel("Cancel")
             Button(action: commitEditing) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(canSaveDraft ? Token.Colour.accent : Token.Colour.tertiaryLabel)
+                    .foregroundStyle(canSaveDraft ? Token.Colour.accentInk : Token.Colour.tertiaryLabel)
             }
             .disabled(!canSaveDraft)
             .help("Save")

@@ -578,7 +578,7 @@ private struct ToolCallRow: View {
     private var symbol: String {
         switch call.name {
         case "read_file", "Read": "doc.text"
-        case "list_files": "folder"
+        case "list_files": "folder.fill"
         case "command", "Bash": "terminal"
         case "Edit", "Write", "MultiEdit", "NotebookEdit", "edit": "pencil"
         default: "magnifyingglass"

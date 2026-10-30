@@ -137,7 +137,7 @@ private struct ParentRow: View {
             Image(systemName: "arrow.turn.left.up")
                 .font(.system(size: ChromeIconLabel.size - 2, weight: .semibold))
                 .frame(width: 16)
-            Image(systemName: "folder")
+            Image(systemName: "folder.fill")
                 .font(.system(size: 11))
                 .frame(width: 14)
             Text("..")
@@ -169,8 +169,10 @@ private struct FileTreeRow: View {
     @State private var isHovering = false
 
     private var icon: String {
-        if row.node.isDirectory { return isExpanded ? "folder.fill" : "folder" }
-        return "doc"
+        // Filled, folder and file alike: the outline glyphs were thin at this size, and
+        // the chevron says whether a folder is open.
+        if row.node.isDirectory { return "folder.fill" }
+        return "text.page.fill"
     }
 
     var body: some View {
@@ -190,11 +192,12 @@ private struct FileTreeRow: View {
             .frame(width: 16)
             .foregroundStyle(Token.Colour.tertiaryLabel)
 
+            // Folder and file in the one grey: the chevron and the filled folder already
+            // say which is which, and a second colour for folders made the tree a column
+            // of marks competing with the names.
             Image(systemName: icon)
                 .font(.system(size: 11))
-                .foregroundStyle(row.node.isDirectory
-                                 ? Token.Colour.accent
-                                 : Token.Colour.secondaryLabel)
+                .foregroundStyle(Token.Colour.secondaryLabel)
                 .frame(width: 14)
 
             Text(row.node.name)

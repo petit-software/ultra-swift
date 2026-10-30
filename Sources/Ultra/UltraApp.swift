@@ -703,6 +703,18 @@ struct WorkspaceCommands: Commands {
     }
 }
 
+/// The window's aurora — see `Appearance.aurora` — as the colour it takes.
+enum Aurora {
+    /// The selected project's tint: nil on the Agents overview, with no session, or with
+    /// the aurora off. The window's surface and the sidebar's both ask, so they agree.
+    @MainActor
+    static func colour(sessions: SessionList, ui: UIState) -> NSColor? {
+        guard Appearance.aurora, !ui.showsAgents, let store = sessions.selected else { return nil }
+        let look = SessionLook.appearance(for: store)
+        return NSColor(SessionTint(storedValue: look.tint).color)
+    }
+}
+
 struct RootView: View {
     @Bindable var sessions: SessionList
     @Bindable var ui: UIState
@@ -716,6 +728,15 @@ struct RootView: View {
     /// The room the canvas leaves under its panes for the belt. Separate from
     /// `ui.showsTabBelt` so the two can move at different moments — see `showTabBelt`.
     @State private var beltInset: CGFloat = 0
+    /// Bumped when a project's look or the aurora setting changes, so the window's surface
+    /// is asked for its colour again. See `Aurora.colour`.
+    @State private var lookRevision = 0
+
+    /// Read through `lookRevision` so a change to the look or the setting re-resolves it.
+    private var auroraColour: NSColor? {
+        _ = lookRevision
+        return Aurora.colour(sessions: sessions, ui: ui)
+    }
 
     /// The belt's own height, the padding under it, and the gap above it, less the padding
     /// the canvas already keeps under its own panes — which is part of that gap. From the
@@ -895,8 +916,16 @@ struct RootView: View {
             if Token.Environment_.reduceTransparency {
                 Token.Colour.tileBackground
             } else {
-                WindowSurface()
+                WindowSurface(aurora: auroraColour)
             }
+        }
+        // The project's look can change under the window — its tint picked anew — and so
+        // can the aurora setting; neither is state of this view, so both are heard.
+        .onReceive(NotificationCenter.default.publisher(for: SessionAppearanceStore.didChange)) { _ in
+            lookRevision &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+            lookRevision &+= 1
         }
         .ignoresSafeArea()
             // No background behind the toolbar — the window already has one.
@@ -1222,18 +1251,24 @@ struct WindowHeaderTitle: View {
     let title: String
 
     var body: some View {
-        Text(title)
-            .font(Token.Type_.windowTitle)
-            .kerning(Token.Type_.windowTitleKerning)
-            // Greyed out: the name orients, it is not the thing being worked on.
-            .foregroundStyle(Token.Colour.secondaryLabel)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            // Room either side for the leading and trailing toolbar items in a narrow window.
-            .padding(.horizontal, 180)
+        // The band's gestures under the name, across the whole strip: a double-click
+        // anywhere on it zooms, a drag moves the window — see `TitleBarGestures`.
+        TitleBarGestures()
+            .overlay {
+                Text(title)
+                    .font(Token.Type_.windowTitle)
+                    .kerning(Token.Type_.windowTitleKerning)
+                    // Greyed out: the name orients, it is not the thing being worked on.
+                    .foregroundStyle(Token.Colour.secondaryLabel)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    // Room either side for the leading and trailing toolbar items in a
+                    // narrow window.
+                    .padding(.horizontal, 180)
+                    .allowsHitTesting(false)
+            }
             .frame(maxWidth: .infinity)
             .frame(height: Token.Space.titleBarHeight)
-            .allowsHitTesting(false)
             .accessibilityHidden(true)   // the window's own title already names it
     }
 }

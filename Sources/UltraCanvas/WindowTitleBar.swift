@@ -101,3 +101,50 @@ public struct WindowTitleBar: View {
                    actions: [WindowBarAction(id: "b", symbol: "command", help: "Command Palette") {}])
     .background(Token.Colour.tileBackground)
 }
+
+/// The titlebar's gestures, for the band of the window bar that is drawn by the content
+/// rather than by AppKit.
+///
+/// The window runs its content under a transparent titlebar, and the canvas under it
+/// lets every click through (`SplitCanvasView.hitTest`) to whatever SwiftUI put there.
+/// AppKit treats such a click as a titlebar's only by its own window-background rules,
+/// which held for the title and not for the rest of the band. This view sits across the
+/// whole band, under the title, and does the two things a titlebar does: a drag moves
+/// the window, a double-click does what System Settings says a double-click does.
+/// Nothing else — a single click is nothing, as it is on any titlebar.
+public struct TitleBarGestures: NSViewRepresentable {
+    public init() {}
+
+    public func makeNSView(context: Context) -> NSView { TitleBarGestureView() }
+    public func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class TitleBarGestureView: NSView {
+    // Handled here, by hand, so AppKit's own background-move rules — which would also act
+    // on a double-click, and twice is a zoom undone — stay out of it.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else { return }
+        if event.clickCount == 2 {
+            window.performTitleBarDoubleClick()
+        } else {
+            window.performDrag(with: event)
+        }
+    }
+}
+
+extension NSWindow {
+    /// What the system does when a titlebar is double-clicked, as System Settings ▸ Desktop
+    /// & Dock ▸ "Double-click a window's title bar to" has it: fill or zoom the window —
+    /// both are the zoom, which takes the screen's visible frame — minimise it, or
+    /// nothing. Read from the global default the setting writes; absent, the system's
+    /// own default fills.
+    public func performTitleBarDoubleClick() {
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": performMiniaturize(nil)
+        case "None": break
+        default: performZoom(nil)
+        }
+    }
+}

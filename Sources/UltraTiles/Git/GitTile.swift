@@ -151,7 +151,7 @@ public struct GitTile: View {
                                             : Token.Colour.label.opacity(0.06),
                                             in: .capsule)
                                 .foregroundStyle(worktree.isCurrent
-                                                 ? Token.Colour.accent
+                                                 ? Token.Colour.accentInk
                                                  : Token.Colour.secondaryLabel)
                                 .onTapGesture {
                                     context.injectIntoShell("cd " + shellQuoted(worktree.path))
@@ -306,7 +306,7 @@ private struct ChangeRow: View {
         case (.untracked, _): ("?", Token.Colour.tertiaryLabel)
         case (.added, _): ("A", .green)
         case (.deleted, _), (_, .deleted): ("D", .red)
-        case (.renamed, _): ("R", Token.Colour.accent)
+        case (.renamed, _): ("R", Token.Colour.accentInk)
         // Grey, not the accent: an edited file is the ORDINARY row in this list, and a
         // colour that sits on most rows stops marking anything.
         default: ("M", Token.Colour.secondaryLabel)

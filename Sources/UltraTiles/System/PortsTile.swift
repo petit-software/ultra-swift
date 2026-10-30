@@ -62,7 +62,7 @@ private struct PortRow: View {
         HStack(spacing: 8) {
             Text(String(port.port))
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(port.isOurs ? Token.Colour.accent : Token.Colour.label)
+                .foregroundStyle(port.isOurs ? Token.Colour.accentInk : Token.Colour.label)
                 .frame(minWidth: 44, alignment: .leading)
 
             Text(port.command)
