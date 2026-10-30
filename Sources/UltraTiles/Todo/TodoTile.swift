@@ -164,7 +164,7 @@ public struct TodoTile: View {
             TodoRowSlot {
                 Button(action: add) { Image(systemName: "return") }
                     .buttonStyle(.plain)
-                    .foregroundStyle(Token.Colour.accent)
+                    .foregroundStyle(Token.Colour.accentInk)
                     .help(TodoDocument.sectionDraft(draft) == nil ? "Add task" : "Add section")
                     .opacity(draft.isEmpty ? 0 : 1)
                     .disabled(draft.isEmpty)
@@ -510,7 +510,7 @@ private struct TodoRow: View {
                         // one opens the edit, one closes it — so the column keeps its meaning.
                         if isEditing {
                             Button { commitEdit(draft) } label: { Image(systemName: "return") }
-                                .foregroundStyle(Token.Colour.accent)
+                                .foregroundStyle(Token.Colour.accentInk)
                                 .help("Save task")
                                 .pointerStyle(.link)
                         } else if isHovering {
@@ -693,7 +693,7 @@ private struct TodoHeadingRow: View {
                 TodoRowSlot {
                     if isEditing {
                         Button { commitEdit(draft) } label: { Image(systemName: "return") }
-                            .foregroundStyle(Token.Colour.accent)
+                            .foregroundStyle(Token.Colour.accentInk)
                             .help("Save section")
                             .pointerStyle(.link)
                     } else {

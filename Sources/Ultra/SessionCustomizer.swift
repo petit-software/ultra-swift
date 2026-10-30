@@ -87,7 +87,7 @@ struct SessionCustomizer: View {
                 // need a plate of its own to be found.
                 Button("Reset to Default", action: reset)
                     .buttonStyle(.plain)
-                    .foregroundStyle(Token.Colour.accent)
+                    .foregroundStyle(Token.Colour.accentInk)
                     .controlSize(.large)
                 Spacer()
                 // Escape closes it, the way Escape leaves the new-project sheet. Return is
@@ -165,7 +165,7 @@ struct SessionCustomizer: View {
             Label("Add Agent", systemImage: "plus")
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Token.Colour.accent)
+        .foregroundStyle(Token.Colour.accentInk)
         .disabled(editingIndex != nil)
     }
 

@@ -137,7 +137,7 @@ struct WhatsNewSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Token.Colour.accent)
+                .foregroundStyle(Token.Colour.accentInk)
                 .controlSize(.large)
                 .focusEffectDisabled()
                 Spacer()

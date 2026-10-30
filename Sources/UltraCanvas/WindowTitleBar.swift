@@ -67,8 +67,8 @@ public struct WindowTitleBar: View {
                     .labelStyle(.titleAndIcon)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(Token.Colour.accent.opacity(0.18), in: .capsule)
-                    .foregroundStyle(Token.Colour.accent)
+                    .background(Token.Colour.accentWash, in: .capsule)
+                    .foregroundStyle(Token.Colour.accentInk)
             }
 
             Spacer(minLength: 8)

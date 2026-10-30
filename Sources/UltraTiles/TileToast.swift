@@ -115,7 +115,7 @@ struct TileToast<Actions: View>: View {
                 .fixedSize(horizontal: false, vertical: true)
             actions()
                 .buttonStyle(.plain)
-                .foregroundStyle(Token.Colour.accent)
+                .foregroundStyle(Token.Colour.accentInk)
             Button(action: dismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(Token.Colour.tertiaryLabel)

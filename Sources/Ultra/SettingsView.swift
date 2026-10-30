@@ -19,15 +19,14 @@ import UltraTiles
 /// switch came back since: General ▸ Appearance turns the panes' glass off altogether,
 /// which is not a number to tune but a material to decline.
 ///
-/// The theme picker is gone too, for now: the app is DARK. Light and Follow System are
-/// still there underneath — `Preferences.themeMode` reads them and the tests hold them —
-/// but the light look has not been tuned the way the dark one has, and a control that
-/// offers an untuned look is a control that offers a worse app. It comes back when light
-/// is worth choosing.
+/// The theme picker is back, on an Appearance tab, since the light look is being tuned:
+/// Dark, Light and Follow System, and under them the three numbers only light appearance
+/// draws with (`LightModeSections`). The dark look's numbers stay out, as above.
 struct UltraSettings: View {
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") { GeneralSettings() }
+            Tab("Appearance", systemImage: "circle.lefthalf.filled") { AppearanceSettings() }
             Tab("Terminal", systemImage: "apple.terminal") { TerminalSettings() }
             Tab("Tiles", systemImage: "square.grid.2x2") { TileSettings() }
             Tab("Agents", systemImage: "sparkles") { AgentSettings() }
@@ -39,6 +38,28 @@ struct UltraSettings: View {
             Tab("About", systemImage: "info.circle") { AboutSettings() }
         }
         .frame(width: 560)
+    }
+}
+
+/// Dark, light or the system's choice, and the light look's own numbers while it is
+/// being tuned — see `LightModeSections`.
+private struct AppearanceSettings: View {
+    @State private var prefs = PreferencesModel.shared
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Appearance", selection: prefs.theme()) {
+                    ForEach(Preferences.ThemeMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } footer: {
+                SettingNote("Follow System changes with the Mac's own appearance.")
+            }
+            LightModeSections()
+        }
+        .formStyle(.grouped)
+        .padding(.vertical, 6)
     }
 }
 
@@ -416,7 +437,7 @@ private struct AboutSettings: View {
         VStack(spacing: 10) {
             Image(systemName: "square.split.2x1")
                 .font(.system(size: 40, weight: .light))
-                .foregroundStyle(Token.Colour.accent)
+                .foregroundStyle(Token.Colour.accentInk)
                 .padding(.top, 22)
 
             Text("Ultra")

@@ -195,12 +195,16 @@ public enum Appearance {
         set { PreferenceStore.setFlag(key("frostAlwaysActive"), newValue, current: frostAlwaysActive) }
     }
 
-    /// How much black is washed over a frosted pane, by appearance and focus. The two
-    /// differ, which is what tells the focused pane from the rest besides the ring.
+    /// How much is washed over a frosted pane, by appearance and focus: black in dark,
+    /// WHITE in light. The two focus values differ, which is what tells the focused pane
+    /// from the rest besides the ring.
     ///
-    /// In dark the FOCUSED pane takes more, 50% against 25%: the one being typed into sits
-    /// deeper and steadier, and the others stay lighter, more of the window. In light it
-    /// is the other way round and slight, since a light pane is a pinned page of paper.
+    /// In dark the FOCUSED pane takes more black, 50% against 25%: the one being typed
+    /// into sits deeper and steadier, and the others stay lighter, more of the window. In
+    /// light the wash lifts instead — the frost material alone is a mid grey, and a light
+    /// mode whose panes are grey slabs on a white frame is a grey mode. The focused pane
+    /// takes the most white and reads as the sheet of paper on top; the rest sit a shade
+    /// greyer, still paper, still lighter than the frame around them.
     public static var frostFocusedTintDark: CGFloat {
         get { PreferenceStore.number(key("frostFocusedTintDark"), default: 0.5, in: 0...1) }
         set { PreferenceStore.setNumber(key("frostFocusedTintDark"), newValue,
@@ -214,13 +218,13 @@ public enum Appearance {
     }
 
     public static var frostFocusedTintLight: CGFloat {
-        get { PreferenceStore.number(key("frostFocusedTintLight"), default: 0, in: 0...1) }
+        get { PreferenceStore.number(key("frostFocusedTintLight"), default: 0.90, in: 0...1) }
         set { PreferenceStore.setNumber(key("frostFocusedTintLight"), newValue,
                                         current: frostFocusedTintLight, in: 0...1) }
     }
 
     public static var frostUnfocusedTintLight: CGFloat {
-        get { PreferenceStore.number(key("frostUnfocusedTintLight"), default: 0.05, in: 0...1) }
+        get { PreferenceStore.number(key("frostUnfocusedTintLight"), default: 0.75, in: 0...1) }
         set { PreferenceStore.setNumber(key("frostUnfocusedTintLight"), newValue,
                                         current: frostUnfocusedTintLight, in: 0...1) }
     }
@@ -363,7 +367,7 @@ public enum Appearance {
     /// more of itself to read as a surface than black needs to read as smoke, which is why
     /// the two defaults are not the same number.
     public static var windowTintLight: CGFloat {
-        get { PreferenceStore.number(key("windowTintLight"), default: 0.50, in: 0...1) }
+        get { PreferenceStore.number(key("windowTintLight"), default: 0.30, in: 0...1) }
         set { PreferenceStore.setNumber(key("windowTintLight"), newValue,
                                         current: windowTintLight, in: 0...1) }
     }
@@ -429,6 +433,16 @@ public enum Appearance {
 
     public static func reset() {
         clear()
+        PreferenceStore.post()
+    }
+
+    /// The values that only light appearance draws with: what Settings ▸ Appearance ▸ Light
+    /// mode offers, and what its Reset puts back without touching the dark look.
+    public static let lightKeys = ["frostFocusedTintLight", "frostUnfocusedTintLight", "windowTintLight"]
+
+    /// Put some of the look back, by key name — see `lightKeys`.
+    public static func reset(_ names: [String]) {
+        for name in names where keys.contains(name) { Preferences.store.removeObject(forKey: key(name)) }
         PreferenceStore.post()
     }
 

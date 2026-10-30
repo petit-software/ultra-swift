@@ -63,7 +63,14 @@ struct TileTabStrip<ID: Hashable>: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if showsDivider { Divider().overlay(Token.Colour.divider) }
+            // The browser's hairline under its address bar, so the two strips of chrome a
+            // tile can have over its content end on the same line.
+            if showsDivider {
+                Rectangle()
+                    .fill(Token.Colour.divider)
+                    .frame(height: Token.Space.hairline)
+                    .accessibilityHidden(true)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)

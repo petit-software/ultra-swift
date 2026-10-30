@@ -46,8 +46,8 @@ struct TuningSettings: View {
             } header: {
                 Text("Frosted panes (glass off)")
             } footer: {
-                SettingNote("Turn Glass panes off to see these. A wash is black laid over the "
-                            + "blur; \"light\" is for a pane pinned light.")
+                SettingNote("Turn Glass panes off to see these. A wash is laid over the blur: "
+                            + "black in dark appearance, white in light.")
             }
 
             Section("Glass panes (glass on)") {
@@ -183,4 +183,78 @@ struct TuningSettings: View {
 
 #Preview {
     TuningSettings()
+}
+
+/// The light look's numbers, for everyone: Settings ▸ Appearance ▸ Light mode.
+///
+/// The dark look was tuned against a real desktop with the Tuning tab and then the sliders
+/// came out of the app people use. The light look is being tuned now, and the three values
+/// that only light appearance draws with — the white washed over the focused pane, over
+/// the rest, and over the window's frame — are offered here so the tuning can happen in
+/// the app itself. Copy Values puts them on the clipboard in the shape `Appearance` writes
+/// its defaults in, so a look that works can be handed over as the next default.
+struct LightModeSections: View {
+    @State private var prefs = PreferencesModel.shared
+    @State private var copied = false
+
+    var body: some View {
+        Section {
+            slider("Focused pane", { Appearance.frostFocusedTintLight },
+                   { Appearance.frostFocusedTintLight = $0 })
+            slider("Other panes", { Appearance.frostUnfocusedTintLight },
+                   { Appearance.frostUnfocusedTintLight = $0 })
+            slider("Window frame", { Appearance.windowTintLight },
+                   { Appearance.windowTintLight = $0 })
+        } header: {
+            Text("Light mode")
+        } footer: {
+            SettingNote("How much white is laid over each surface. More is whiter paper; less "
+                        + "lets the frost's grey through. Seen with Appearance set to Light.")
+        }
+
+        Section {
+            HStack {
+                Button(copied ? "Copied" : "Copy Values") { copy() }
+                Spacer()
+                Button("Reset Light Mode") { Appearance.reset(Appearance.lightKeys) }
+            }
+        } footer: {
+            SettingNote("Copy Values puts the three numbers on the clipboard; paste them into "
+                        + "the chat to make them the default.")
+        }
+    }
+
+    private func slider(_ title: String, _ get: @escaping () -> CGFloat,
+                        _ set: @escaping (CGFloat) -> Void) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Slider(value: prefs.number(get, set), in: 0...1, step: 0.01)
+                    .frame(width: 170)
+                Text("\(Int((get() * 100).rounded()))%")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 46, alignment: .trailing)
+            }
+        }
+    }
+
+    static var values: String {
+        let numbers: [(String, CGFloat)] = [
+            ("frostFocusedTintLight", Appearance.frostFocusedTintLight),
+            ("frostUnfocusedTintLight", Appearance.frostUnfocusedTintLight),
+            ("windowTintLight", Appearance.windowTintLight),
+        ]
+        return "Ultra light look\n" + numbers.map { "\($0.0): \(String(format: "%.2f", Double($0.1)))" }
+            .joined(separator: "\n")
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(Self.values, forType: .string)
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
 }

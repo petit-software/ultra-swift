@@ -162,7 +162,7 @@ private struct ContextRow: View {
                     if item.isPinned {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 9))
-                            .foregroundStyle(Token.Colour.accent)
+                            .foregroundStyle(Token.Colour.accentInk)
                     }
                 }
 

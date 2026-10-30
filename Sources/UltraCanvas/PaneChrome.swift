@@ -437,10 +437,12 @@ public final class PaneContainerView: NSView {
     /// control background once, and every pane was then the same flat grey on a window that
     /// is otherwise all material.
     ///
-    /// Glass off, the wash of black over the blur differs with focus — in dark the focused
-    /// pane takes more, see `Appearance.frostFocusedTintDark`. Glass lets the panes differ
+    /// Glass off, the wash over the blur differs with focus — in dark the focused pane
+    /// takes more black, see `Appearance.frostFocusedTintDark`. Glass lets the panes differ
     /// by the lens over what is behind each; one frost is the same in every pane, and the
-    /// ring alone was carrying focus.
+    /// ring alone was carrying focus. In light the wash is WHITE: the frost material is a
+    /// mid grey on its own, and black over it made every pane a grey slab on a white
+    /// frame. White over it is paper, and the focused pane the whitest sheet.
     private func applyBackdrop() {
         // A pane pinned LIGHT is a sheet of white whatever the material: a browser on a
         // white page, framed by a frosted dark wash, was a white page in a grey frame —
@@ -457,7 +459,8 @@ public final class PaneContainerView: NSView {
             case (false, true): Appearance.frostFocusedTintLight
             case (false, false): Appearance.frostUnfocusedTintLight
             }
-            clip.layer?.backgroundColor = NSColor.black.withAlphaComponent(shade).cgColor
+            let wash: NSColor = isDark ? .black : .white
+            clip.layer?.backgroundColor = wash.withAlphaComponent(shade).cgColor
             return
         }
         let colour: NSColor = switch paneAppearance {

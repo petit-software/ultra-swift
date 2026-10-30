@@ -35,7 +35,7 @@ struct AppearanceTests {
 
             #expect(Appearance.windowMaterial == .hudWindow)
             #expect(Appearance.windowTintDark == 0.80)
-            #expect(Appearance.windowTintLight == 0.50)
+            #expect(Appearance.windowTintLight == 0.30)
             #expect(Appearance.windowRadius == Token.Space.systemWindowRadius)
             #expect(Appearance.windowPadding == 8)
 
@@ -48,8 +48,8 @@ struct AppearanceTests {
             #expect(Appearance.frostAlwaysActive == false)
             #expect(Appearance.frostFocusedTintDark == 0.5)
             #expect(Appearance.frostUnfocusedTintDark == 0.25)
-            #expect(Appearance.frostFocusedTintLight == 0)
-            #expect(Appearance.frostUnfocusedTintLight == 0.05)
+            #expect(Appearance.frostFocusedTintLight == 0.90)
+            #expect(Appearance.frostUnfocusedTintLight == 0.75)
         }
     }
 

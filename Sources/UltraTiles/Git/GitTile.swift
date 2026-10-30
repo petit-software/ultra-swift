@@ -54,7 +54,7 @@ public struct GitTile: View {
                     }
                     .buttonStyle(.plain)
                     .font(Token.Type_.monoSmall)
-                    .foregroundStyle(Token.Colour.accent)
+                    .foregroundStyle(Token.Colour.accentInk)
                 }
             }
         }
@@ -117,7 +117,7 @@ public struct GitTile: View {
                     Button("Stage All") { Task { await model.stageAll() } }
                         .buttonStyle(.plain)
                         .font(Token.Type_.monoSmall)
-                        .foregroundStyle(Token.Colour.accent)
+                        .foregroundStyle(Token.Colour.accentInk)
                 }
             }
             .font(Token.Type_.monoSmall)
@@ -331,7 +331,7 @@ private struct ChangeRow: View {
             if change.isStaged {
                 Image(systemName: "checkmark")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Token.Colour.accent)
+                    .foregroundStyle(Token.Colour.accentInk)
                     .help("Staged")
             }
 

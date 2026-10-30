@@ -241,3 +241,10 @@ their session too — the grid is complete or it is not an overview.
 - [x] `open`, `browse` and `simulator` select the agent's session in its window first — leaving the Agents overview, or another session's tab — and wait for a canvas that has never been laid out, so the pane opens on screen rather than on a home canvas nobody is looking at (`ShellWorkspace.bringForward`)
 - [x] A request that could show nothing — no editor or browser open and no room to split one — replies `{"ok":false,"error":"no room for a browser pane"}` instead of ok (`showInBrowser`, `showInEditor` return whether they showed)
 - [x] The channel's sockets are closed on exec, so a forked shell no longer holds every workspace's listening socket (`AgentChannel`, `FD_CLOEXEC`)
+
+## Light mode
+
+- [x] Light mode's panes are paper, not grey: the frost's wash is white in light appearance — 90% on the focused pane, 75% on the rest, tuned in Settings ▸ Appearance — and the window's frame takes less white (30%), so panes sit lighter than the frame the way dark panes sit darker (`PaneChrome.applyBackdrop`, `Appearance.frost…TintLight`, `windowTintLight`)
+- [x] The accent as ink turns over with the appearance everywhere: every glyph or word drawn in the bare accent — Stage All, the staged tick, the todo's return, the pin, the toasts' actions, the sheets' plain buttons — reads `accentInk`, so the white accent is black on a light pane (`Token.Colour.accentInk`)
+- [x] Settings ▸ Appearance: the theme picker is back — Dark, Light, Follow System — with a Light mode section of the three light-only values, Copy Values and Reset Light Mode (`AppearanceSettings`, `LightModeSections`)
+- [ ] Look at the rest in light: the command palette, the @ and / picker, the belt, the Agents overview, the chat's bubbles, Settings itself

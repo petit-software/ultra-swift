@@ -255,6 +255,14 @@ final class LineNumberRuler: NSRulerView {
     @available(*, unavailable)
     required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
+    /// Numbers only. `NSRulerView`'s own `draw` paints a solid column and a line down its
+    /// right edge first, a strip of control background with a border, which on a pane
+    /// that is otherwise one surface read as a second surface bolted on. The ruler is the
+    /// pane's: nothing behind the numbers, no edge.
+    override func draw(_ dirtyRect: NSRect) {
+        drawHashMarksAndLabels(in: dirtyRect)
+    }
+
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let textView,
               let layoutManager = textView.layoutManager,
