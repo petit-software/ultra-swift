@@ -235,3 +235,9 @@ their session too — the grid is complete or it is not an overview.
 - [x] The Agents demo counts its stand-ins on the sidebar row and the belt tab, as running agents would be
 - [x] Drag a visitor by its strip or its header onto another to trade places: on the overview every drop over a pane is a swap (`DropZone.swapTarget`), never an edge or root split
 - [x] Pane ▸ Swap ▸ Left / Right / Up / Down, ⇧⌥⌘ and the arrows: the keyboard path to the swap, on any canvas
+
+## Agent channel: a request shows where you are looking
+
+- [x] `open`, `browse` and `simulator` select the agent's session in its window first — leaving the Agents overview, or another session's tab — and wait for a canvas that has never been laid out, so the pane opens on screen rather than on a home canvas nobody is looking at (`ShellWorkspace.bringForward`)
+- [x] A request that could show nothing — no editor or browser open and no room to split one — replies `{"ok":false,"error":"no room for a browser pane"}` instead of ok (`showInBrowser`, `showInEditor` return whether they showed)
+- [x] The channel's sockets are closed on exec, so a forked shell no longer holds every workspace's listening socket (`AgentChannel`, `FD_CLOEXEC`)

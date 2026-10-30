@@ -452,7 +452,9 @@ enum ShellWorkspace {
     /// is the whole difference between "clicking four changed files" being four tabs and
     /// being four panes on a canvas that has room for none of them. The same rule
     /// `injectIntoShell` follows: find the pane the user is working in, and use it.
-    static func showInEditor(_ request: EditorRequest, in store: LayoutStore) {
+    /// False when nothing could show it: no editor open and no room for one.
+    @discardableResult
+    static func showInEditor(_ request: EditorRequest, in store: LayoutStore) -> Bool {
         if let target = Registry.editorTarget(in: store.workspaceID),
            let session = Registry.tiles[store.workspaceID]?.editorSessions(for: target) {
             session.open(request)
@@ -460,15 +462,17 @@ enum ShellWorkspace {
             // you have to go and find. The click came from another pane, so nothing else
             // would move the focus there.
             store.focus(target)
-            return
+            return true
         }
-        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return false }
         Registry.tiles[store.workspaceID]?.stage(open: request)
         stageTile(.editor, for: store)
         if !store.split(edge: edge) {
             stageTile(nil, for: store)
             Registry.tiles[store.workspaceID]?.stage(open: nil)
+            return false
         }
+        return true
     }
 
     /// The tabs of the editor a keystroke should act on, or nil when there is no editor.
@@ -492,20 +496,25 @@ enum ShellWorkspace {
     ///
     /// The editor's rule, for the editor's reason: a Ports row clicked three times should be
     /// one pane showing the last server, not three panes on a canvas with room for none.
-    static func showInBrowser(_ url: URL, in store: LayoutStore) {
+    ///
+    /// False when nothing could show it: no browser open and no room for one.
+    @discardableResult
+    static func showInBrowser(_ url: URL, in store: LayoutStore) -> Bool {
         if let target = Registry.browserTarget(in: store.workspaceID),
            let session = Registry.tiles[store.workspaceID]?.browserSession(for: target) {
             session.open(url)
             store.focus(target)
-            return
+            return true
         }
-        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return }
+        guard let edge = newPaneEdge(in: store) else { NSSound.beep(); return false }
         Registry.tiles[store.workspaceID]?.stage(browse: url)
         stageTile(.browser, for: store)
         if !store.split(edge: edge) {
             stageTile(nil, for: store)
             Registry.tiles[store.workspaceID]?.stage(browse: nil)
+            return false
         }
+        return true
     }
 
     /// The page a Browser command should act on: the browser pane a URL would open in.
@@ -667,7 +676,8 @@ enum ShellWorkspace {
     }
 
     /// Open a new editor pane on a specific file. Kept for callers that mean a FILE.
-    static func openEditor(on file: URL, in store: LayoutStore) {
+    @discardableResult
+    static func openEditor(on file: URL, in store: LayoutStore) -> Bool {
         showInEditor(.file(file), in: store)
     }
 
@@ -708,7 +718,8 @@ enum ShellWorkspace {
         switch resolved.verb {
         case .open:
             guard let url = resolved.url else { return .failure("open needs a path") }
-            openEditor(on: url, in: store)
+            guard let store = await bringForward(workspaceID) else { return .failure("no window open") }
+            guard openEditor(on: url, in: store) else { return .failure("no room for an editor pane") }
         case .reveal:
             guard let url = resolved.url else { return .failure("reveal needs a path") }
             NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -733,7 +744,7 @@ enum ShellWorkspace {
                 return .failure("\(device.name) (\(device.runtimeName)) is unavailable — its runtime is not installed")
             }
             // The window may have closed while the list was coming.
-            guard let store = Registry.stores[workspaceID] else { return .failure("no window open") }
+            guard let store = await bringForward(workspaceID) else { return .failure("no window open") }
             if let problem = await showSimulator(device, launching: resolved.app, in: store) {
                 return .failure(problem)
             }
@@ -743,9 +754,28 @@ enum ShellWorkspace {
                   let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
                 return .failure("\(address) is not a web address")
             }
-            showInBrowser(url, in: store)
+            guard let store = await bringForward(workspaceID) else { return .failure("no window open") }
+            guard showInBrowser(url, in: store) else { return .failure("no room for a browser pane") }
         }
         return .success
+    }
+
+    /// The session's canvas, on screen, for a request that shows something in it.
+    ///
+    /// An agent's socket belongs to its project, but the window holding that session may
+    /// be showing the Agents overview — where the agent's pane is visiting — or another
+    /// session's tab. A pane opened on the home canvas then opens where nobody is looking,
+    /// and the reply said ok. The session is selected in its window first, which is what a
+    /// click on its name does, and a canvas that has never been laid out — a session
+    /// restored into the belt and not yet visited — is given a moment to be, since a split
+    /// is measured against the canvas's bounds and refuses a canvas with none.
+    private static func bringForward(_ workspaceID: UUID) async -> LayoutStore? {
+        _ = SessionList.raise(workspaceID: workspaceID)
+        guard let store = Registry.stores[workspaceID] else { return nil }
+        for _ in 0..<20 where store.canvasBounds == .zero {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return Registry.stores[workspaceID]
     }
 
     /// Total agents running across every tab, not just one — the machine is kept awake for

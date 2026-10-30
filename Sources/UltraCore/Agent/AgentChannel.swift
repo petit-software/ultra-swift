@@ -77,6 +77,9 @@ public final class AgentChannel: @unchecked Sendable {
 
         listener = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listener >= 0 else { return false }
+        // Closed on exec: every shell the app forks would otherwise inherit the listening
+        // socket of every workspace, and hold it open after the app has let it go.
+        _ = fcntl(listener, F_SETFD, FD_CLOEXEC)
 
         var address = sockaddr_un()
         address.sun_family = sa_family_t(AF_UNIX)
@@ -117,6 +120,7 @@ public final class AgentChannel: @unchecked Sendable {
     private func acceptOne() {
         let client = accept(listener, nil, nil)
         guard client >= 0 else { return }
+        _ = fcntl(client, F_SETFD, FD_CLOEXEC)
         defer { close(client) }
 
         // One request per connection, and a hard ceiling on how much will be read. An
