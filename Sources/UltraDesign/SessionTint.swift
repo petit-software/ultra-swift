@@ -24,8 +24,8 @@ public enum SessionTint: String, CaseIterable, Identifiable, Sendable {
     public var color: Color {
         switch self {
         // Not a fixed hue: the user's own accent, which is what an uncustomised row has
-        // always been drawn in.
-        case .accent: return Token.Colour.accent
+        // always been drawn in — as a mark, so the default white accent is grey on paper.
+        case .accent: return Token.Colour.accentMark
         case .red: return Color(nsColor: .systemRed)
         case .orange: return Color(nsColor: .systemOrange)
         case .yellow: return Color(nsColor: .systemYellow)

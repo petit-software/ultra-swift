@@ -127,6 +127,28 @@ public enum Token {
             accent == .white ? Color(nsColor: whiteInkColour()) : accent.color
         }
 
+        /// The accent as a project's MARK: the colour a session's icon wears in the sidebar
+        /// and the belt until someone picks one, and the colour its aurora takes.
+        ///
+        /// Not `accentInk`. Black is right for a send arrow and too loud for a column of
+        /// project icons, every one of them uncustomised: on paper the default mark is grey,
+        /// and on dark it stays the white it has always been. A coloured accent is its own
+        /// mark on both.
+        public static var accentMark: Color { mark() }
+
+        static func mark(accent: Preferences.AccentColour = Preferences.accentColour) -> Color {
+            accent == .white ? Color(nsColor: whiteMarkColour()) : accent.color
+        }
+
+        /// DYNAMIC, so a sidebar shown light inside a dark window takes the grey. Opaque
+        /// system grey rather than `secondaryLabelColor`, because the aurora is drawn in
+        /// this colour too and a translucent one would thin it.
+        static func whiteMarkColour() -> NSColor {
+            NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .white : .systemGray
+            }
+        }
+
         /// DYNAMIC, like `whiteWashColour`, so a chat pinned light inside a dark window
         /// takes the dark ink.
         static func whiteInkColour() -> NSColor {

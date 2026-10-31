@@ -127,3 +127,35 @@ struct AccentInkTests {
         }
     }
 }
+
+/// The default project icon is drawn in the accent, and the default accent is white: on a
+/// light sidebar that was a white icon on paper. Its mark is grey there, white on dark.
+@Suite("Accent mark in both appearances")
+struct AccentMarkTests {
+
+    private func resolved(_ colour: NSColor, in appearance: NSAppearance.Name) -> NSColor {
+        var out = NSColor.clear
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            out = colour.usingColorSpace(.sRGB)!
+        }
+        return out
+    }
+
+    @Test("the white accent's mark is white on dark and grey on light")
+    func whiteGoesGrey() {
+        let dark = resolved(NSColor(Token.Colour.mark(accent: .white)), in: .darkAqua)
+        #expect(dark.redComponent > 0.99 && dark.alphaComponent == 1)
+        let light = resolved(NSColor(Token.Colour.mark(accent: .white)), in: .aqua)
+        #expect(light.redComponent > 0.3 && light.redComponent < 0.7 && light.alphaComponent == 1,
+                "a white project icon on a light sidebar cannot be seen")
+    }
+
+    @Test("a coloured accent is its own mark on both appearances")
+    func colouredIsLeftAlone() {
+        for appearance in [NSAppearance.Name.darkAqua, .aqua] {
+            let mark = resolved(NSColor(Token.Colour.mark(accent: .red)), in: appearance)
+            let accent = resolved(NSColor(Preferences.AccentColour.red.color), in: appearance)
+            #expect(mark == accent)
+        }
+    }
+}
