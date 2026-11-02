@@ -28,6 +28,7 @@ public struct CodexProvider: ChatProvider {
 
                     let thread = try await Self.openThread(for: request, on: engine)
                     threadID = thread.id
+                    await engine.serve(thread: thread.id, agentSocket: request.agentSocket)
                     if thread.isNew { continuation.yield(.session(thread.id)) }
                     let prompt = thread.isNew && request.session != nil
                         ? ChatEngine.transcript(request.messages)
@@ -110,11 +111,18 @@ public struct CodexProvider: ChatProvider {
         var start = settings
         if let system = request.system, !system.isEmpty { start["developerInstructions"] = system }
         if request.model != ChatEngine.defaultModel { start["model"] = request.model }
+        // Declared once, at the start: a resumed thread keeps the tools it began with.
+        if request.agentSocket != nil { start["dynamicTools"] = [dynamicTool(EditorTool.tool)] }
         let response = try await engine.request("thread/start", start)
         guard let id = (response["thread"] as? [String: Any])?["id"] as? String else {
             throw ChatError.malformed("thread/start returned no thread")
         }
         return Thread(id: id, isNew: true)
+    }
+
+    /// A tool the app answers itself, in the shape `thread/start` takes.
+    static func dynamicTool(_ tool: ChatTool) -> [String: Any] {
+        ["type": "function", "name": tool.name, "description": tool.description, "inputSchema": tool.schema()]
     }
 
     // MARK: - Notifications
@@ -318,6 +326,9 @@ actor CodexEngine {
     private var nextID = 1
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var listeners: [UUID: @Sendable (Notification) -> Void] = [:]
+    /// Each thread's agent socket, for the editor tool its calls are answered through.
+    /// Kept per thread, not per server: one server answers every window's chats.
+    private var agentSockets: [String: String] = [:]
 
     // MARK: Requests
 
@@ -371,6 +382,44 @@ actor CodexEngine {
         listeners[id] = nil
     }
 
+    /// Where this thread's tool calls go. Set on every turn, since a window's socket is
+    /// new each time the app starts and a thread outlives that.
+    func serve(thread: String, agentSocket: String?) {
+        agentSockets[thread] = agentSocket
+    }
+
+    // MARK: Tool calls
+
+    /// A call to a tool the app declared. Answered off the actor — opening a file waits on
+    /// the main thread — and always answered: a call left hanging hangs the turn.
+    private func answerToolCall(id: Any, params: [String: Any]) {
+        guard let idData = try? JSONSerialization.data(withJSONObject: id, options: .fragmentsAllowed) else { return }
+        let tool = params["tool"] as? String ?? ""
+        let arguments = CodexProvider.json(params["arguments"] ?? [:])
+        let socket = (params["threadId"] as? String).flatMap { agentSockets[$0] }
+        Task.detached { [weak self] in
+            let outcome: (ok: Bool, text: String)
+            if tool == EditorTool.name, let socket {
+                outcome = await EditorTool.run(ChatToolCall(id: "", name: tool, arguments: arguments), socket: socket)
+            } else {
+                outcome = (false, "Error: Ultra has no tool called \(tool) here.")
+            }
+            let result: [String: Any] = ["contentItems": [["type": "inputText", "text": outcome.text]],
+                                         "success": outcome.ok]
+            guard let resultData = try? HTTPProviderSupport.json(result) else { return }
+            await self?.reply(id: idData, result: resultData)
+        }
+    }
+
+    private func reply(id: Data, result: Data) {
+        var line = Data("{\"id\":".utf8)
+        line += id
+        line += Data(",\"result\":".utf8)
+        line += result
+        line += Data("}\n".utf8)
+        try? input?.write(contentsOf: line)
+    }
+
     // MARK: Account
 
     /// Who is signed in, or nil when nobody is.
@@ -400,7 +449,8 @@ actor CodexEngine {
         let task = Task { [self] in
             let client: [String: Any] = [
                 "clientInfo": ["name": "ultra", "title": "Ultra", "version": "1"],
-                "capabilities": ["experimentalApi": false, "requestAttestation": false],
+                // Experimental, because tools the client answers (`dynamicTools`) still are.
+                "capabilities": ["experimentalApi": true, "requestAttestation": false],
             ]
             _ = try await sendRaw("initialize", params: try HTTPProviderSupport.json(client))
             try notify("initialized", params: Data("{}".utf8))
@@ -466,6 +516,8 @@ actor CodexEngine {
                 let data = (result as? NSNull == nil ? result : nil).flatMap { try? HTTPProviderSupport.json($0) }
                 continuation.resume(returning: data ?? Data("{}".utf8))
             }
+        } else if method == "item/tool/call", let id = object["id"] {
+            answerToolCall(id: id, params: object["params"] as? [String: Any] ?? [:])
         } else if let method, let id = object["id"] {
             // Something the server wants of this client — an approval, a question. With
             // approvals off, none should come; one that does is declined rather than left

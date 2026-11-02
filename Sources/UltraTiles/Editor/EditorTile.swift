@@ -9,7 +9,15 @@ import UltraDesign
 /// See `EditorSessions`, which owns what is open.
 public struct EditorTile: View {
     @State private var sessions: EditorSessions
+    @Environment(\.colorScheme) private var colorScheme
     private let context: TileContext
+
+    /// Whether the app is wearing dark, for the sun and moon. A pane that follows the app
+    /// has the app's look as its own, and says when it changes; a pinned one does not, so
+    /// it asks the app.
+    private var appIsDark: Bool {
+        sessions.pinnedAppearance == nil ? colorScheme == .dark : PaneLook.appIsDark
+    }
 
     public init(context: TileContext, sessions: EditorSessions) {
         self.context = context
@@ -87,14 +95,13 @@ public struct EditorTile: View {
                     .help("Unsaved changes")
             }
             // The browser's and the chat's sun and moon, with the same key: a pane pinned
-            // light, or one that follows the app. Also on Pane ▸ Editor, so it is not
+            // to the other look from the app's, or one that follows the app. Also on Pane ▸ Editor, so it is not
             // pointer-only. Last, after the line, as in every footer — see
             // `TileFooterSeparator`.
             TileFooterSeparator()
-            TileFooterButton(symbol: sessions.isLight ? "moon" : "sun.max",
-                             help: sessions.isLight ? "Follow the App's Appearance (⌃⌘L)"
-                                                    : "Show Editor Light (⌃⌘L)") {
-                sessions.toggleLight()
+            TileFooterButton(symbol: PaneLook.symbol(sessions.pinnedAppearance, appIsDark: appIsDark),
+                             help: PaneLook.help(sessions.pinnedAppearance, appIsDark: appIsDark, pane: "Editor")) {
+                sessions.toggleAppearance()
             }
         }
     }

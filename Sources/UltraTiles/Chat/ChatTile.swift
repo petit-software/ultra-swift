@@ -11,7 +11,15 @@ public struct ChatTile: View {
     @Bindable private var store: ChatStore
     @State private var draft = ""
     @FocusState private var draftFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
     private let context: TileContext
+
+    /// Whether the app is wearing dark, for the sun and moon. A pane that follows the app
+    /// has the app's look as its own, and says when it changes; a pinned one does not, so
+    /// it asks the app.
+    private var appIsDark: Bool {
+        store.pinnedAppearance == nil ? colorScheme == .dark : PaneLook.appIsDark
+    }
 
     public init(context: TileContext, store: ChatStore) {
         self.context = context
@@ -105,6 +113,22 @@ private struct ChatTabStrip: View {
         // running off the bottom of the pane a line at a time.
         .defaultScrollAnchor(.bottom)
         .tileScrollBar()
+        // A link to a file goes to the editor. Left to the system, a path with no scheme —
+        // what a model writes when it links a file it made — was "The operation couldn't
+        // be completed", since there is no app for a URL that is only a path.
+        .environment(\.openURL, OpenURLAction { url in
+            if let file = ChatLink.file(for: url, root: context.projectRoot) {
+                if file.hasDirectoryPath {
+                    context.revealInFinder(file)
+                } else {
+                    context.openInEditor(.file(file))
+                }
+                return .handled
+            }
+            // A path that names nothing would fail the same way; a web link is the
+            // system's.
+            return ChatLink.isPath(url) ? .discarded : .systemAction
+        })
     }
 
     @ViewBuilder
@@ -208,14 +232,13 @@ private struct ChatTabStrip: View {
             ChromeMenuButton(symbol: "cpu", help: "Provider and model") {
                 modelEntries
             }
-            // The browser's sun and moon, with the same key: a pane pinned light, or one
-            // that follows the app. Also on Pane ▸ Chat, so it is not pointer-only. Last,
+            // The browser's sun and moon, with the same key: a pane pinned to the other
+            // look from the app's, or one that follows the app. Also on Pane ▸ Chat, so it is not pointer-only. Last,
             // after the line, as in every footer — see `TileFooterSeparator`.
             TileFooterSeparator()
-            TileFooterButton(symbol: store.isLight ? "moon" : "sun.max",
-                             help: store.isLight ? "Follow the App's Appearance (⌃⌘L)"
-                                                 : "Show Chat Light (⌃⌘L)") {
-                store.toggleLight()
+            TileFooterButton(symbol: PaneLook.symbol(store.pinnedAppearance, appIsDark: appIsDark),
+                             help: PaneLook.help(store.pinnedAppearance, appIsDark: appIsDark, pane: "Chat")) {
+                store.toggleAppearance()
             }
         }
     }
@@ -616,6 +639,41 @@ private struct ProseView: View {
     }
 }
 
+/// What a link in an answer points at on disk.
+///
+/// Models link files as bare paths, absolute or relative to the project, often with a line
+/// on the end — `a.swift:12`, `a.swift#L12` — and a `file:` URL now and then. Each is the
+/// file when it exists; nothing when it does not.
+enum ChatLink {
+    /// No scheme, or `file:`. Anything else is the web's, or another app's.
+    static func isPath(_ url: URL) -> Bool {
+        url.scheme == nil || url.isFileURL
+    }
+
+    static func file(for url: URL, root: URL) -> URL? {
+        guard isPath(url) else { return nil }
+        let path = (url.path(percentEncoded: false) as NSString).expandingTildeInPath
+        guard !path.isEmpty else { return nil }
+        // The whole path first: a name may really end in `:12`.
+        for candidate in [path, withoutLine(path)] {
+            let file = candidate.hasPrefix("/")
+                ? URL(fileURLWithPath: candidate)
+                : root.appendingPathComponent(candidate)
+            var isDirectory: ObjCBool = false
+            if FileManager.default.fileExists(atPath: file.path, isDirectory: &isDirectory) {
+                return URL(fileURLWithPath: file.standardizedFileURL.path,
+                           isDirectory: isDirectory.boolValue)
+            }
+        }
+        return nil
+    }
+
+    /// `a.swift:12` and `a.swift:12:4` are `a.swift`.
+    private static func withoutLine(_ path: String) -> String {
+        path.replacingOccurrences(of: #"(:\d+){1,2}$"#, with: "", options: .regularExpression)
+    }
+}
+
 /// A heading, as its own line in the title weight — the one place an answer is allowed
 /// to be heavier than its prose. The prompt asks the model not to use them, so this is for
 /// the answers that do anyway.
@@ -713,6 +771,6 @@ private struct CodeBlockView: View {
 
 #Preview("Chat — light", traits: .fixedLayout(width: 420, height: 520)) {
     let root = URL(fileURLWithPath: NSTemporaryDirectory())
-    ChatTile(context: .inert(root: root), store: ChatStore(root: root, isLight: true))
+    ChatTile(context: .inert(root: root), store: ChatStore(root: root, pinnedAppearance: .light))
         .preferredColorScheme(.light)
 }

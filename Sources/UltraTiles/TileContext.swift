@@ -46,6 +46,10 @@ public struct TileContext {
     /// Show a page in a browser pane: the one already open if there is one, a new one
     /// otherwise — the rule `openInEditor` follows for files.
     public var openInBrowser: (URL) -> Void
+    /// The workspace's agent socket — the one its shells get as `ULTRA_AGENT_SOCK` — or nil
+    /// when it did not start. Read when it is needed: the socket starts after the tiles'
+    /// context is made.
+    public var agentSocket: () -> String?
 
     public init(root: URL,
                 injectIntoShell: @escaping (String) -> Void = { _ in },
@@ -54,7 +58,8 @@ public struct TileContext {
                 currentDirectory: (() -> URL)? = nil,
                 openInEditor: @escaping (EditorRequest) -> Void = { _ in },
                 setRoot: @escaping (URL) -> Void = { _ in },
-                openInBrowser: @escaping (URL) -> Void = { _ in }) {
+                openInBrowser: @escaping (URL) -> Void = { _ in },
+                agentSocket: @escaping () -> String? = { nil }) {
         self.root = root
         self.projectRoot = root
         self.injectIntoShell = injectIntoShell
@@ -64,6 +69,7 @@ public struct TileContext {
         self.openInEditor = openInEditor
         self.setRoot = setRoot
         self.openInBrowser = openInBrowser
+        self.agentSocket = agentSocket
     }
 
     /// A context that does nothing, for previews and tests.

@@ -288,9 +288,16 @@ private struct ContextThumbnail: View {
     var body: some View {
         Group {
             if let preview {
+                // Clipped, not framed: a preview's corners are rounded so a page of text
+                // does not land as a hard rectangle, but there is no wash or hairline
+                // around it — the row supplies the one enclosure, and an icon needs none.
+                // The PICTURE is clipped, at the size it fits to, not the square around
+                // it: a landscape photo is shorter than the square, and corners rounded on
+                // the square fell in the empty band and left the photo's own square.
                 Image(decorative: preview, scale: displayScale)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
                 Image(nsImage: icon)
                     .resizable()
@@ -299,10 +306,6 @@ private struct ContextThumbnail: View {
             }
         }
         .frame(width: side, height: side)
-        // Clipped, not framed: a preview's corners are rounded so a page of text does not
-        // land as a hard rectangle, but there is no wash or hairline around it — the row
-        // supplies the one enclosure, and an icon needs none.
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .opacity(isMissing ? 0.4 : 1)
         .task(id: url) {
             preview = nil

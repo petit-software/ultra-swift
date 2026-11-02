@@ -378,6 +378,10 @@ public final class PaneContainerView: NSView {
         self?.paneSnapshot()
     }
     private var descriptor: PaneDescriptor
+    /// The app's look, watched so a pinned pane can repaint when it flips. A pane with a
+    /// pinned appearance is not told — its own effective appearance did not change — and
+    /// whether it needs a sheet of its own depends on the window around it.
+    private var appAppearanceObservation: NSKeyValueObservation?
     /// What this pane currently is, so its own kind is not offered as a change.
     private var kind: PaneRecord.Kind?
     private var actions: PaneActions
@@ -427,8 +431,11 @@ public final class PaneContainerView: NSView {
     /// A pane pinned LIGHT is solid white. The glass under every pane is tinted by the
     /// window behind it, and in a dark window light glass is grey — a white page framed in
     /// grey chrome, which is not what "light" was asked to mean. So a light pane paints an
-    /// opaque sheet of paper, whatever the opacity setting says. A pane pinned dark keeps
-    /// the window's own glass, which is already dark.
+    /// opaque sheet of paper, whatever the opacity setting says. A pane pinned DARK in a
+    /// dark window keeps the window's own glass, which is already dark; in a light window
+    /// that glass is light, and the dark theme's surface is fully transparent, so the
+    /// pane came out a grey sheet with light text on it. There it paints a dark sheet,
+    /// the browser's own dark under-page colour, for the same reason light paints white.
     ///
     /// With the glass turned off (`Appearance.paneGlass`) the pane is frosted: the clip sits
     /// on `frost`, which blurs what is behind it, and paints no sheet of its own
@@ -451,6 +458,10 @@ public final class PaneContainerView: NSView {
             clip.layer?.backgroundColor = NSColor.white.cgColor
             return
         }
+        if paneAppearance == .dark, windowIsDark == false {
+            clip.layer?.backgroundColor = NSColor(white: 0.1, alpha: 1).cgColor
+            return
+        }
         guard Appearance.paneGlass else {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let shade = switch (isDark, showsFocus) {
@@ -470,6 +481,19 @@ public final class PaneContainerView: NSView {
         case nil: NSColor(theme.background).withAlphaComponent(theme.backgroundOpacity)
         }
         clip.layer?.backgroundColor = colour.cgColor
+    }
+
+    /// The look of the window the pane sits in — not the pane's own, which a pin overrides.
+    /// Nil before the pane is in a window: there is nothing yet to stand apart from, and
+    /// `viewDidMoveToWindow` asks again.
+    private var windowIsDark: Bool? {
+        window.map { $0.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // Built before it had a window, the backdrop was chosen against the app's look.
+        applyBackdrop()
     }
 
     /// The pane's surface: the clip inside the glass, or — glass off — the clip on `frost`,
@@ -646,6 +670,9 @@ public final class PaneContainerView: NSView {
 
         applyBackdrop()
         applyAppearance()
+        appAppearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.applyBackdrop() }
+        }
 
         header.focusRingType = .none
         addSubview(glass)
@@ -825,7 +852,12 @@ public final class PaneContainerView: NSView {
     }
 
     /// Re-read the accent and repaint. See `PaneSurfaceStore.refreshChrome`.
-    public func refreshChrome() { refresh() }
+    public func refreshChrome() {
+        // The backdrop too: a pinned pane's sheet depends on the window's look, and the
+        // app's appearance setting is one of the writes that lands here.
+        applyBackdrop()
+        refresh()
+    }
 
     /// Follow System flipped, or the app repinned itself. Layer colours were resolved once
     /// against the old appearance and will not re-resolve on their own.

@@ -98,7 +98,8 @@ enum ShellWorkspace {
             openInBrowser: { url in
                 guard let store = Registry.stores[workspaceID] else { return }
                 showInBrowser(url, in: store)
-            }),
+            },
+            agentSocket: { [weak factory] in factory?.agentSocketPath }),
             restoring: records)
 
         let store = LayoutStore(tree: document?.tree ?? LayoutTree(single: PaneID()),

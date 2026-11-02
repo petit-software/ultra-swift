@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import UltraCanvas
+import UltraChat
 import UltraCore
 import UltraTerminal
 import UltraDesign
@@ -33,7 +34,21 @@ extension FocusedValues {
     }
 }
 
+/// The executable's way in. Usually the app; started by a chat's Claude Code with
+/// `EditorTool.serverFlag`, the editor's MCP server instead — on stdio, with no window, no
+/// Dock icon and none of the app's setup, which is why the choice is made before `UltraApp`
+/// is so much as initialised.
 @main
+enum UltraMain {
+    static func main() {
+        let arguments = CommandLine.arguments
+        if let flag = arguments.firstIndex(of: EditorTool.serverFlag), flag + 1 < arguments.count {
+            EditorMCPServer.run(socket: arguments[flag + 1])
+        }
+        UltraApp.main()
+    }
+}
+
 struct UltraApp: App {
     static let workspaceWindowID = "ultra.workspace"
     /// Finder's Open With ▸ Ultra, a drop on the Dock icon, `open -a Ultra notes.md`.

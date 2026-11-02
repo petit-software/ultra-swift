@@ -69,6 +69,29 @@ struct PaneAppearanceTests {
         #expect(colour.brightnessComponent < 0.3)
     } }
 
+    /// The editor's or chat's switch in a light app pins the pane dark. Under the light
+    /// window the dark theme's clear surface was the light glass — grey, with light text.
+    @Test("a pane pinned dark in a light window is an opaque dark sheet; in a dark window it is glass",
+          arguments: [true, false])
+    func pinnedDarkInLightWindow(_ glass: Bool) throws { try withGlass(glass) {
+        let store = store(appearance: .dark)
+        let pane = store.surfaces.surface(for: try #require(store.tree.paneIDs.first))
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView?.addSubview(pane)
+        let sheet = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+        #expect(sheet.alphaComponent == 1)
+        #expect(sheet.brightnessComponent < 0.15)
+
+        // The window going dark is told to the app, not to a pinned pane; a preference
+        // write repaints it, and then it is the dark window's glass again.
+        window.appearance = NSAppearance(named: .darkAqua)
+        pane.refreshChrome()
+        let glassy = try #require(backdrop(pane)?.usingColorSpace(.sRGB))
+        #expect(glassy.alphaComponent < 1)
+    } }
+
     @Test("glass off, a pane pinned light is still a sheet of white")
     func pinnedLightWithoutGlass() throws { try withGlass(false) {
         let store = store(appearance: .light)

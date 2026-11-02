@@ -175,7 +175,7 @@ public final class TileFactory {
             view = NSHostingView(rootView: FileTreeTile(context: paneContext))
         case .editor:
             // The sessions outlive the view: a pane rebuilt for any reason keeps what is open.
-            let open = sessions[paneID] ?? EditorSessions(isLight: records[paneID]?.appearance == .light)
+            let open = sessions[paneID] ?? EditorSessions(pinnedAppearance: records[paneID]?.appearance)
             sessions[paneID] = open
             // Deaf while the pane is being built. The record this returns already says what
             // is selected, and announcing it now would persist the layout from INSIDE the
@@ -196,7 +196,7 @@ public final class TileFactory {
             }
             // Weak on both sides: the closure is held by `open`, and a strong `open` in it
             // would hold the sessions alive past the pane.
-            open.onLightChange = { [weak self, weak open] in
+            open.onAppearanceChange = { [weak self, weak open] in
                 self?.noteEditorSelection(paneID, path: open?.selected?.path, root: root)
             }
             view = NSHostingView(rootView: EditorTile(context: paneContext, sessions: open))
@@ -210,7 +210,7 @@ public final class TileFactory {
                 view.setAccessibilityLabel(Self.title(for: kind, root: root))
                 record = Self.record(for: kind, root: root)
             }
-            record.appearance = open.isLight ? .light : nil
+            record.appearance = open.pinnedAppearance
             records[paneID] = record
             hosts[paneID] = view
             return (view, record)
@@ -235,15 +235,16 @@ public final class TileFactory {
             let store = chats[paneID] ?? ChatStore(
                 root: projectRoot,
                 conversationID: records[paneID]?.command.flatMap(UUID.init(uuidString:)),
-                isLight: records[paneID]?.appearance == .light)
+                pinnedAppearance: records[paneID]?.appearance)
             chats[paneID] = store
             store.onChange = { [weak self] conversation in
                 self?.noteChat(paneID, conversation, root: projectRoot)
             }
+            store.agentSocket = context.agentSocket
             view = NSHostingView(rootView: ChatTile(context: paneContext, store: store))
             view.setAccessibilityLabel("Chat")
             hosts[paneID] = view
-            let record = Self.chatRecord(for: store.current, isLight: store.isLight, root: projectRoot)
+            let record = Self.chatRecord(for: store.current, appearance: store.pinnedAppearance, root: projectRoot)
             records[paneID] = record
             return (view, record)
         case .browser:
@@ -386,7 +387,7 @@ public final class TileFactory {
     /// Keep a chat pane's header on the model it is talking to, and its record on the
     /// conversation it is showing, so a restored workspace reopens the same thread.
     private func noteChat(_ paneID: PaneID, _ conversation: ChatConversation, root: URL) {
-        let record = Self.chatRecord(for: conversation, isLight: chats[paneID]?.isLight ?? false,
+        let record = Self.chatRecord(for: conversation, appearance: chats[paneID]?.pinnedAppearance,
                                      root: root)
         guard records[paneID] != record else { return }
         records[paneID] = record
@@ -395,16 +396,17 @@ public final class TileFactory {
 
     /// `command` carries the conversation id, the way it carries an editor's open file.
     ///
-    /// A chat shown light is the PANE's appearance, the way a browser's page mode is: the
-    /// canvas paints the whole pane white to match, and the setting is saved with the pane.
+    /// A chat's pinned look is the PANE's appearance, the way a browser's page mode is: the
+    /// canvas paints the whole pane to match, and the setting is saved with the pane.
     /// Unlike a browser, which is always pinned one way or the other, a chat that is not
-    /// pinned light follows the app, so the record carries nil.
-    public static func chatRecord(for conversation: ChatConversation, isLight: Bool = false,
+    /// pinned follows the app, so the record carries nil.
+    public static func chatRecord(for conversation: ChatConversation,
+                                  appearance: PaneRecord.Appearance? = nil,
                                   root: URL) -> PaneRecord {
         PaneRecord(kind: .chat, title: "Chat", subtitle: conversation.model,
                    icon: icon(for: .chat), cwd: root.path,
                    command: conversation.messages.isEmpty ? nil : conversation.id.uuidString,
-                   appearance: isLight ? .light : nil)
+                   appearance: appearance)
     }
 
     /// Keep a pane's header on the tab that is showing.
@@ -424,7 +426,7 @@ public final class TileFactory {
         }
         // The pane's look rides with every record it writes, the way the chat's does:
         // switching tabs must not drop a pane back to following the app.
-        record.appearance = sessions[paneID]?.isLight == true ? .light : nil
+        record.appearance = sessions[paneID]?.pinnedAppearance
         records[paneID] = record
         onRecordChange?(paneID, record)
     }

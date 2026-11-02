@@ -26,8 +26,13 @@ public struct ClaudeCodeProvider: ChatProvider {
 
     /// The command line, in the shape the headless mode documents. Public so a test can
     /// read it. The prompt goes on stdin, so no flag can swallow it.
+    ///
+    /// `editor` is the app's MCP server for `EditorTool`: the executable that serves it and
+    /// the socket it passes calls to. Nil, the chat has no editor to open files in.
     public static func arguments(model: String, system: String?, session: String,
-                                 resume: Bool) -> [String] {
+                                 resume: Bool,
+                                 editor: (executable: String, socket: String)? = nil) -> [String] {
+        let allowed = webTools + (editor == nil ? [] : [EditorTool.claudeName])
         var arguments = [
             "-p", "--verbose",
             "--output-format", "stream-json", "--include-partial-messages",
@@ -38,12 +43,22 @@ public struct ClaudeCodeProvider: ChatProvider {
             "--permission-mode", "acceptEdits",
             // One argument, comma-separated: the flag takes a list, and a list left open
             // would take whatever came after it.
-            "--allowedTools", webTools.joined(separator: ","),
+            "--allowedTools", allowed.joined(separator: ","),
         ]
+        // The one MCP server a chat gets is the app's own, so it can open the editor.
+        if let editor {
+            arguments += ["--mcp-config", EditorTool.mcpConfig(executable: editor.executable, socket: editor.socket)]
+        }
         if model != ChatEngine.defaultModel { arguments += ["--model", model] }
         if let system, !system.isEmpty { arguments += ["--append-system-prompt", system] }
         arguments += resume ? ["--resume", session] : ["--session-id", session]
         return arguments
+    }
+
+    /// The editor's MCP server, when the chat has a socket and the app an executable.
+    static func editor(for request: ChatRequest) -> (executable: String, socket: String)? {
+        guard let socket = request.agentSocket, let executable = EditorTool.executable else { return nil }
+        return (executable, socket)
     }
 
     // MARK: - Stream
@@ -98,7 +113,8 @@ public struct ClaudeCodeProvider: ChatProvider {
         let process = Process()
         process.executableURL = executable
         process.arguments = Self.arguments(model: request.model, system: request.system,
-                                           session: session, resume: resume)
+                                           session: session, resume: resume,
+                                           editor: Self.editor(for: request))
         process.environment = Subprocess.environment()
         process.currentDirectoryURL = request.workingDirectory
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()

@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import UltraChat
+import UltraCore
 
 /// One pane's chat: the conversation on screen, the others on disk, and the answer that
 /// is arriving.
@@ -36,12 +37,17 @@ public final class ChatStore {
     /// saved with it, the way a browser pane's page mode is: a transcript reads better on
     /// white for some people, and that is a choice about this pane, not the window.
     ///
-    /// Off — the default — follows the app, so a chat in a light window is light anyway.
-    public private(set) var isLight: Bool
+    /// The other look from the app's when pinned — see `PaneLook` — and nil, the default,
+    /// to follow the app.
+    public private(set) var pinnedAppearance: PaneRecord.Appearance?
 
     /// The header follows the conversation: its title, and the model it is on. Also fired
     /// when the pane's look changes, since the record carries that too.
     public var onChange: ((ChatConversation) -> Void)?
+
+    /// The workspace's agent socket, read on each send: through it a chat opens files in
+    /// the editor (`EditorTool`). Nil until the workspace hands one over — a preview, a test.
+    public var agentSocket: () -> String? = { nil }
 
     private let archive: ChatArchive
     private let root: URL
@@ -50,11 +56,11 @@ public final class ChatStore {
     private let toolbox: any ChatToolbox
     private var task: Task<Void, Never>?
 
-    public init(root: URL, conversationID: UUID? = nil, isLight: Bool = false,
+    public init(root: URL, conversationID: UUID? = nil, pinnedAppearance: PaneRecord.Appearance? = nil,
                 toolbox: (any ChatToolbox)? = nil,
                 makeProvider: @escaping (ChatProviderID) -> any ChatProvider = ChatCredentials.provider(for:)) {
         self.root = root
-        self.isLight = isLight
+        self.pinnedAppearance = pinnedAppearance
         self.archive = ChatArchive(root: root)
         self.toolbox = toolbox ?? ProjectFiles(root: root)
         self.makeProvider = makeProvider
@@ -169,16 +175,19 @@ public final class ChatStore {
 
     // MARK: - Appearance
 
-    /// Pin the pane light, or let it follow the app again. Not written to the conversation:
-    /// the look belongs to the pane, and the same thread opened in another pane keeps that
-    /// pane's look.
-    public func setLight(_ light: Bool) {
-        guard light != isLight else { return }
-        isLight = light
+    /// Pin the pane to a look, or let it follow the app again with nil. Not written to the
+    /// conversation: the look belongs to the pane, and the same thread opened in another
+    /// pane keeps that pane's look.
+    public func setPinnedAppearance(_ appearance: PaneRecord.Appearance?) {
+        guard appearance != pinnedAppearance else { return }
+        pinnedAppearance = appearance
         onChange?(current)
     }
 
-    public func toggleLight() { setLight(!isLight) }
+    /// The sun and moon: the other look from the app's, or back to following it.
+    public func toggleAppearance(appIsDark: Bool = PaneLook.appIsDark) {
+        setPinnedAppearance(PaneLook.toggled(pinnedAppearance, appIsDark: appIsDark))
+    }
 
     /// The last answer on screen, whole, for Pane ▸ Chat ▸ Copy Last Answer. Nil while it
     /// is still arriving — half an answer on the clipboard is a paste that surprises — and
@@ -231,12 +240,15 @@ public final class ChatStore {
         save()
         onChange?(current)
 
+        let socket = agentSocket()
         let request = ChatRequest(model: current.model,
-                                  system: Self.systemPrompt(root: root, provider: current.provider),
+                                  system: Self.systemPrompt(root: root, provider: current.provider,
+                                                            editor: socket != nil),
                                   messages: Array(current.messages.dropLast()),
-                                  toolbox: toolbox,
+                                  toolbox: socket.map { EditorToolbox(base: toolbox, socket: $0) } ?? toolbox,
                                   workingDirectory: root,
-                                  session: current.engineSession)
+                                  session: current.engineSession,
+                                  agentSocket: socket)
         let provider = makeProvider(current.provider)
         let conversationID = current.id
         isStreaming = true
@@ -400,7 +412,7 @@ public final class ChatStore {
 
     /// What every model is told before the conversation. An engine brings its own tools
     /// and is told only what the chat is for; the rest are told about ours.
-    static func systemPrompt(root: URL, provider: ChatProviderID = .apple) -> String {
+    static func systemPrompt(root: URL, provider: ChatProviderID = .apple, editor: Bool = false) -> String {
         let common = """
         You are a coding assistant inside Ultra, a macOS terminal for working alongside \
         agent command-line tools. The user is working in the project folder \(root.path). \
@@ -408,7 +420,11 @@ public final class ChatStore {
         because the user can send a block straight to their terminal. Write plain prose: no \
         headings, and nothing in bold — a name, a flag or a path goes in backticks instead. \
         When you have several things to list, use a bulleted list, one item per line.
-        """
+        """ + (editor ? " " + """
+        When the user asks to see or open a file, open it in their editor with the \
+        open_in_editor tool. The agent socket a project's instructions may mention \
+        (ULTRA_AGENT_SOCK) is for the terminal's agents and is not reachable from this chat.
+        """ : "")
         if provider.isEngine {
             return common + " " + """
             Read the code a question is about before answering it, rather than guessing. \
@@ -419,7 +435,7 @@ public final class ChatStore {
         return common + " " + """
         You can look at the project with the list_files, find_files, read_file and \
         search_files tools: read the code a question is about before answering it, rather \
-        than guessing. The tools only read; you cannot change files or run commands.
+        than guessing. You cannot change files or run commands.
         """
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import UltraCore
 
 /// What the editor has been asked to show.
 ///
@@ -119,27 +120,31 @@ public final class EditorSessions {
     /// it is showing rather than the word "Editor" over four different documents.
     @ObservationIgnored public var onSelectionChange: ((String?) -> Void)?
 
-    /// Whether the pane is pinned light. The browser's and the chat's flag, for the editor:
-    /// a page of prose reads better light to some eyes whatever the terminal beside it is
-    /// wearing. The PANE's look, saved with the pane (`PaneRecord.appearance`) and never
-    /// with a file — the same file opened in another editor keeps that pane's look.
-    public private(set) var isLight: Bool
+    /// The look the pane is pinned to, or nil to follow the app. The chat's switch, for the
+    /// editor: a page of prose reads better in the other look to some eyes, whatever the
+    /// terminal beside it is wearing — see `PaneLook`. The PANE's look, saved with the pane
+    /// (`PaneRecord.appearance`) and never with a file — the same file opened in another
+    /// editor keeps that pane's look.
+    public private(set) var pinnedAppearance: PaneRecord.Appearance?
     /// The look changed: the pane's record should follow, so a restored pane comes back
     /// as it was left.
-    @ObservationIgnored public var onLightChange: (() -> Void)?
+    @ObservationIgnored public var onAppearanceChange: (() -> Void)?
 
-    public init(isLight: Bool = false) {
-        self.isLight = isLight
+    public init(pinnedAppearance: PaneRecord.Appearance? = nil) {
+        self.pinnedAppearance = pinnedAppearance
     }
 
-    /// Pin the pane light, or let it follow the app again.
-    public func setLight(_ light: Bool) {
-        guard light != isLight else { return }
-        isLight = light
-        onLightChange?()
+    /// Pin the pane to a look, or let it follow the app again with nil.
+    public func setPinnedAppearance(_ appearance: PaneRecord.Appearance?) {
+        guard appearance != pinnedAppearance else { return }
+        pinnedAppearance = appearance
+        onAppearanceChange?()
     }
 
-    public func toggleLight() { setLight(!isLight) }
+    /// The sun and moon: the other look from the app's, or back to following it.
+    public func toggleAppearance(appIsDark: Bool = PaneLook.appIsDark) {
+        setPinnedAppearance(PaneLook.toggled(pinnedAppearance, appIsDark: appIsDark))
+    }
 
     public var selected: EditorSession? {
         sessions.first { $0.id == selectedID }

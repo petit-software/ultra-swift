@@ -293,11 +293,11 @@ enum PaneCommands {
         // ⌃⌘L, the browser's key for the same thing. The two share it on purpose: one key
         // for "this pane, light or not", and the menu fires whichever is enabled — this one
         // only with a chat focused, the browser's whenever a browser pane exists.
-        AppCommand(id: "chat.toggleLight", title: "Toggle Light Chat", symbol: "sun.max",
+        AppCommand(id: "chat.toggleLight", title: "Toggle Chat Appearance", symbol: "circle.lefthalf.filled",
                    menuPath: ["Pane", "Chat"],
                    binding: KeyBinding("l", [.command, .control]),
                    isEnabled: { ShellWorkspace.chatStore(in: $0) != nil }) { store in
-            ShellWorkspace.chatStore(in: store)?.toggleLight()
+            ShellWorkspace.chatStore(in: store)?.toggleAppearance()
         },
     ]
 
@@ -589,11 +589,11 @@ enum PaneCommands {
         // ⌃⌘L, the browser's and the chat's key for the same thing, shared on purpose: one
         // key for "this pane, light or not". Like the chat's, this one is enabled only
         // with an editor FOCUSED, so the menu fires the one for the pane in hand.
-        AppCommand(id: "editor.toggleLight", title: "Toggle Light Editor", symbol: "sun.max",
+        AppCommand(id: "editor.toggleLight", title: "Toggle Editor Appearance", symbol: "circle.lefthalf.filled",
                    menuPath: ["Pane", "Editor"],
                    binding: KeyBinding("l", [.command, .control]),
                    isEnabled: { ShellWorkspace.focusedEditorSessions(in: $0) != nil }) { store in
-            ShellWorkspace.focusedEditorSessions(in: store)?.toggleLight()
+            ShellWorkspace.focusedEditorSessions(in: store)?.toggleAppearance()
         },
         // ⌃⌘R: a Markdown file's page or its text. Enabled only with a Markdown file
         // showing in the focused editor, the one file kind that has both.

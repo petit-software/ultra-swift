@@ -100,9 +100,10 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
 /// What a provider is asked for: the system prompt, the history, the model to use, and
 /// the tools the model may call on the way to its answer.
 ///
-/// An engine reads two more things: where the project is, which is where it runs and
-/// what it may read, and its own id for the conversation, which it resumes rather than
-/// being told the history again.
+/// An engine reads three more things: where the project is, which is where it runs and
+/// what it may read; its own id for the conversation, which it resumes rather than being
+/// told the history again; and the app's agent socket, through which it opens files in the
+/// editor — see `EditorTool`.
 public struct ChatRequest: Sendable, Equatable {
     public var model: String
     public var system: String?
@@ -110,16 +111,20 @@ public struct ChatRequest: Sendable, Equatable {
     public var toolbox: (any ChatToolbox)?
     public var workingDirectory: URL?
     public var session: String?
+    /// Nil where there is no editor to open a file in: a preview, a test, a session whose
+    /// socket did not start.
+    public var agentSocket: String?
 
     public init(model: String, system: String? = nil, messages: [ChatMessage],
                 toolbox: (any ChatToolbox)? = nil, workingDirectory: URL? = nil,
-                session: String? = nil) {
+                session: String? = nil, agentSocket: String? = nil) {
         self.model = model
         self.system = system
         self.messages = messages
         self.toolbox = toolbox
         self.workingDirectory = workingDirectory
         self.session = session
+        self.agentSocket = agentSocket
     }
 
     public var tools: [ChatTool] { toolbox?.tools ?? [] }
@@ -129,7 +134,7 @@ public struct ChatRequest: Sendable, Equatable {
     public static func == (lhs: ChatRequest, rhs: ChatRequest) -> Bool {
         lhs.model == rhs.model && lhs.system == rhs.system && lhs.messages == rhs.messages
             && lhs.tools == rhs.tools && lhs.workingDirectory == rhs.workingDirectory
-            && lhs.session == rhs.session
+            && lhs.session == rhs.session && lhs.agentSocket == rhs.agentSocket
     }
 }
 

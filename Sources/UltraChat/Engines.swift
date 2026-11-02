@@ -169,6 +169,8 @@ public enum ChatEngine: String, Sendable, CaseIterable, Identifiable {
         case "edit":
             let paths = (call.argumentValues["paths"] as? [String] ?? []).map(shortPath)
             return "Edit \(paths.joined(separator: ", "))"
+        case EditorTool.name, EditorTool.claudeName:
+            return "Open \(shortPath(call.string("path") ?? "")) in the editor"
         default:
             return nil
         }
