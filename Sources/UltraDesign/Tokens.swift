@@ -230,6 +230,25 @@ public enum Token {
             Color(nsColor: onAccentColour(NSColor(accent)))
         }
 
+        /// The accent as a solid FILL: a sheet's one filled button — Done, Create.
+        ///
+        /// `accent` itself is white by default, and a white capsule on a light sheet is not
+        /// a button, it is a word floating in the corner. So the white accent fills the way
+        /// it inks: white on dark, black on light. A coloured accent is its own fill.
+        public static var accentFill: Color { ink() }
+
+        /// The label that reads on `accentFill`. DYNAMIC on the white accent, the inverse of
+        /// the fill — black on the white capsule, white on the black one — and the luminance
+        /// rule of `onAccent` for every other accent.
+        public static var onAccentFill: Color { onFill() }
+
+        static func onFill(accent: Preferences.AccentColour = Preferences.accentColour) -> Color {
+            guard accent == .white else { return Color(nsColor: onAccentColour(NSColor(accent.color))) }
+            return Color(nsColor: NSColor(name: nil) { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .black : .white
+            })
+        }
+
         /// Split out so a test can hold the rule without a preference or a screen.
         static func onAccentColour(_ fill: NSColor) -> NSColor {
             guard let srgb = fill.usingColorSpace(.sRGB) else { return .white }

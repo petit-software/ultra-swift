@@ -192,6 +192,18 @@ struct TerminalPaletteTests {
         let ratio = (max(background, foreground) + 0.05) / (min(background, foreground) + 0.05)
         #expect(ratio >= 4.5, "\(theme.name) foreground contrast is \(ratio), below WCAG AA")
     }
+
+    /// The cells paint no background, so glyphs land on a clear layer, and CoreText's
+    /// smoothing on a clear layer haloes dark text: the light theme read as outlined letters.
+    @Test("font smoothing is on for a dark theme and off for a light one")
+    @MainActor
+    func smoothingFollowsTheme() {
+        let view = ShellTerminalView(spec: ShellSpec())
+        view.apply(theme: .light)
+        #expect(view.fontSmoothing == false)
+        view.apply(theme: .dark)
+        #expect(view.fontSmoothing == true)
+    }
 }
 
 @Suite("OSC 7 working directory")

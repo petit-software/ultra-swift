@@ -115,9 +115,16 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    /// The overview, in the window that was in front — never a new window while one is
+    /// open. With every window closed, the window this opens comes up on the overview
+    /// (`WorkspaceModel.opensAgents`): there is no list to open it in until that window has
+    /// been made, so asking straight after `openWorkspace` found none and did nothing.
     @objc private func showAgents(_ sender: Any?) {
-        openUltra(sender)
-        guard let list = SessionList.anyShowing else { return }
+        guard let list = raiseWindows() else {
+            WorkspaceModel.opensAgents = true
+            openWorkspace()
+            return
+        }
         AgentsOverview.shared.open(in: list)
     }
 
@@ -136,18 +143,25 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// backgrounded, minimised, or closed — it is a no-op, so the item was a click that
     /// does nothing.
     @objc private func openUltra(_ sender: Any?) {
+        // Every window closed: AppKit cannot bring a closed scene back, only SwiftUI can.
+        if raiseWindows() == nil { openWorkspace() }
+    }
+
+    /// Activate, and bring every open workspace window forward, the one that was in front
+    /// last so it stays in front. Returns that window's list; nil when there is no window.
+    ///
+    /// By LIST, not by `ShellWorkspace.Registry.windows`: the registry maps projects to
+    /// windows, so a window holding no project — its last one closed, or only the Agents
+    /// overview up — was invisible to it, and the item opened a second window beside it.
+    private func raiseWindows() -> SessionList? {
         NSApp.activate(ignoringOtherApps: true)
-        var raised = false
-        // Registry entries outlive their windows (a strong reference is kept), so only
-        // touch windows the app still has; the rest are closed scenes to recreate.
-        for window in ShellWorkspace.Registry.windows.values
-            where NSApp.windows.contains(window) {
+        let lists = SessionList.showingFrontmostFirst
+        for list in lists.reversed() {
+            guard let window = list.window else { continue }
             if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
-            raised = true
         }
-        // Every window closed: AppKit cannot bring a closed scene back, only SwiftUI can.
-        if !raised { openWorkspace() }
+        return lists.first
     }
 
     /// The mark, as a template image.

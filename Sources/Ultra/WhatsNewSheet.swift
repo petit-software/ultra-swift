@@ -144,12 +144,12 @@ struct WhatsNewSheet: View {
                 Button {
                     dismiss()
                 } label: {
-                    Text("Done").foregroundStyle(Token.Colour.onAccent)
+                    Text("Done").foregroundStyle(Token.Colour.onAccentFill)
                 }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
                 .controlSize(.large)
-                .tint(Token.Colour.accent)
+                .tint(Token.Colour.accentFill)
                 .keyboardShortcut(.defaultAction)
                 .focusEffectDisabled()
             }

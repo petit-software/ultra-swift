@@ -261,7 +261,7 @@ struct NewProjectSheet: View {
                     .buttonStyle(.borderedProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.large)
-                    .tint(Token.Colour.accent)
+                    .tint(Token.Colour.accentFill)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isWorking || effectiveName.isEmpty
                               || (mode == .clone && repository.trimmingCharacters(in: .whitespaces).isEmpty))
@@ -412,7 +412,7 @@ private struct SubmitLabel: View {
 
     var body: some View {
         Text(title)
-            .foregroundStyle(isEnabled ? Token.Colour.onAccent : Token.Colour.tertiaryLabel)
+            .foregroundStyle(isEnabled ? Token.Colour.onAccentFill : Token.Colour.tertiaryLabel)
     }
 }
 

@@ -247,6 +247,9 @@ their session too — the grid is complete or it is not an overview.
 - [x] Light mode's panes are paper, not grey: the frost's wash is white in light appearance — 90% on the focused pane, 75% on the rest, tuned in Settings ▸ Appearance — and the window's frame takes 80% white (`PaneChrome.applyBackdrop`, `Appearance.frost…TintLight`, `windowTintLight`)
 - [x] The accent as ink turns over with the appearance everywhere: every glyph or word drawn in the bare accent — Stage All, the staged tick, the todo's return, the pin, the toasts' actions, the sheets' plain buttons — reads `accentInk`, so the white accent is black on a light pane (`Token.Colour.accentInk`)
 - [x] Settings ▸ Appearance: the theme picker is back — Dark, Light, Follow System — with a Light mode section of the three light-only values, Copy Values and Reset Light Mode (`AppearanceSettings`, `LightModeSections`)
+- [x] A sheet's one filled button — Done in What's New and the customiser, Create in New Project — is black with a white word on light and white with a black word on dark, on the default white accent; a coloured accent fills as before (`Token.Colour.accentFill`, `onAccentFill`)
+- [x] A light terminal theme draws without CoreText font smoothing: the cells paint no background, and smoothing on a clear layer haloed dark text into outlined letters; a dark theme keeps it (`TerminalPalette.apply`, `fontSmoothing`)
+- [x] The menu bar's Show Agents brings the frontmost window forward and opens the overview there, never a second window; with every window closed, the window it opens comes up on the overview. Open Ultra finds windows by list, not by project, so a window holding none still counts (`MenuBarItem.raiseWindows`, `SessionList.showingFrontmostFirst`, `WorkspaceModel.opensAgents`)
 - [ ] Look at the rest in light: the command palette, the @ and / picker, the belt, the Agents overview, the chat's bubbles, Settings itself
 
 ## Aurora: the project's colour, low in the window

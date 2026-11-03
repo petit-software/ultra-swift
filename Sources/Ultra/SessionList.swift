@@ -267,6 +267,20 @@ final class SessionList {
         return lists.first { $0.window?.isKeyWindow == true } ?? lists.first
     }
 
+    /// Every list whose window is still open, the frontmost window first — minimised ones
+    /// last. The menu bar item's way to every workspace window, including one that holds no
+    /// project: the registry it used to walk maps PROJECTS to windows, so a window with
+    /// none in it was no window at all, and Open Ultra and Show Agents opened a second one.
+    static var showingFrontmostFirst: [SessionList] {
+        let order = NSApp.orderedWindows
+        func rank(_ list: SessionList) -> Int {
+            list.window.flatMap { order.firstIndex(of: $0) } ?? .max
+        }
+        return lists.allObjects
+            .filter { list in list.window.map { NSApp.windows.contains($0) } ?? false }
+            .sorted { rank($0) < rank($1) }
+    }
+
     /// Bring forward the window that has this session, and the session in it. What a click
     /// on "claude is waiting" does.
     static func raise(workspaceID: UUID) -> Bool {

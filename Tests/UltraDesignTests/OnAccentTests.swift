@@ -159,3 +159,38 @@ struct AccentMarkTests {
         }
     }
 }
+
+/// A sheet's one filled button — Done, Create — is filled with the accent, and the default
+/// accent is white: on a light sheet that was a white capsule on white, a bare word in the
+/// corner. Its fill turns black there and its label turns white.
+@Suite("Accent fill in both appearances")
+struct AccentFillTests {
+
+    private func resolved(_ colour: NSColor, in appearance: NSAppearance.Name) -> NSColor {
+        var out = NSColor.clear
+        NSAppearance(named: appearance)!.performAsCurrentDrawingAppearance {
+            out = colour.usingColorSpace(.sRGB)!
+        }
+        return out
+    }
+
+    @Test("the white accent fills black on light, and its label is white")
+    func whiteFillsBlackOnLight() {
+        let fill = resolved(NSColor(Token.Colour.ink(accent: .white)), in: .aqua)
+        let label = resolved(NSColor(Token.Colour.onFill(accent: .white)), in: .aqua)
+        #expect(fill.redComponent < 0.01 && label.redComponent > 0.99)
+    }
+
+    @Test("the white accent fills white on dark, and its label is black")
+    func whiteFillsWhiteOnDark() {
+        let fill = resolved(NSColor(Token.Colour.ink(accent: .white)), in: .darkAqua)
+        let label = resolved(NSColor(Token.Colour.onFill(accent: .white)), in: .darkAqua)
+        #expect(fill.redComponent > 0.99 && label.redComponent < 0.01)
+    }
+
+    @Test("a coloured accent's label follows the luminance rule")
+    func colouredUsesLuminance() {
+        let label = resolved(NSColor(Token.Colour.onFill(accent: .blue)), in: .aqua)
+        #expect(label.redComponent > 0.99, "white on a saturated blue")
+    }
+}

@@ -126,6 +126,9 @@ struct WorkspaceWindow: View {
                 // saved frame — there is no selected session until this has run.
                 model.openInitialSessions()
                 model.adoptWindow()
+                // AFTER the sessions: opening one selects it, and selecting a session is
+                // leaving the overview.
+                model.openAgentsIfAsked()
                 // Idempotent: every window asks, one monitor runs. Started from a window
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
@@ -299,6 +302,16 @@ final class WorkspaceModel {
         let directory = Self.startDirectory(excluding: open)
         sessions.open(directory: directory,
                       restore: !open.contains(WorkspaceDocument.canonical(directory)))
+    }
+
+    /// The next window to open comes up on the Agents overview. Set by the menu bar item's
+    /// Show Agents when every window is closed, and consumed once, like `pendingDirectories`.
+    static var opensAgents = false
+
+    func openAgentsIfAsked() {
+        guard Self.opensAgents else { return }
+        Self.opensAgents = false
+        AgentsOverview.shared.open(in: sessions)
     }
 
     /// Put the window back where it was before it can be seen elsewhere. Only the restoring

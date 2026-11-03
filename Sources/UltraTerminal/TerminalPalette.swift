@@ -49,6 +49,14 @@ public enum TerminalPalette {
         // `terminal.backgroundColor`, which is what reverse video and OSC 11 report.
         view.nativeBackgroundColor = NSColor(theme.background).withAlphaComponent(0)
         view.backgroundOpacity = 0
+        // Font smoothing only on a DARK theme. SwiftTerm turns CoreText smoothing on by
+        // default, and smoothing is stem darkening tuned for a known, opaque background —
+        // the cells above paint none, so the glyphs land on a clear layer and dark text on
+        // the light theme came out fattened with a halo, like an outline round every letter.
+        // Light-on-dark is where smoothing helps and where it was never the problem; it is
+        // iTerm's "thin strokes on light backgrounds" rule, and AppKit's own for text drawn
+        // into a transparent layer.
+        view.fontSmoothing = theme.isDark
         view.caretColor = NSColor(theme.cursor)
         view.selectedTextBackgroundColor = NSColor(theme.selection)
     }
