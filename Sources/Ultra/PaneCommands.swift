@@ -16,7 +16,7 @@ enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + swaps + resizes + numbered + others
                                  + layouts + chat + editor + browser
-                                 + (TileFactory.offersSimulator ? simulator : []) + todo + context + paneKinds + folders
+                                 + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
                                  + [showAgents, openAgentProject, openWaiting]
@@ -442,6 +442,24 @@ enum PaneCommands {
             ShellWorkspace.quickLook(in: $0)
         },
     ]
+
+    /// A Ports pane's address filter: the three groups the footer's filter menu opens
+    /// with. An exact address is the menu's alone — the list changes with what is running,
+    /// and the menu is reachable from the keyboard with Tab. They act on the focused Ports
+    /// pane, else the first, and dim when there is none or the filter is already set.
+    static let ports: [AppCommand] = [PortsAddressFilter.all, .loopback, .anyInterface].map { filter in
+        AppCommand(id: "ports.filter.\(filter == .all ? "all" : filter == .loopback ? "loopback" : "anyInterface")",
+                   title: filter == .all ? "Show All Addresses" : "Show \(filter.title)",
+                   symbol: "line.3.horizontal.decrease.circle",
+                   menuPath: ["Pane", "Ports"],
+                   keywords: ["Filter Ports", "Address", "localhost", "127.0.0.1", "0.0.0.0"],
+                   isEnabled: { store in
+                       guard let model = ShellWorkspace.portsModel(in: store) else { return false }
+                       return model.addressFilter != filter
+                   }) { store in
+            ShellWorkspace.portsModel(in: store)?.addressFilter = filter
+        }
+    }
 
     /// A simulator pane's verbs. They act on the simulator pane a device would open in —
     /// the focused one, else the first — and dim when there is none.

@@ -270,6 +270,19 @@ private struct TerminalSettings: View {
             }
 
             Section {
+                Toggle("Open links in the browser pane",
+                       isOn: prefs.flag({ Preferences.opensLinksInBrowserPane },
+                                        { Preferences.opensLinksInBrowserPane = $0 }))
+            } header: {
+                Text("Links")
+            } footer: {
+                SettingNote("A ⌘-click on a URL in a shell or agent pane shows the page in "
+                            + "the browser pane — the one already open, or a new one. "
+                            + "⌥⌘-click opens it in your default browser instead, and so "
+                            + "does turning this off.")
+            }
+
+            Section {
                 Toggle("Draw terminals on the GPU",
                        isOn: prefs.flag({ Preferences.useMetalRenderer },
                                         { Preferences.useMetalRenderer = $0 }))

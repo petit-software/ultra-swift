@@ -29,6 +29,10 @@ public final class ShellPaneFactory {
     /// `@` or `/` typed at the start of an agent's prompt in a pane — see
     /// `ShellTerminalView.promptTrigger`. Answers whether a picker took the key.
     public var onPromptTrigger: ((PaneID, Character) -> Bool)?
+    /// A web link ⌘-clicked in a pane, to show in the app — see
+    /// `ShellTerminalView.openLink`. Answers whether it was shown; false sends it to the
+    /// default browser.
+    public var onOpenLink: ((PaneID, URL) -> Bool)?
 
     /// Panes running an agent CLI, not plain shells. A plain interactive shell sitting at a
     /// prompt is not work, and holding the machine awake for one would be wrong.
@@ -119,6 +123,9 @@ public final class ShellPaneFactory {
         view.shellDelegate = self
         view.promptTrigger = { [weak self] character in
             self?.onPromptTrigger?(paneID, character) ?? false
+        }
+        view.openLink = { [weak self] url in
+            self?.onOpenLink?(paneID, url) ?? false
         }
         PromptKeyMonitor.install()
         // Held rather than fed here. A view that has not been laid out yet reports SwiftTerm's

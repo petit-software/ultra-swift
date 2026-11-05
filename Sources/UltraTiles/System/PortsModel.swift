@@ -21,6 +21,25 @@ public final class PortsModel {
     }
 
     public private(set) var ports: [Port] = []
+
+    /// Which addresses the pane shows. Kept in the pane's record, so it survives a relaunch.
+    public var addressFilter: PortsAddressFilter = .all {
+        didSet { if addressFilter != oldValue { onFilterChange?(addressFilter) } }
+    }
+    /// Told when the filter changes, so the pane's record can follow.
+    public var onFilterChange: ((PortsAddressFilter) -> Void)?
+
+    /// The rows the filter lets through.
+    public var visiblePorts: [Port] { ports.filter { addressFilter.matches($0.address) } }
+
+    /// Every address something is listening on now, for the filter's menu. An exact filter
+    /// whose address has gone quiet stays in the list, so the tick has somewhere to sit.
+    public var addresses: [String] {
+        var seen = Set<String>()
+        var out = ports.map(\.address).filter { seen.insert($0).inserted }
+        if case .exact(let address) = addressFilter, !seen.contains(address) { out.append(address) }
+        return out.sorted()
+    }
     public private(set) var isRefreshing = false
     public private(set) var lastError: String?
 
@@ -30,7 +49,9 @@ public final class PortsModel {
         didSet { attribute() }
     }
 
-    public init() {}
+    public init(addressFilter: PortsAddressFilter = .all) {
+        self.addressFilter = addressFilter
+    }
 
     public func refresh() async {
         guard !isRefreshing else { return }

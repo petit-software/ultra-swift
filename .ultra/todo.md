@@ -1,3 +1,20 @@
+## Links open in the browser pane
+
+- [x] A ⌘-click on a URL in a shell or agent pane shows the page in the browser pane — the one already open, else a new one — not the default browser (`ShellTerminalView.openLink`, `ShellPaneFactory.onOpenLink`)
+- [x] ⌥⌘-click still opens the default browser, and so does a `file:` link or a canvas with no room for a browser (`ShellTerminalView.linkOpensInPane`)
+- [x] Settings ▸ Terminal ▸ Links: "Open links in the browser pane", on by default (`Preferences.opensLinksInBrowserPane`)
+
+## Ultra pane: asciisaver's SIN SIN
+
+- [x] An Ultra pane plays asciisaver's SIN SIN animation, sized to the pane, in the pane's terminal font and colours
+- [x] Pane ▸ New Ultra Pane, in the palette and the pane kind lists, with a working `#Preview`
+- [x] A new user's first project — nothing saved, no default layout — opens as a shell over a todo on the left and an Ultra pane on the right
+
+## Ports: filter by address
+
+- [x] The Ports footer's filter menu narrows the rows by bind address: all, loopback only, all interfaces only, or one exact address in use; the glyph wears the accent while filtered (`PortsAddressFilter`)
+- [x] Pane ▸ Ports ▸ Show All Addresses, Show Loopback Only, Show All Interfaces Only, on the focused Ports pane or the first; the filter is kept in the pane's record
+
 ## Drops, Agents row, Todo footer
 
 - [x] A file dropped on a shell pane lands as its escaped path, typed and not submitted (`ShellQuote`, `ShellTerminalView`)

@@ -99,6 +99,11 @@ The primary tile. A login shell, usually with an agent CLI running in it.
   (`ps -t <tty> -o stat=,command=`) — the same technique as the Electron `process-name.ts`.
 - **Injection API**: `inject(_ text: String, submit: Bool)` writes to the PTY master. `submit:
   false` leaves the text at the prompt so the user can add to it. Used by Context and Todo.
+- **Links**: a ⌘-click on a URL — a bare one SwiftTerm detects, or an OSC 8 hyperlink — opens
+  an `http`/`https` page in the browser pane, the one already open or a new one, by the same
+  rule as the agent's `browse` verb (`ShellPaneFactory.onOpenLink`). ⌥⌘-click, a `file:`
+  link, the setting off (Settings ▸ Terminal ▸ Links), or a canvas with no browser and no
+  room for one go to the default browser: a clicked link always opens something.
 
 ## 1b. File tree
 
@@ -358,6 +363,12 @@ Listening TCP ports, and which pane owns them.
   badged with that pane — "your dev server is in pane 2" is the useful fact.
 - **Actions**: open `http://localhost:<port>`, copy the URL, reveal the owning pane, and kill
   (SIGTERM, then SIGKILL after 3s, with a confirmation).
+- **Filter by address** (`PortsAddressFilter`): the footer's filter menu shows all addresses,
+  loopback only (127.0.0.0/8, `::1`, `localhost`), all interfaces only (`*`, `0.0.0.0`, `::`),
+  or one exact address from those in use. The groups are also Pane ▸ Ports ▸ Show …, on the
+  focused Ports pane or the first. The glyph wears the accent while filtered and the footer
+  says "2 of 5 listening · loopback". The filter rides in the pane's `tileState`, so it
+  survives a relaunch; All writes nothing.
 
 ---
 
@@ -719,6 +730,25 @@ device is a second pane. Not the Simulator app, which Xcode 27 no longer ships a
   foldable, it opens and closes; on a tablet, a quarter turn changes the screen's angle and
   turning back restores it. Off by default, since it touches a real device. A new Xcode that
   changes the wire format fails here first.
+
+## 10. Ultra
+
+asciisaver's port of "Sin Sin" by ertdfgcvb, playing in a pane (`UltraPaneView`). Something
+to look at while an agent works, and the right-hand column of a new user's first project.
+
+- **Source**: `AsciiRunner`, `SinSin` and `AsciiRenderer` are a trimmed port of
+  petit-software/asciisaver, itself a port of play.core. Apache 2.0; the notice is
+  `Sources/UltraTiles/Ultra/NOTICE`.
+- **Drawing**: the system monospaced font at the terminal's size, rows stretched to the
+  playground's cell, in `labelColor` with no background, so the pane's surface shows through
+  and a pane pinned light or dark draws in the right ink. Two weights, so two
+  `CTFontDrawGlyphs` calls a frame.
+- **Clock**: the view's display link at 30 fps, advanced by real elapsed time and clamped at
+  250 ms. A frame is skipped while the window is occluded. Reduce Motion draws one still frame.
+- **First run**: a new user — nothing saved, no default layout — opens their first project as
+  a shell over the todo on the left and the Ultra pane on the right
+  (`ShellWorkspace.starterDocument`). Everyone else keeps the single shell or their default
+  layout.
 
 ## Sandboxing consequence
 

@@ -847,6 +847,7 @@ public final class PaneContainerView: NSView {
         case .chat: "Chat"
         case .browser: "Browser"
         case .simulator: "Simulator"
+        case .ultra: "Ultra"
         case .placeholder: "Pane"
         }
     }

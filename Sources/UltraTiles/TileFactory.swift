@@ -83,6 +83,15 @@ public final class TileFactory {
     /// command, and it has to reach the selection of the list the pane is showing.
     private var contexts: [PaneID: ContextModel] = [:]
 
+    /// Each Ports pane's listeners and address filter, so a menu command can set the filter.
+    private var ports: [PaneID: PortsModel] = [:]
+
+    /// This pane's ports, or nil for a pane that is not a Ports pane.
+    public func portsModel(for paneID: PaneID) -> PortsModel? { ports[paneID] }
+
+    /// Which panes are Ports panes, so the app can find one for a command.
+    public func portsPanes() -> Set<PaneID> { Set(ports.keys) }
+
     /// This pane's list, or nil for a pane that is not a context.
     public func contextModel(for paneID: PaneID) -> ContextModel? { contexts[paneID] }
 
@@ -151,7 +160,7 @@ public final class TileFactory {
     nonisolated(unsafe) public static var offersSimulator = false
 
     nonisolated public static var supported: Set<PaneRecord.Kind> {
-        var kinds: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser]
+        var kinds: Set<PaneRecord.Kind> = [.fileTree, .editor, .todo, .ports, .resources, .git, .context, .chat, .browser, .ultra]
         if offersSimulator { kinds.insert(.simulator) }
         return kinds
     }
@@ -219,9 +228,23 @@ public final class TileFactory {
             todos[paneID] = store
             view = NSHostingView(rootView: TodoTile(context: paneContext, store: store))
         case .ports:
-            view = NSHostingView(rootView: PortsTile(context: paneContext))
+            let model = ports[paneID] ?? PortsModel(
+                addressFilter: PortsAddressFilter.decode(records[paneID]?.tileState))
+            ports[paneID] = model
+            model.onFilterChange = { [weak self] filter in
+                self?.notePorts(paneID, filter: filter, root: root)
+            }
+            view = NSHostingView(rootView: PortsTile(context: paneContext, model: model))
+            view.setAccessibilityLabel("Ports")
+            hosts[paneID] = view
+            var record = Self.record(for: .ports, root: root)
+            record.tileState = model.addressFilter.encoded
+            records[paneID] = record
+            return (view, record)
         case .resources:
             view = NSHostingView(rootView: ResourcesTile(context: paneContext))
+        case .ultra:
+            view = UltraPaneView(frame: .zero)
         case .git:
             view = NSHostingView(rootView: GitTile(context: paneContext))
         case .context:
@@ -305,6 +328,17 @@ public final class TileFactory {
         simulators.removeValue(forKey: paneID)?.close()
         todos.removeValue(forKey: paneID)
         contexts.removeValue(forKey: paneID)
+        ports.removeValue(forKey: paneID)
+    }
+
+    /// Keep a Ports pane's record on its address filter, so a restored workspace shows the
+    /// same listeners.
+    private func notePorts(_ paneID: PaneID, filter: PortsAddressFilter, root: URL) {
+        var record = Self.record(for: .ports, root: root)
+        record.tileState = filter.encoded
+        guard records[paneID] != record else { return }
+        records[paneID] = record
+        onRecordChange?(paneID, record)
     }
 
     /// Keep a simulator pane's header on its device, and its record on the device's UDID,
@@ -503,6 +537,7 @@ public final class TileFactory {
         case .chat: "Chat"
         case .browser: "Browser"
         case .simulator: "Simulator"
+        case .ultra: "Ultra"
         default: abbreviate(root.path)
         }
     }
@@ -531,6 +566,7 @@ public final class TileFactory {
         case .chat: "text.bubble"
         case .browser: "globe"
         case .simulator: "iphone"
+        case .ultra: "sparkle"
         case .agent: "sparkles"
         case .shell, .placeholder: "apple.terminal"
         }

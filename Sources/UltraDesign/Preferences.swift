@@ -189,6 +189,16 @@ public enum Preferences {
         set { setFlag("promptMenus", newValue, current: promptMenus) }
     }
 
+    /// Whether a web link clicked in a shell or agent pane opens in the browser PANE —
+    /// the one already open, else a new one — rather than the default browser. On by
+    /// default: the page an agent just named belongs beside the agent, and ⌥⌘-click is
+    /// still the default browser for the odd login page that wants the real one. See
+    /// `ShellTerminalView.linkOpensInPane`.
+    public static var opensLinksInBrowserPane: Bool {
+        get { flag("opensLinksInBrowserPane", default: true) }
+        set { setFlag("opensLinksInBrowserPane", newValue, current: opensLinksInBrowserPane) }
+    }
+
     public static var showsHiddenFiles: Bool {
         get { flag("showsHiddenFiles", default: true) }
         set { setFlag("showsHiddenFiles", newValue, current: showsHiddenFiles) }
@@ -340,6 +350,7 @@ public enum Preferences {
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
                     "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell", "promptMenus",
+                    "opensLinksInBrowserPane",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
                     // The two What's New keys are gone with the launch-time dialog, and

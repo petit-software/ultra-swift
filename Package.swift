@@ -51,7 +51,9 @@ let package = Package(
         // Every tile except Shell. SwiftUI views in hosting views, sharing one context —
         // see docs/03-TILES.md. Depends on no canvas type: a tile never knows about layout.
         .target(name: "UltraTiles", dependencies: ["UltraCore", "UltraDesign", "UltraLayout", "UltraChat", "UltraSimulator",
-                                                   .product(name: "MarkdownUI", package: "swift-markdown-ui")]),
+                                                   .product(name: "MarkdownUI", package: "swift-markdown-ui")],
+                // The Ultra pane's licence notice: shipped as source, not as a resource.
+                exclude: ["Ultra/NOTICE"]),
         .executableTarget(name: "Ultra",
                           dependencies: ["UltraCanvas", "UltraCore", "UltraTerminal",
                                          "UltraTiles", "UltraLayout", "UltraDesign", "UltraChat",

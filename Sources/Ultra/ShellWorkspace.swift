@@ -46,7 +46,9 @@ enum ShellWorkspace {
         if let restored, let directory {
             storage.retireDuplicates(for: directory, keeping: restored.id)
         }
-        let document = restored ?? directory.flatMap { defaultDocument(for: $0, storage: storage) }
+        let document = restored
+            ?? directory.flatMap { defaultDocument(for: $0, storage: storage) }
+            ?? directory.flatMap { restore ? starterDocument(for: $0, storage: storage) : nil }
         // Where a scratch session's shells start and its tiles look: the home folder,
         // which is where a new terminal window starts everywhere else on the Mac.
         let home = directory ?? NSHomeDirectory()
@@ -212,6 +214,16 @@ enum ShellWorkspace {
             guard Preferences.promptMenus else { return false }
             return PromptMenu.present(trigger, pane: paneID, workspace: workspaceID)
         }
+        // A URL ⌘-clicked in a shell or agent pane — the dev server it started, the page
+        // the agent is citing — opens in the browser pane, the way a Ports row does.
+        // Declined when the canvas has no browser and no room for one, and the pane
+        // sends it to the default browser instead; a click on a link must open something.
+        factory.onOpenLink = { _, url in
+            guard let store = Registry.stores[workspaceID],
+                  Registry.browserTarget(in: workspaceID) != nil || canOpenNewPane(in: store)
+            else { return false }
+            return showInBrowser(url, in: store)
+        }
 
         // The agent control channel. Scoped to this workspace: its socket lives in the
         // project, and every path an agent names is resolved against this root.
@@ -246,6 +258,31 @@ enum ShellWorkspace {
                                       tree: LayoutTree(single: PaneID()),
                                       panes: [:])
         return blank.adoptingLayout(of: template)
+    }
+
+    /// The layout a NEW USER's first project opens with: a shell over the project's todo on
+    /// the left, the Ultra pane on the right.
+    ///
+    /// A new user is one with nothing saved — no project's layout, no default layout — so
+    /// this is the first window anyone sees, and never replaces a layout someone has. Every
+    /// project after that first one is saved by the time the next opens, and gets the
+    /// single shell as before (or the default layout, once one is set).
+    static func starterDocument(for directory: String,
+                                storage: WorkspaceStorage) -> WorkspaceDocument? {
+        guard !storage.hasDefaultLayout, storage.loadAll().isEmpty else { return nil }
+        let root = URL(fileURLWithPath: directory)
+        let shell = PaneID(), todo = PaneID(), ultra = PaneID()
+        var tree = LayoutTree(single: shell)
+        tree.split(shell, edge: .right, newPane: ultra, ratio: 0.5)
+        tree.split(shell, edge: .bottom, newPane: todo, ratio: 0.4)
+        tree.focused = shell
+        let panes: [PaneID: PaneRecord] = [
+            shell: ShellPaneFactory.record(for: ShellSpec(cwd: directory), agent: nil, cwd: directory),
+            todo: TileFactory.record(for: .todo, root: root),
+            ultra: TileFactory.record(for: .ultra, root: root),
+        ]
+        return WorkspaceDocument(directory: directory, title: root.lastPathComponent,
+                                 tree: tree, panes: panes)
     }
 
     /// Everything one session owned, let go of.
@@ -583,6 +620,16 @@ enum ShellWorkspace {
         let focused = store.tree.focused
         if contexts.contains(focused) { return focused }
         return store.tree.paneIDs.first { contexts.contains($0) }
+    }
+
+    /// The Ports pane a filter command acts on: the focused one, else the first.
+    static func portsModel(in store: LayoutStore) -> PortsModel? {
+        guard let tiles = Registry.tiles[store.workspaceID] else { return nil }
+        let panes = tiles.portsPanes()
+        let focused = store.tree.focused
+        guard let pane = panes.contains(focused) ? focused : store.tree.paneIDs.first(where: { panes.contains($0) })
+        else { return nil }
+        return tiles.portsModel(for: pane)
     }
 
     static func contextModel(in store: LayoutStore) -> ContextModel? {
@@ -940,6 +987,7 @@ struct PaneKind: Identifiable, Sendable {
         PaneKind(kind: .context, title: "Context", symbol: "paperclip"),
         PaneKind(kind: .chat, title: "Chat", symbol: "text.bubble"),
         PaneKind(kind: .browser, title: "Browser", symbol: "globe"),
+        PaneKind(kind: .ultra, title: "Ultra", symbol: "sparkle"),
         PaneKind(kind: .simulator, title: "Simulator", symbol: "iphone"),
     ]
 

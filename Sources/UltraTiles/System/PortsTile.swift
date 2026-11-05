@@ -4,19 +4,27 @@ import UltraDesign
 
 /// What is listening, and who owns it.
 public struct PortsTile: View {
-    @State private var model = PortsModel()
+    /// Held by the factory rather than in `@State`, so a menu command can reach the
+    /// pane's filter (`TileFactory.portsModel`).
+    private let model: PortsModel
     private let context: TileContext
 
-    public init(context: TileContext) { self.context = context }
+    public init(context: TileContext, model: PortsModel = PortsModel()) {
+        self.context = context
+        self.model = model
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
             if model.ports.isEmpty {
                 EmptyTileState(icon: "network", title: "Nothing listening")
+            } else if model.visiblePorts.isEmpty {
+                EmptyTileState(icon: "line.3.horizontal.decrease.circle",
+                               title: "Nothing listening on \(model.addressFilter.phrase)")
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.ports) { port in
+                        ForEach(model.visiblePorts) { port in
                             PortRow(port: port, model: model, openInBrowser: context.openInBrowser)
                         }
                     }
@@ -33,12 +41,43 @@ public struct PortsTile: View {
     /// listening". Two seconds is fast enough to catch a dev server starting and slow
     /// enough that `lsof` is not a background job.
     private var footer: some View {
-        TileFooter(summary: "\(model.ports.count) listening") {
+        TileFooter(summary: summary) {
             TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
                              isEnabled: !model.isRefreshing) {
                 Task { await model.refresh() }
             }
+            // Accent while filtered, so a short list says why it is short.
+            ChromeMenuButton(symbol: "line.3.horizontal.decrease.circle",
+                             help: "Filter by address",
+                             tint: model.addressFilter == .all ? nil : Token.Colour.accentInk) {
+                filterEntries
+            }
         }
+    }
+
+    private var summary: String {
+        model.addressFilter == .all
+            ? "\(model.ports.count) listening"
+            : "\(model.visiblePorts.count) of \(model.ports.count) listening · \(model.addressFilter.phrase)"
+    }
+
+    /// The three groups, which are also on Pane ▸ Ports, then each address in use.
+    private var filterEntries: [ChromeMenuEntry] {
+        var entries: [ChromeMenuEntry] = [PortsAddressFilter.all, .loopback, .anyInterface].map { filter in
+            .item(title: filter.title, isOn: model.addressFilter == filter) { model.addressFilter = filter }
+        }
+        let addresses = model.addresses
+        if !addresses.isEmpty {
+            entries.append(.separator)
+            entries.append(.caption("Address"))
+            for address in addresses {
+                let filter = PortsAddressFilter.exact(address)
+                entries.append(.item(title: address, isOn: model.addressFilter == filter) {
+                    model.addressFilter = filter
+                })
+            }
+        }
+        return entries
     }
 
     private func poll() async {

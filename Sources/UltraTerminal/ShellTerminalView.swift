@@ -513,10 +513,39 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         TerminalBell.ring()
     }
 
+    /// Show a web link clicked in this pane somewhere in the app — a browser pane — and
+    /// answer whether it could. False, or nil, and the link goes to the default browser.
+    public var openLink: ((URL) -> Bool)?
+
+    /// A ⌘-click on a URL, or on an OSC 8 hyperlink. SwiftTerm finds both.
+    ///
+    /// The app is asked first, when the rule below says the click is for it; the default
+    /// browser gets everything else, and anything the app could not show — a canvas with
+    /// no browser and no room for one — so a click on a link always opens SOMETHING.
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         guard let url = URL(string: link), let scheme = url.scheme?.lowercased(),
               ["http", "https", "file"].contains(scheme) else { return }
+        // The click that got here: `mouseUp` calls this synchronously, so the current
+        // event is that click and its modifiers are the ones held during it.
+        let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+        if Self.linkOpensInPane(url, modifiers: modifiers, preferred: Preferences.opensLinksInBrowserPane),
+           openLink?(url) == true {
+            return
+        }
         NSWorkspace.shared.open(url)
+    }
+
+    /// Whether a clicked link is the app's to show, or the default browser's.
+    ///
+    /// The app's when the preference says so, the link is a web page, and ⌥ is not held.
+    /// ⌥⌘-click is the escape hatch for the page that needs the real browser — a login the
+    /// pane's web view has no cookies for. A `file:` link is never the browser pane's: the
+    /// system knows which app opens a file, and the pane would only show its bytes.
+    nonisolated public static func linkOpensInPane(_ url: URL, modifiers: NSEvent.ModifierFlags,
+                                                   preferred: Bool) -> Bool {
+        guard preferred, !modifiers.contains(.option),
+              let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
     }
 
     public func clipboardCopy(source: TerminalView, content: Data) {
