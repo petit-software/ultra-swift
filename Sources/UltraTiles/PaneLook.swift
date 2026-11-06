@@ -1,7 +1,7 @@
 import AppKit
 import UltraCore
 
-/// The sun-and-moon switch an editor or a chat pane wears: the OTHER look from the app's.
+/// The sun-and-moon switch an editor, a chat or a todo pane wears: the OTHER look from the app's.
 ///
 /// It was "pin light", which in a dark app is the other look and in a light app is nothing
 /// at all — the switch did not visibly do anything. Pinned to whichever look the app is not

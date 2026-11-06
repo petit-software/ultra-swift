@@ -1,3 +1,9 @@
+## Todo: its own light or dark
+
+- [x] A todo pane can be pinned to the other look from the app's, like the editor and chat — the footer's sun and moon, last after the line; again follows the app (`TodoStore.pinnedAppearance`, `PaneLook`)
+- [x] Pane ▸ Todo ▸ Toggle Todo Appearance, ⌃⌘L, enabled with a todo focused (`todo.toggleLight`, `ShellWorkspace.focusedTodoStore`)
+- [x] The look is saved with the pane's record and a restored pane comes back as it was left (`TodoPaneTests`)
+
 ## Links open in the browser pane
 
 - [x] A ⌘-click on a URL in a shell or agent pane shows the page in the browser pane — the one already open, else a new one — not the default browser (`ShellTerminalView.openLink`, `ShellPaneFactory.onOpenLink`)

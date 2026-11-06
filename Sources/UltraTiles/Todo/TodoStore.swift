@@ -1,4 +1,5 @@
 import Foundation
+import UltraCore
 
 /// Owns one todo file: where it lives, what it says, and keeping both in step with disk.
 ///
@@ -30,6 +31,14 @@ public final class TodoStore {
     /// target uses, for the same reason: every edit renumbers the lines. Per project and
     /// remembered, like the progress bar: a section folded away is meant to stay out of the way.
     public private(set) var collapsedSections: Set<String>
+    /// The look the pane is pinned to, or nil to follow the app — the editor's and the
+    /// chat's switch (`PaneLook`). The PANE's look, saved with the pane
+    /// (`PaneRecord.appearance`), not with the list: the same file in another todo pane
+    /// keeps that pane's look.
+    public private(set) var pinnedAppearance: PaneRecord.Appearance?
+    /// The look changed: the pane's record should follow, so a restored pane comes back
+    /// as it was left.
+    @ObservationIgnored public var onAppearanceChange: (() -> Void)?
 
     /// Held in a box so the sources are torn down by the box's own nonisolated deinit —
     /// a main-actor deinit cannot touch main-actor state. Same shape as `ObserverBox`.
@@ -39,8 +48,9 @@ public final class TodoStore {
     private var lastWrittenText: String?
     private let root: URL
 
-    public init(root: URL) {
+    public init(root: URL, pinnedAppearance: PaneRecord.Appearance? = nil) {
         self.root = root
+        self.pinnedAppearance = pinnedAppearance
         self.url = Self.storedLocation(for: root) ?? Self.preferredLocation(in: root)
         self.showsProgress = UserDefaults.standard.object(forKey: Self.progressKey(for: root)) as? Bool ?? true
         self.collapsedSections = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedKey(for: root)) ?? [])
@@ -49,6 +59,18 @@ public final class TodoStore {
     }
 
     public func toggleProgress() { setShowsProgress(!showsProgress) }
+
+    /// Pin the pane to a look, or let it follow the app again with nil.
+    public func setPinnedAppearance(_ appearance: PaneRecord.Appearance?) {
+        guard appearance != pinnedAppearance else { return }
+        pinnedAppearance = appearance
+        onAppearanceChange?()
+    }
+
+    /// The sun and moon: the other look from the app's, or back to following it.
+    public func toggleAppearance(appIsDark: Bool = PaneLook.appIsDark) {
+        setPinnedAppearance(PaneLook.toggled(pinnedAppearance, appIsDark: appIsDark))
+    }
 
     public func setShowsProgress(_ shows: Bool) {
         showsProgress = shows

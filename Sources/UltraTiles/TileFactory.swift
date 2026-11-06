@@ -224,9 +224,24 @@ public final class TileFactory {
             hosts[paneID] = view
             return (view, record)
         case .todo:
-            let store = todos[paneID] ?? TodoStore(root: root)
+            let store = todos[paneID] ?? TodoStore(root: root, pinnedAppearance: records[paneID]?.appearance)
             todos[paneID] = store
+            store.onAppearanceChange = { [weak self, weak store] in
+                guard let self, var record = self.records[paneID] else { return }
+                record.appearance = store?.pinnedAppearance
+                guard self.records[paneID] != record else { return }
+                self.records[paneID] = record
+                self.onRecordChange?(paneID, record)
+            }
             view = NSHostingView(rootView: TodoTile(context: paneContext, store: store))
+            view.setAccessibilityLabel(Self.title(for: kind, root: root))
+            hosts[paneID] = view
+            // The look rides on the record, the editor's way: a pane pinned light comes
+            // back light.
+            var record = Self.record(for: kind, root: root)
+            record.appearance = store.pinnedAppearance
+            records[paneID] = record
+            return (view, record)
         case .ports:
             let model = ports[paneID] ?? PortsModel(
                 addressFilter: PortsAddressFilter.decode(records[paneID]?.tileState))

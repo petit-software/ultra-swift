@@ -23,7 +23,14 @@ public struct TodoTile: View {
     @State private var targetSection: String?
     /// The floating progress bar's height, so a notice stacks above it rather than on it.
     @State private var progressHeight: CGFloat = 0
+    @Environment(\.colorScheme) private var colorScheme
     private let context: TileContext
+
+    /// Whether the app is wearing dark, for the sun and moon. A pane that follows the app
+    /// has the app's look as its own; a pinned one does not, so it asks the app.
+    private var appIsDark: Bool {
+        store.pinnedAppearance == nil ? colorScheme == .dark : PaneLook.appIsDark
+    }
 
     /// The store is the FACTORY's, like an editor's tabs, so a menu command can reach the
     /// list a pane is showing. A preview passes none and gets one on its root.
@@ -206,6 +213,15 @@ public struct TodoTile: View {
                              help: clearHelp,
                              isEnabled: store.document.completedCount > 0) {
                 store.removeCompleted()
+            }
+            // The editor's and the chat's sun and moon, with the same key: a pane pinned to
+            // the other look from the app's, or one that follows the app. Also Pane ▸ Todo ▸
+            // Toggle Todo Appearance, so it is not pointer-only. Last of the leading
+            // controls, after the line — see `TileFooterSeparator`.
+            TileFooterSeparator()
+            TileFooterButton(symbol: PaneLook.symbol(store.pinnedAppearance, appIsDark: appIsDark),
+                             help: PaneLook.help(store.pinnedAppearance, appIsDark: appIsDark, pane: "Todo")) {
+                store.toggleAppearance()
             }
         } trailing: {
             // Beside the path, because it empties the file the path names. Asks first; also

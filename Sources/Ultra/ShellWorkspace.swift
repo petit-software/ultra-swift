@@ -612,6 +612,12 @@ enum ShellWorkspace {
         return store.tree.paneIDs.first { todos.contains($0) }.flatMap { tiles.todoStore(for: $0) }
     }
 
+    /// The list of the todo pane that HAS the keyboard, or nil when the focused pane is not
+    /// one. For verbs about the pane itself — its look — rather than about the list.
+    static func focusedTodoStore(in store: LayoutStore) -> TodoStore? {
+        Registry.tiles[store.workspaceID]?.todoStore(for: store.tree.focused)
+    }
+
     /// The pane a Context command should act on: the focused context pane, else the first
     /// one. Nil when there is none, and the menu items say so by dimming.
     static func contextPane(in store: LayoutStore) -> PaneID? {

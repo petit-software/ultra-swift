@@ -428,6 +428,15 @@ enum PaneCommands {
                    isEnabled: { !(ShellWorkspace.todoStore(in: $0)?.document.isBlank ?? true) }) {
             ShellWorkspace.todoStore(in: $0)?.removeAllAfterConfirming()
         },
+        // ⌃⌘L, the browser's, the chat's and the editor's key for the same thing: one key
+        // for "this pane, light or not". Enabled only with a todo FOCUSED, like the editor's,
+        // so the menu fires the one for the pane in hand.
+        AppCommand(id: "todo.toggleLight", title: "Toggle Todo Appearance", symbol: "circle.lefthalf.filled",
+                   menuPath: ["Pane", "Todo"],
+                   binding: KeyBinding("l", [.command, .control]),
+                   isEnabled: { ShellWorkspace.focusedTodoStore(in: $0) != nil }) { store in
+            ShellWorkspace.focusedTodoStore(in: store)?.toggleAppearance()
+        },
     ]
 
     /// The context list's verbs. Quick Look is Space in the pane, as it is in Finder, and
