@@ -1,3 +1,9 @@
+## File paths open in Finder
+
+- [x] A ⌘-click on a file path in a shell or agent pane — absolute, `~/`, `./`, or relative to the shell's directory, with or without a compiler's `:line:col` — shows it in Finder: a folder opens, a file or package is selected in its folder (`ShellTerminalView.fileLink`, `showInFinder`)
+- [x] A `file:` link does the same; ⌥⌘-click opens either with its default app; a path that is not there beeps
+- [x] Settings ▸ Terminal ▸ Links says so
+
 ## Todo: its own light or dark
 
 - [x] A todo pane can be pinned to the other look from the app's, like the editor and chat — the footer's sun and moon, last after the line; again follows the app (`TodoStore.pinnedAppearance`, `PaneLook`)

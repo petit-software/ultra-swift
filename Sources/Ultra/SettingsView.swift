@@ -279,7 +279,8 @@ private struct TerminalSettings: View {
                 SettingNote("A ⌘-click on a URL in a shell or agent pane shows the page in "
                             + "the browser pane — the one already open, or a new one. "
                             + "⌥⌘-click opens it in your default browser instead, and so "
-                            + "does turning this off.")
+                            + "does turning this off. A ⌘-click on a file path shows it in "
+                            + "Finder; ⌥⌘-click opens it with its app.")
             }
 
             Section {

@@ -517,17 +517,32 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// answer whether it could. False, or nil, and the link goes to the default browser.
     public var openLink: ((URL) -> Bool)?
 
-    /// A ⌘-click on a URL, or on an OSC 8 hyperlink. SwiftTerm finds both.
+    /// A ⌘-click on a URL, an OSC 8 hyperlink, or a file path. SwiftTerm finds all three.
     ///
-    /// The app is asked first, when the rule below says the click is for it; the default
-    /// browser gets everything else, and anything the app could not show — a canvas with
-    /// no browser and no room for one — so a click on a link always opens SOMETHING.
+    /// A file — a path the shell or an agent printed, or a `file:` link — is shown in
+    /// Finder: a folder opens, anything else is selected in its folder. ⌥⌘-click opens it
+    /// with its default app instead. See `fileLink(_:cwd:)` for what counts.
+    ///
+    /// For a web link the app is asked first, when the rule below says the click is for it;
+    /// the default browser gets everything else, and anything the app could not show — a
+    /// canvas with no browser and no room for one — so a click on a link always opens
+    /// SOMETHING.
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
-        guard let url = URL(string: link), let scheme = url.scheme?.lowercased(),
-              ["http", "https", "file"].contains(scheme) else { return }
         // The click that got here: `mouseUp` calls this synchronously, so the current
         // event is that click and its modifiers are the ones held during it.
         let modifiers = NSApp.currentEvent?.modifierFlags ?? []
+        if let file = Self.fileLink(link, cwd: spec.cwd) {
+            Self.showInFinder(file, opensWithDefaultApp: modifiers.contains(.option))
+            return
+        }
+        let url = URL(string: link)
+        let scheme = url?.scheme?.lowercased()
+        guard let url, let scheme, ["http", "https"].contains(scheme) else {
+            // A path that is not there — any more, or relative to somewhere other than the
+            // shell's directory. Silence would read as a missed click.
+            if scheme == nil || scheme == "file" { NSSound.beep() }
+            return
+        }
         if Self.linkOpensInPane(url, modifiers: modifiers, preferred: Preferences.opensLinksInBrowserPane),
            openLink?(url) == true {
             return
@@ -539,13 +554,64 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     ///
     /// The app's when the preference says so, the link is a web page, and ⌥ is not held.
     /// ⌥⌘-click is the escape hatch for the page that needs the real browser — a login the
-    /// pane's web view has no cookies for. A `file:` link is never the browser pane's: the
-    /// system knows which app opens a file, and the pane would only show its bytes.
+    /// pane's web view has no cookies for. A `file:` link is never the browser pane's: it is
+    /// Finder's — see `fileLink(_:cwd:)`.
     nonisolated public static func linkOpensInPane(_ url: URL, modifiers: NSEvent.ModifierFlags,
                                                    preferred: Bool) -> Bool {
         guard preferred, !modifiers.contains(.option),
               let scheme = url.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https"
+    }
+
+    /// The file a clicked link names, if it names one that exists.
+    ///
+    /// SwiftTerm hands over a `file:` URL as a URL, and a path it spotted in the text —
+    /// `/abs`, `~/x`, `./x`, `../x`, `Sources/a.swift` — as the bare text. A relative path is
+    /// the shell's: resolved against the directory the pane is in now, which is where
+    /// `ls` or a compiler printed it from. A compiler's `a.swift:12:4` names `a.swift`.
+    /// Anything else, or a file that is not there, is nil.
+    nonisolated public static func fileLink(_ link: String, cwd: String?,
+                                            fileManager: FileManager = .default) -> URL? {
+        let text = link.trimmingCharacters(in: .whitespaces)
+        let path: String
+        if let url = URL(string: text), let scheme = url.scheme {
+            guard scheme.lowercased() == "file", url.isFileURL else { return nil }
+            path = url.path(percentEncoded: false)
+        } else {
+            let expanded = NSString(string: text).expandingTildeInPath
+            if expanded.hasPrefix("/") {
+                path = expanded
+            } else if let cwd {
+                path = NSString(string: cwd).appendingPathComponent(expanded)
+            } else {
+                return nil
+            }
+        }
+        var candidates = [path]
+        if let location = path.range(of: #":[0-9]+(?::[0-9]+)?$"#, options: .regularExpression) {
+            candidates.append(String(path[..<location.lowerBound]))
+        }
+        guard let found = candidates.first(where: { fileManager.fileExists(atPath: $0) })
+        else { return nil }
+        return URL(fileURLWithPath: found).standardizedFileURL
+    }
+
+    /// A folder opens in Finder; a file, or a package like an `.app`, is selected in its
+    /// folder rather than launched. ⌥ opens either with its default app, as a double click
+    /// in Finder would.
+    static func showInFinder(_ file: URL, opensWithDefaultApp: Bool) {
+        if opensWithDefaultApp {
+            NSWorkspace.shared.open(file)
+        } else if Self.isPlainFolder(file) {
+            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: file.path)
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        }
+    }
+
+    nonisolated static func isPlainFolder(_ file: URL) -> Bool {
+        let values = try? file.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+        return values?.isDirectory == true && values?.isPackage != true
     }
 
     public func clipboardCopy(source: TerminalView, content: Data) {
