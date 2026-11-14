@@ -513,54 +513,87 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         TerminalBell.ring()
     }
 
-    /// Show a web link clicked in this pane somewhere in the app — a browser pane — and
-    /// answer whether it could. False, or nil, and the link goes to the default browser.
-    public var openLink: ((URL) -> Bool)?
+    /// Show a clicked link in a pane — a page in the browser pane, a file in the editor —
+    /// and answer whether it could. False, or nil, and it goes to the Mac instead.
+    public var openLink: ((LinkTarget) -> Bool)?
+    /// Whether `openLink` could show this link now: a pane to show it in, or room for one.
+    /// The menu's "Open in Ultra" dims when it could not.
+    public var canOpenLink: ((LinkTarget) -> Bool)?
 
     /// A ⌘-click on a URL, an OSC 8 hyperlink, or a file path. SwiftTerm finds all three.
     ///
-    /// A file — a path the shell or an agent printed, or a `file:` link — is shown in
-    /// Finder: a folder opens, anything else is selected in its folder. ⌥⌘-click opens it
-    /// with its default app instead. See `fileLink(_:cwd:)` for what counts.
-    ///
-    /// For a web link the app is asked first, when the rule below says the click is for it;
-    /// the default browser gets everything else, and anything the app could not show — a
-    /// canvas with no browser and no room for one — so a click on a link always opens
-    /// SOMETHING.
+    /// By default it asks, with a menu at the pointer: open it in Ultra, or in the browser
+    /// or Finder. The setting can make a click do either straight away, and ⌥⌘-click always
+    /// goes to the Mac — see `TerminalLinkMenu.clickAction`.
     public func requestOpenLink(source: TerminalView, link: String, params: [String: String]) {
         // The click that got here: `mouseUp` calls this synchronously, so the current
-        // event is that click and its modifiers are the ones held during it.
-        let modifiers = NSApp.currentEvent?.modifierFlags ?? []
-        if let file = Self.fileLink(link, cwd: spec.cwd) {
-            Self.showInFinder(file, opensWithDefaultApp: modifiers.contains(.option))
-            return
-        }
-        let url = URL(string: link)
-        let scheme = url?.scheme?.lowercased()
-        guard let url, let scheme, ["http", "https"].contains(scheme) else {
+        // event is that click, with the modifiers held during it and where it landed.
+        let event = NSApp.currentEvent
+        guard let target = Self.linkTarget(link, cwd: spec.cwd) else {
             // A path that is not there — any more, or relative to somewhere other than the
             // shell's directory. Silence would read as a missed click.
+            let scheme = URL(string: link)?.scheme?.lowercased()
             if scheme == nil || scheme == "file" { NSSound.beep() }
             return
         }
-        if Self.linkOpensInPane(url, modifiers: modifiers, preferred: Preferences.opensLinksInBrowserPane),
-           openLink?(url) == true {
+        if let action = TerminalLinkMenu.clickAction(for: target,
+                                                     modifiers: event?.modifierFlags ?? [],
+                                                     preference: Preferences.linkClick) {
+            perform(action, on: target)
             return
         }
-        NSWorkspace.shared.open(url)
+        let point = event.map { convert($0.locationInWindow, from: nil) }
+            ?? NSPoint(x: bounds.midX, y: bounds.midY)
+        ChromeMenuPresenter.popUp(linkMenu(for: target), at: point, in: self)
     }
 
-    /// Whether a clicked link is the app's to show, or the default browser's.
-    ///
-    /// The app's when the preference says so, the link is a web page, and ⌥ is not held.
-    /// ⌥⌘-click is the escape hatch for the page that needs the real browser — a login the
-    /// pane's web view has no cookies for. A `file:` link is never the browser pane's: it is
-    /// Finder's — see `fileLink(_:cwd:)`.
-    nonisolated public static func linkOpensInPane(_ url: URL, modifiers: NSEvent.ModifierFlags,
-                                                   preferred: Bool) -> Bool {
-        guard preferred, !modifiers.contains(.option),
-              let scheme = url.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
+    /// The link menu's rows for this pane: "Open in Ultra" dimmed with nowhere to open.
+    func linkMenu(for target: LinkTarget) -> [ChromeMenuEntry] {
+        let canOpen = canOpenLink?(target) ?? false
+        let app: String? = if case .file(let url) = target {
+            TerminalLinkMenu.defaultAppName(for: url)
+        } else {
+            nil
+        }
+        return TerminalLinkMenu.actions(for: target).map { action in
+            guard let action else { return .separator }
+            return .item(title: TerminalLinkMenu.title(of: action, for: target, defaultApp: app),
+                         symbol: TerminalLinkMenu.symbol(of: action),
+                         isEnabled: action != .openInUltra || canOpen) { [weak self] in
+                self?.perform(action, on: target)
+            }
+        }
+    }
+
+    func perform(_ action: LinkAction, on target: LinkTarget) {
+        switch action {
+        case .openInUltra:
+            if openLink?(target) == true { return }
+            perform(TerminalLinkMenu.fallback(for: target), on: target)
+        case .openInBrowser, .openWithDefaultApp:
+            NSWorkspace.shared.open(target.url)
+        case .showInFinder:
+            if case .folder(let url) = target {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: url.path)
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([target.url])
+            }
+        case .copy:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(target.isWeb ? target.url.absoluteString : target.url.path,
+                                           forType: .string)
+        }
+    }
+
+    /// What a clicked link is: a file or folder that exists, a web page, or nothing that
+    /// opens. A file wins over a web reading of the same text.
+    nonisolated public static func linkTarget(_ link: String, cwd: String?) -> LinkTarget? {
+        if let file = fileLink(link, cwd: cwd) {
+            return isPlainFolder(file) ? .folder(file) : .file(file)
+        }
+        guard let url = URL(string: link), let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return .web(url)
     }
 
     /// The file a clicked link names, if it names one that exists.
@@ -594,19 +627,6 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         guard let found = candidates.first(where: { fileManager.fileExists(atPath: $0) })
         else { return nil }
         return URL(fileURLWithPath: found).standardizedFileURL
-    }
-
-    /// A folder opens in Finder; a file, or a package like an `.app`, is selected in its
-    /// folder rather than launched. ⌥ opens either with its default app, as a double click
-    /// in Finder would.
-    static func showInFinder(_ file: URL, opensWithDefaultApp: Bool) {
-        if opensWithDefaultApp {
-            NSWorkspace.shared.open(file)
-        } else if Self.isPlainFolder(file) {
-            NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: file.path)
-        } else {
-            NSWorkspace.shared.activateFileViewerSelecting([file])
-        }
     }
 
     nonisolated static func isPlainFolder(_ file: URL) -> Bool {

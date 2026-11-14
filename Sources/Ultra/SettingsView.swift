@@ -270,17 +270,17 @@ private struct TerminalSettings: View {
             }
 
             Section {
-                Toggle("Open links in the browser pane",
-                       isOn: prefs.flag({ Preferences.opensLinksInBrowserPane },
-                                        { Preferences.opensLinksInBrowserPane = $0 }))
+                Picker("⌘-click on a link", selection: prefs.linkClick()) {
+                    ForEach(Preferences.LinkClick.allCases) { Text($0.title).tag($0) }
+                }
             } header: {
                 Text("Links")
             } footer: {
-                SettingNote("A ⌘-click on a URL in a shell or agent pane shows the page in "
-                            + "the browser pane — the one already open, or a new one. "
-                            + "⌥⌘-click opens it in your default browser instead, and so "
-                            + "does turning this off. A ⌘-click on a file path shows it in "
-                            + "Finder; ⌥⌘-click opens it with its app.")
+                SettingNote("A ⌘-click on a URL or a file path in a shell or agent pane. "
+                            + "In Ultra, a page opens in the browser pane and a file in the "
+                            + "editor; outside it, in your default browser and in Finder. "
+                            + "Asking shows a menu with both. ⌥⌘-click always skips the menu "
+                            + "for the default browser, or the file's own app.")
             }
 
             Section {

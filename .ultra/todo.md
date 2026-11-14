@@ -1,3 +1,10 @@
+## Links: ask where to open
+
+- [x] A ⌘-click on a link in a shell or agent pane shows a menu at the pointer: Open in Ultra (a page in the browser pane, a file in the editor) or Open in Browser / Show in Finder, Open with the file's app, Copy Link or Path (`TerminalLinkMenu`, `ShellTerminalView.linkMenu`)
+- [x] Open in Ultra dims when the canvas has no such pane and no room for one; a folder offers only Finder (`ShellPaneFactory.canOpenLink`)
+- [x] Settings ▸ Terminal ▸ Links: Ask Each Time (default), Open in Ultra, or Open in Browser or Finder; the old browser-pane switch, if turned off, carries over (`Preferences.linkClick`)
+- [x] ⌥⌘-click skips the menu for the default browser or the file's own app
+
 ## File paths open in Finder
 
 - [x] A ⌘-click on a file path in a shell or agent pane — absolute, `~/`, `./`, or relative to the shell's directory, with or without a compiler's `:line:col` — shows it in Finder: a folder opens, a file or package is selected in its folder (`ShellTerminalView.fileLink`, `showInFinder`)

@@ -113,6 +113,18 @@ public enum ChromeMenuPresenter {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: anchorView)
     }
 
+    /// The same menu, opened at a point in `view` rather than below a control: under the
+    /// pointer, for something clicked inside a pane's content, like a terminal's link.
+    @MainActor
+    public static func popUp(_ rows: [ChromeMenuEntry], at point: NSPoint, in view: NSView) {
+        guard !rows.isEmpty else { return }
+        let menu = ChromeMenu()
+        let handler = ChromeMenuTarget()
+        menu.handler = handler
+        fill(menu, with: rows, handler: handler)
+        menu.popUp(positioning: nil, at: point, in: view)
+    }
+
     /// The rows, as items of `menu`; a submenu row recurses. Returns whether any row in the
     /// menu, or in one below it, is ticked, so the submenu's own row can be.
     @MainActor

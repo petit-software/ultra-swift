@@ -1,22 +1,50 @@
 import AppKit
 import Testing
 @testable import UltraTerminal
+import UltraDesign
 
 @Suite("Links clicked in a terminal")
 struct TerminalLinkTests {
-    private let page = URL(string: "http://localhost:3000/docs")!
+    private let page = LinkTarget.web(URL(string: "http://localhost:3000/docs")!)
+    private let file = LinkTarget.file(URL(fileURLWithPath: "/tmp/a.swift"))
+    private let folder = LinkTarget.folder(URL(fileURLWithPath: "/tmp"))
 
-    @Test("a web link opens in the browser pane when the setting is on")
-    func webLinkGoesToThePane() {
-        #expect(ShellTerminalView.linkOpensInPane(page, modifiers: [.command], preferred: true))
-        #expect(ShellTerminalView.linkOpensInPane(URL(string: "https://swift.org")!, modifiers: [.command], preferred: true))
+    @Test("asking shows the menu; the setting can open in Ultra or on the Mac instead")
+    func clickRule() {
+        #expect(TerminalLinkMenu.clickAction(for: page, modifiers: [.command], preference: .ask) == nil)
+        #expect(TerminalLinkMenu.clickAction(for: file, modifiers: [.command], preference: .ask) == nil)
+        #expect(TerminalLinkMenu.clickAction(for: page, modifiers: [.command], preference: .ultra) == .openInUltra)
+        #expect(TerminalLinkMenu.clickAction(for: file, modifiers: [.command], preference: .ultra) == .openInUltra)
+        #expect(TerminalLinkMenu.clickAction(for: folder, modifiers: [.command], preference: .ultra) == .showInFinder)
+        #expect(TerminalLinkMenu.clickAction(for: page, modifiers: [.command], preference: .system) == .openInBrowser)
+        #expect(TerminalLinkMenu.clickAction(for: file, modifiers: [.command], preference: .system) == .showInFinder)
     }
 
-    @Test("⌥⌘-click, the setting off, or a file link go to the system")
-    func escapes() {
-        #expect(!ShellTerminalView.linkOpensInPane(page, modifiers: [.command, .option], preferred: true))
-        #expect(!ShellTerminalView.linkOpensInPane(page, modifiers: [.command], preferred: false))
-        #expect(!ShellTerminalView.linkOpensInPane(URL(string: "file:///tmp/a.txt")!, modifiers: [.command], preferred: true))
+    @Test("⌥⌘-click skips the menu for the default browser or the file's app")
+    func optionEscapes() {
+        for preference in Preferences.LinkClick.allCases {
+            #expect(TerminalLinkMenu.clickAction(for: page, modifiers: [.command, .option], preference: preference) == .openInBrowser)
+            #expect(TerminalLinkMenu.clickAction(for: file, modifiers: [.command, .option], preference: preference) == .openWithDefaultApp)
+        }
+    }
+
+    @Test("the menu offers Ultra and the Mac, and a folder only Finder")
+    func rows() {
+        #expect(TerminalLinkMenu.actions(for: page) == [.openInUltra, .openInBrowser, nil, .copy])
+        #expect(TerminalLinkMenu.actions(for: file) == [.openInUltra, .showInFinder, .openWithDefaultApp, nil, .copy])
+        #expect(TerminalLinkMenu.actions(for: folder) == [.showInFinder, nil, .copy])
+        #expect(TerminalLinkMenu.title(of: .openInBrowser, for: page) == "Open in Browser")
+        #expect(TerminalLinkMenu.title(of: .openWithDefaultApp, for: file, defaultApp: "Xcode") == "Open with Xcode")
+        #expect(TerminalLinkMenu.title(of: .showInFinder, for: folder) == "Open in Finder")
+        #expect(TerminalLinkMenu.fallback(for: page) == .openInBrowser)
+        #expect(TerminalLinkMenu.fallback(for: file) == .showInFinder)
+    }
+
+    @Test("a web link is a page; anything else that is not a file is nothing")
+    func targets() {
+        #expect(ShellTerminalView.linkTarget("https://swift.org", cwd: nil) == .web(URL(string: "https://swift.org")!))
+        #expect(ShellTerminalView.linkTarget("mailto:a@b.c", cwd: nil) == nil)
+        #expect(ShellTerminalView.linkTarget("/no/such/file", cwd: nil) == nil)
     }
 }
 

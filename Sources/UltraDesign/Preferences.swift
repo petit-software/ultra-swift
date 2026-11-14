@@ -189,14 +189,43 @@ public enum Preferences {
         set { setFlag("promptMenus", newValue, current: promptMenus) }
     }
 
-    /// Whether a web link clicked in a shell or agent pane opens in the browser PANE —
-    /// the one already open, else a new one — rather than the default browser. On by
-    /// default: the page an agent just named belongs beside the agent, and ⌥⌘-click is
-    /// still the default browser for the odd login page that wants the real one. See
-    /// `ShellTerminalView.linkOpensInPane`.
-    public static var opensLinksInBrowserPane: Bool {
-        get { flag("opensLinksInBrowserPane", default: true) }
-        set { setFlag("opensLinksInBrowserPane", newValue, current: opensLinksInBrowserPane) }
+    /// What a ⌘-click on a link in a shell or agent pane does.
+    public enum LinkClick: String, CaseIterable, Sendable, Identifiable {
+        /// A menu at the pointer: open it in Ultra, or in the browser or Finder.
+        case ask
+        /// Straight into a pane: a page in the browser pane, a file in the editor.
+        case ultra
+        /// Straight to the Mac: a page in the default browser, a file in Finder.
+        case system
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .ask: "Ask Each Time"
+            case .ultra: "Open in Ultra"
+            case .system: "Open in Browser or Finder"
+            }
+        }
+    }
+
+    /// What a ⌘-click on a link does — see `ShellTerminalView.requestOpenLink`. Asks by
+    /// default: a page an agent names may want the pane beside it or the real browser with
+    /// its logins, and only the person clicking knows which.
+    ///
+    /// Someone who turned off the old "Open links in the browser pane" switch keeps what
+    /// they chose: links straight to the default browser.
+    public static var linkClick: LinkClick {
+        get {
+            if let stored = store.string(forKey: prefix + "linkClick").flatMap(LinkClick.init(rawValue:)) {
+                return stored
+            }
+            return store.object(forKey: prefix + "opensLinksInBrowserPane") as? Bool == false
+                ? .system : .ask
+        }
+        set {
+            guard newValue != linkClick else { return }
+            store.set(newValue.rawValue, forKey: prefix + "linkClick")
+            post()
+        }
     }
 
     public static var showsHiddenFiles: Bool {
@@ -350,7 +379,7 @@ public enum Preferences {
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
                     "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell", "promptMenus",
-                    "opensLinksInBrowserPane",
+                    "linkClick", "opensLinksInBrowserPane",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
                     // The two What's New keys are gone with the launch-time dialog, and
@@ -488,6 +517,11 @@ public final class PreferencesModel {
     public func accent() -> Binding<Preferences.AccentColour> {
         Binding(get: { _ = self.revision; return Preferences.accentColour },
                 set: { Preferences.accentColour = $0 })
+    }
+
+    public func linkClick() -> Binding<Preferences.LinkClick> {
+        Binding(get: { _ = self.revision; return Preferences.linkClick },
+                set: { Preferences.linkClick = $0 })
     }
 
     public func theme() -> Binding<Preferences.ThemeMode> {

@@ -214,15 +214,28 @@ enum ShellWorkspace {
             guard Preferences.promptMenus else { return false }
             return PromptMenu.present(trigger, pane: paneID, workspace: workspaceID)
         }
-        // A URL ⌘-clicked in a shell or agent pane — the dev server it started, the page
-        // the agent is citing — opens in the browser pane, the way a Ports row does.
-        // Declined when the canvas has no browser and no room for one, and the pane
-        // sends it to the default browser instead; a click on a link must open something.
-        factory.onOpenLink = { _, url in
-            guard let store = Registry.stores[workspaceID],
-                  Registry.browserTarget(in: workspaceID) != nil || canOpenNewPane(in: store)
-            else { return false }
-            return showInBrowser(url, in: store)
+        // A link ⌘-clicked in a shell or agent pane — the dev server it started, the page
+        // the agent is citing, the file it just wrote — opens in a pane: a page in the
+        // browser, the way a Ports row does, and a file in the editor. Declined when the
+        // canvas has no such pane and no room for one, and the pane sends it to the Mac.
+        func canOpen(_ target: LinkTarget, in store: LayoutStore) -> Bool {
+            switch target {
+            case .web: Registry.browserTarget(in: workspaceID) != nil || canOpenNewPane(in: store)
+            case .file: Registry.editorTarget(in: workspaceID) != nil || canOpenNewPane(in: store)
+            case .folder: false
+            }
+        }
+        factory.canOpenLink = { _, target in
+            guard let store = Registry.stores[workspaceID] else { return false }
+            return canOpen(target, in: store)
+        }
+        factory.onOpenLink = { _, target in
+            guard let store = Registry.stores[workspaceID], canOpen(target, in: store) else { return false }
+            switch target {
+            case .web(let url): return showInBrowser(url, in: store)
+            case .file(let url): return openEditor(on: url, in: store)
+            case .folder: return false
+            }
         }
 
         // The agent control channel. Scoped to this workspace: its socket lives in the
