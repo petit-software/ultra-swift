@@ -54,13 +54,17 @@ public struct AgentPaneSample: Equatable, Sendable {
     /// agent asking a question from one that has finished (`AgentPrompt`). Empty for a
     /// plain shell, which is not read.
     public var screen: [String]
+    /// The title the agent has set on its terminal, its status glyph dropped: what it is
+    /// working on, in its own words (`AgentTitle`). Nil until it sets one, and for a shell.
+    public var title: String?
 
     public init(agent: String? = nil, lastOutputAt: Date? = nil, lastBellAt: Date? = nil,
-                screen: [String] = []) {
+                screen: [String] = [], title: String? = nil) {
         self.agent = agent
         self.lastOutputAt = lastOutputAt
         self.lastBellAt = lastBellAt
         self.screen = screen
+        self.title = title
     }
 }
 

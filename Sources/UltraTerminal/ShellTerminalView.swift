@@ -100,6 +100,9 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// agent typed at a prompt is reaped by that shell and never reaches this at all.
     public private(set) var lastExitCode: Int32?
 
+    /// The title as the agent in this pane last set it, raw; nil once the agent has gone.
+    private var agentTitle: String?
+
     /// Everything `AgentStatus` is allowed to read from this pane, sampled together.
     ///
     /// One value rather than four properties, because the rules read across the fields and a
@@ -113,6 +116,13 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public var agentSample: AgentPaneSample {
         let activity = activity
         let isAgent = isRunningAgent(given: activity)
+        // The agent has gone, and its title with it: the next one starts unnamed.
+        if !isAgent { agentTitle = nil }
+        let agent = isAgent
+            ? ((activity?.isAgent == true ? activity?.command : nil)
+               ?? spec.agentCommand.map { AgentDefinition(name: "", command: $0).binaryName }
+               ?? "agent")
+            : nil
         return AgentPaneSample(
             // The `"agent"` fallback cannot currently be reached — a pane is only running an
             // agent because it was launched as one or because the tty named one — but a
@@ -120,14 +130,12 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
             // unreachable branch is the one worth being explicit about.
             // The tty's name when it IS an agent's; else the configured command's binary —
             // a pane launched as `python3 agent.py` is reported as that, not as "Python".
-            agent: isAgent
-                ? ((activity?.isAgent == true ? activity?.command : nil)
-                   ?? spec.agentCommand.map { AgentDefinition(name: "", command: $0).binaryName }
-                   ?? "agent")
-                : nil,
+            agent: agent,
             lastOutputAt: lastOutputAt,
             lastBellAt: lastBellAt,
-            screen: isAgent ? screenTail(AgentPrompt.lines) : [])
+            screen: isAgent ? screenTail(AgentPrompt.lines) : [],
+            title: AgentTitle.active(agentTitle,
+                                     agentName: agent.map { AgentDefinition.displayName(forBinary: $0) }))
     }
 
     /// The last `count` rows of the screen as text. The rows on view: scrolled up into
@@ -380,6 +388,9 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     }
 
     public func setTerminalTitle(source: TerminalView, title: String) {
+        // Kept only when an agent set it: a shell's prompt titles the pane too, and that
+        // is the folder, not what an agent is doing.
+        agentTitle = isRunningAgent ? title : nil
         shellDelegate?.shellTitleChanged(self, title: title)
     }
 

@@ -1081,8 +1081,13 @@ struct RootView: View {
                                 ? .all : .detailOnly
                         }
                     } label: {
-                        WindowBarGlyph(columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar",
-                                       symbol: "sidebar.left")
+                        // The list that is up now: the belt along the bottom while the
+                        // sidebar is hidden, the sidebar's rail while it shows. In the
+                        // box every glyph on the bar has.
+                        SessionListGlyph(columnVisibility == .detailOnly ? .belt : .sidebar)
+                            .frame(width: 26, height: 26)
+                            .contentShape(.rect)
+                            .accessibilityLabel(columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar")
                     }
                     .help(columnVisibility == .detailOnly ? "Show Sidebar (⌃⌘S)" : "Hide Sidebar (⌃⌘S)")
                 }

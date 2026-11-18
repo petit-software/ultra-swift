@@ -5,6 +5,22 @@
 - [x] A row's right-click has Show / Hide Active Sessions, per project and remembered by folder; File ▸ Session has the same item and the palette finds it (`SessionTerminalVisibility`, `session.toggleActiveSessions`)
 - [x] A click on one goes to that project and focuses that pane, in its own window if it has one (`SessionList.reveal`)
 - [x] The demo's agents are Claude Code and Codex: a second stand-in binary called `codex`, in two of the four agent projects (`DemoProjects.agentCommand`)
+- [x] An agent's row reads the title the agent carries — what it set on its terminal, its status glyph dropped — and its name until it sets one (`AgentTitle`, `AgentPaneSample.title`)
+- [x] A project whose sessions are listed shows no spinner of its own while they work: each agent's row has it; needs-you and done still show on the project
+- [x] Over a project's icon the icon is a bold chevron, in the icon's own box — down while its sessions are listed, right while they are hidden — and a click there hides or shows them: Show / Hide Active Sessions by the pointer; only on a project with sessions to list (`SessionRow.iconSlot`, `SidebarRowPress.clicked`)
+- [x] A row's close X shows only under the pointer: the selected project no longer wears it at rest, so its badge shows there instead
+
+## Window bar: the sidebar toggle says which list is up
+
+- [x] The toggle at the head of the window bar wears a glyph of its own for each state — a window with a rail down its left while the sidebar is the list, a window with a bar along its bottom while the belt is — drawn from their outlines as template images; the same press, ⌃⌘S, switches between them (`SessionListGlyph`)
+
+## Sidebar: a project gone quiet
+
+- [x] A project whose agents finished, were seen, and have said nothing for half an hour is inactive — it was an hour (`AgentStateTracker.inactiveAfter`)
+- [x] An inactive project's icon is grey with its name, and its sessions are folded away under it, the chevron with them; the next turn brings both back (`SessionSidebar.sessionsToList`)
+- [x] The demo has three inactive projects — infra, blog and data-pipeline, quiet for 40 minutes, 3 hours and 2 days — so the grey rows can be seen without waiting (`AgentMonitor.standIns`, `DemoProjects.show`)
+- [x] Hiding or showing a project's sessions leaves its name where it is: the row is held at the top of its cell, the list under it fades and the cell shortens
+- [x] A right-click on a project's row rings it at the pill's own radius, not the table's: the menu is the sidebar's own, put up from the press it already watches (`SidebarRowPress.menu`, `SidebarMenuItem`)
 
 ## Sessions between windows
 

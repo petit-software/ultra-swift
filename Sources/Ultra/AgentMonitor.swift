@@ -54,6 +54,9 @@ final class AgentMonitor {
     /// unread, done, inactive — see `AgentState`. What the sidebar's rows show.
     private(set) var states = AgentStateTracker()
     private(set) var stateBySession: [UUID: AgentState] = [:]
+    /// States the demo puts on projects, over whatever is read from their panes: an
+    /// inactive project takes half an hour to come by honestly. Empty outside the demo.
+    var standIns: [UUID: AgentState] = [:]
     /// The same, per pane: what the Agents overview's strips show.
     private(set) var stateByPane: [PaneID: AgentState] = [:]
 
@@ -62,7 +65,12 @@ final class AgentMonitor {
         let id: PaneID
         /// The agent in it, as the tty names its binary; nil for a plain shell.
         let agent: String?
+        /// What the row reads: the title the agent carries, or its name until it sets
+        /// one; a shell's pane title.
         let title: String
+        /// The agent's name — "Claude Code" — for the row's tooltip, which the title
+        /// no longer says.
+        let agentName: String?
     }
 
     /// The terminal panes of every session that has an agent in one, in the order the
@@ -140,9 +148,12 @@ final class AgentMonitor {
             next[workspaceID] = ([store] + store.paneWindows).flatMap { canvas in
                 canvas.tree.paneIDs.compactMap { paneID -> SessionTerminal? in
                     guard let sample = samples[paneID] else { return nil }
-                    let title = sample.agent.map { AgentDefinition.displayName(forBinary: $0) }
-                        ?? canvas.surfaces.records[paneID]?.title ?? "Shell"
-                    return SessionTerminal(id: paneID, agent: sample.agent, title: title)
+                    let agentName = sample.agent.map { AgentDefinition.displayName(forBinary: $0) }
+                    let title = sample.agent == nil
+                        ? canvas.surfaces.records[paneID]?.title ?? "Shell"
+                        : sample.title ?? agentName ?? "Agent"
+                    return SessionTerminal(id: paneID, agent: sample.agent, title: title,
+                                           agentName: agentName)
                 }
             }
         }
@@ -199,6 +210,7 @@ final class AgentMonitor {
             readings[workspaceID] = panes
         }
         let next = states.observe(readings, viewed: viewedSessions(), at: timestamp)
+            .merging(standIns) { _, standIn in standIn }
         if next != stateBySession { stateBySession = next }
         if states.stateByPane != stateByPane { stateByPane = states.stateByPane }
         let turned = Calendar.current.dateInterval(of: .minute, for: timestamp)?.start ?? timestamp

@@ -129,6 +129,8 @@ struct SessionSidebar: View {
 
     /// Each session row's frame as last laid out, in the window.
     @State private var rowFrames: [UUID: CGRect] = [:]
+    /// The project whose right-click menu is up.
+    @State private var menuRowID: UUID?
     /// The list's frame, in the window: what the rows are drawn against while dragging,
     /// and the edge past which a row has left.
     @State private var listFrame: CGRect = .zero
@@ -305,6 +307,44 @@ struct SessionSidebar: View {
         }
     }
 
+    /// The terminals a project has to list under its row, or nil: it has no agent — or
+    /// it has gone inactive, and a project nobody is working in is its own row and no
+    /// more. The next turn makes it active, and they are listed again.
+    private func sessionsToList(for store: LayoutStore) -> [AgentMonitor.SessionTerminal]? {
+        if case .inactive = AgentMonitor.shared.stateBySession[store.workspaceID] { return nil }
+        return AgentMonitor.shared.terminalsBySession[store.workspaceID]
+    }
+
+    /// A row's right-click menu. Every item is a view of a menu command — a context menu
+    /// is never the only way to reach something.
+    private func menuItems(_ index: Int) -> [SidebarMenuItem] {
+        guard sessions.sessions.indices.contains(index) else { return [] }
+        let store = sessions.sessions[index]
+        let id = store.workspaceID
+        // Customize is live on a scratch session as well — it is how one is renamed. It
+        // selects too, so the session being customised is the one behind the sheet.
+        var items = [SidebarMenuItem("Customize") {
+            sessions.select(id)
+            ui.customizingSessionID = id
+        }]
+        // Whether this project's agents and shells are listed under its row. File ▸
+        // Session has the same item, and the palette.
+        items.append(SidebarMenuItem(SessionTerminalVisibility.shared.title(for: store)) {
+            withAnimation(Token.Motion.structuralRespectingPreferences) {
+                SessionTerminalVisibility.shared.toggle(for: store)
+            }
+        })
+        // What dragging the row out of the sidebar does.
+        if sessions.canMoveToNewWindow(id) {
+            items.append(SidebarMenuItem("Move to New Window") { sessions.moveToNewWindow(id) })
+        }
+        if sessions.canCloseSelected {
+            items.append(.separator)
+            items.append(SidebarMenuItem("Close Session") { ui.closingSessionID = id })
+        }
+        return items
+    }
+
     private var list: some View {
         List(selection: selection) {
             // Above every session: the one view that is about all of them.
@@ -339,6 +379,7 @@ struct SessionSidebar: View {
                                // Not while the overview is up: the row stays the one the
                                // overview was opened from, but nothing on it is selected.
                                isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID,
+                               hasSessions: sessionsToList(for: store) != nil,
                                canClose: sessions.canCloseSelected,
                                select: { sessions.select(store.workspaceID) },
                                rename: { sessions.rename(store.workspaceID, to: $0) },
@@ -348,12 +389,19 @@ struct SessionSidebar: View {
                         .frame(minHeight: rowHeight)
                     // Not while the project is being dragged: picked up, it is one row.
                     if !isDragged, SessionTerminalVisibility.shared.isShown(for: store),
-                       let terminals = AgentMonitor.shared.terminalsBySession[store.workspaceID] {
+                       let terminals = sessionsToList(for: store) {
                         SessionTerminalRows(terminals: terminals) {
                             sessions.reveal($0, in: store.workspaceID)
                         }
+                        // Folded away, they fade where they are while the cell shortens
+                        // over them.
+                        .transition(.opacity)
                     }
                 }
+                    // Held at the top of the cell. A cell changing height centres what is
+                    // in it on the way, and the project's name slid down into the pill
+                    // and back each time its sessions were hidden or shown.
+                    .frame(maxHeight: .infinity, alignment: .top)
                     // The whole of the row's height, so it can be picked up anywhere on it.
                     .contentShape(.rect)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
@@ -370,16 +418,38 @@ struct SessionSidebar: View {
                     // It goes with the row being dragged.
                     .listRowBackground(
                         SelectedProjectGlass(isSelected: !ui.showsAgents && !isDragged
-                                             && sessions.selectedID == store.workspaceID))
+                                             && sessions.selectedID == store.workspaceID)
+                            // The row a right-click's menu is about, ringed at the
+                            // pill's own corners.
+                            .overlay {
+                                if menuRowID == store.workspaceID { SelectedProjectGlass.menuRing }
+                            })
             }
         }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
         .background {
             SidebarRowPress(origin: listFrame.origin, rowHeight: rowHeight,
                             count: sessions.sessions.count,
-                            clicked: { index in
+                            clicked: { index, point in
                                 guard sessions.sessions.indices.contains(index) else { return }
-                                sessions.select(sessions.sessions[index].workspaceID)
+                                let store = sessions.sessions[index]
+                                // On the icon of a project with sessions to list, the
+                                // click is the chevron's: it folds them away or back.
+                                if let row = rowFrames[store.workspaceID],
+                                   point.x >= row.minX - 2, point.x <= row.minX + SessionRow.iconWidth + 2,
+                                   sessionsToList(for: store) != nil {
+                                    withAnimation(Token.Motion.structuralRespectingPreferences) {
+                                        SessionTerminalVisibility.shared.toggle(for: store)
+                                    }
+                                } else {
+                                    sessions.select(store.workspaceID)
+                                }
+                            },
+                            menu: menuItems,
+                            menuShown: { index in
+                                menuRowID = index.flatMap {
+                                    sessions.sessions.indices.contains($0) ? sessions.sessions[$0].workspaceID : nil
+                                }
                             },
                             began: beginDrag, moved: pointerMoved, released: pointerReleased)
         }
@@ -472,6 +542,16 @@ private struct SessionTerminalRow: View {
         terminal.agent == nil ? nil : AgentMonitor.shared.stateByPane[terminal.id]
     }
 
+    /// The agent's name, the title it carries and its state: the name first, since the
+    /// row itself shows only the agent's mark.
+    private func described(by separator: String) -> String {
+        var parts: [String] = []
+        if let name = terminal.agentName, name != terminal.title { parts.append(name) }
+        parts.append(terminal.title)
+        if let state { parts.append(state.title) }
+        return parts.joined(separator: separator)
+    }
+
     var body: some View {
         Button(action: open) {
             HStack(spacing: 6) {
@@ -495,8 +575,8 @@ private struct SessionTerminalRow: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
-        .help(state.map { "\(terminal.title) — \($0.title)" } ?? terminal.title)
-        .accessibilityLabel(state.map { "\(terminal.title), \($0.title)" } ?? terminal.title)
+        .help(described(by: " — "))
+        .accessibilityLabel(described(by: ", "))
     }
 }
 
@@ -518,7 +598,13 @@ struct SidebarRowPress: NSViewRepresentable {
     let rowHeight: CGFloat
     /// How many sessions the list has; the table's first row is Agents.
     let count: Int
-    let clicked: (Int) -> Void
+    /// A click on a row, and where: the row's leading icon answers one for itself.
+    let clicked: (Int, CGPoint) -> Void
+    /// A row's right-click menu, and the row it is up for — nil once it has closed. The
+    /// menu is put up from here, not by the list: a table rings the row it is about in
+    /// its own shape, which is not the row's.
+    let menu: (Int) -> [SidebarMenuItem]
+    let menuShown: (Int?) -> Void
     let began: (Int, CGPoint) -> Bool
     let moved: (CGPoint) -> Void
     let released: () -> Void
@@ -552,7 +638,7 @@ struct SidebarRowPress: NSViewRepresentable {
             stop()
             guard window != nil else { return }
             monitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp, .rightMouseDown]) { [weak self] event in
                     // A flag back, not the event: an event is not something to carry
                     // across an isolation boundary, even one that is not really crossed.
                     let swallowed = MainActor.assumeIsolated { self?.handle(event) == nil && self != nil }
@@ -596,13 +682,46 @@ struct SidebarRowPress: NSViewRepresentable {
             event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? NSEvent.mouseLocation
         }
 
+        /// Put up the menu of the project's row under a right-click. False if the press
+        /// was not on one, and the event goes on to whatever it was for.
+        private func showMenu(for event: NSEvent) -> Bool {
+            guard let press, event.window === window, let table else { return false }
+            let point = table.convert(event.locationInWindow, from: nil)
+            guard table.visibleRect.contains(point) else { return false }
+            let row = table.row(at: point)
+            guard row >= 1, row - 1 < press.count else { return false }
+            let cell = table.rect(ofRow: row)
+            let depth = table.isFlipped ? point.y - cell.minY : cell.maxY - point.y
+            guard depth <= press.rowHeight + 4 else { return false }
+            let items = press.menu(row - 1)
+            guard !items.isEmpty else { return false }
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            let targets = items.map { MenuTarget($0.action) }
+            for (item, target) in zip(items, targets) {
+                guard item.action != nil else { menu.addItem(.separator()); continue }
+                let entry = NSMenuItem(title: item.title, action: #selector(MenuTarget.fire), keyEquivalent: "")
+                entry.target = target
+                menu.addItem(entry)
+            }
+            press.menuShown(row - 1)
+            // Returns when the menu has closed, its item's action already sent.
+            menu.popUp(positioning: nil, at: convert(event.locationInWindow, from: nil), in: self)
+            self.press?.menuShown(nil)
+            return true
+        }
+
         /// Nil swallows the event: it was this probe's.
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard let press else { return event }
             switch event.type {
+            case .rightMouseDown:
+                return showMenu(for: event) ? nil : event
             case .leftMouseDown:
                 held = nil
                 isDragging = false
+                // A control-click is a right-click.
+                if event.modifierFlags.contains(.control) { return showMenu(for: event) ? nil : event }
                 guard event.window === window, event.clickCount == 1, let table else { return event }
                 let point = table.convert(event.locationInWindow, from: nil)
                 guard table.visibleRect.contains(point) else { return event }
@@ -637,7 +756,7 @@ struct SidebarRowPress: NSViewRepresentable {
                     press.moved(global(event))
                     press.released()
                 } else {
-                    press.clicked(held.index)
+                    press.clicked(held.index, global(event))
                 }
                 return nil
             default:
@@ -645,6 +764,13 @@ struct SidebarRowPress: NSViewRepresentable {
             }
         }
     }
+}
+
+/// What a menu item of the sidebar's calls: a closure, behind a selector.
+private final class MenuTarget: NSObject {
+    private let run: (() -> Void)?
+    init(_ run: (() -> Void)?) { self.run = run }
+    @MainActor @objc func fire() { run?() }
 }
 
 /// A row on its way down the sidebar.
@@ -710,6 +836,33 @@ private struct SelectedProjectGlass: View {
         .padding(.vertical, 1)
         .opacity(isSelected ? 1 : 0)
     }
+
+    /// The ring round a row while its right-click menu is up: the system's colour for
+    /// it, on the pill's shape. The table's own ring has the table's corners.
+    static var menuRing: some View {
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .strokeBorder(Color(nsColor: .controlAccentColor), lineWidth: 2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 1)
+    }
+}
+
+/// One item of a sidebar row's right-click menu, or the line between two groups.
+struct SidebarMenuItem {
+    let title: String
+    let action: (() -> Void)?
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    private init() {
+        title = ""
+        action = nil
+    }
+
+    static var separator: SidebarMenuItem { SidebarMenuItem() }
 }
 
 /// Stops the sidebar list drawing its own selection, so the row's capsule is the only one.
@@ -1011,6 +1164,15 @@ private struct SessionRow: View {
     let store: LayoutStore
     @Bindable var ui: UIState
     let isSelected: Bool
+    /// Whether the project has agents and shells to list under this row.
+    let hasSessions: Bool
+    /// Whether they are listed: there are some, and the project is not hiding them.
+    private var listsSessions: Bool {
+        hasSessions && SessionTerminalVisibility.shared.isShown(for: store)
+    }
+    /// The leading slot's width: the icon's, and the chevron's that takes its place.
+    static let iconWidth: CGFloat = 20
+    @State private var isOverIcon = false
     let canClose: Bool
     let select: () -> Void
     let rename: (String) -> Void
@@ -1026,17 +1188,29 @@ private struct SessionRow: View {
     private var state: AgentState? {
         AgentMonitor.shared.stateBySession[store.workspaceID]
     }
+    private var isInactive: Bool {
+        if case .inactive = state { return true }
+        return false
+    }
+    /// The state as the row's badge and age show it: nothing while the project works and
+    /// its sessions are listed underneath, each turning an arc of its own — a second one
+    /// on the project is the same news twice. Needs-you and done still reach the row.
+    private var badge: AgentState? {
+        if listsSessions, case .working = state { return nil }
+        return state
+    }
     /// Seeded from disk at the row's first appearance, so a customised session is already
     /// wearing its icon on the frame it is drawn in rather than flashing the default first.
     /// SwiftUI keeps this per row IDENTITY, and a row's identity is its session.
     @State private var appearance: SessionAppearance
 
-    init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
+    init(store: LayoutStore, ui: UIState, isSelected: Bool, hasSessions: Bool = false, canClose: Bool,
          select: @escaping () -> Void, rename: @escaping (String) -> Void,
          close: @escaping () -> Void, moveToWindow: (() -> Void)? = nil) {
         self.store = store
         self.ui = ui
         self.isSelected = isSelected
+        self.hasSessions = hasSessions
         self.canClose = canClose
         self.select = select
         self.rename = rename
@@ -1070,13 +1244,29 @@ private struct SessionRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: SessionSymbols.resolved(appearance.symbol))
-                .font(Token.Type_.tileTitle)
-                .foregroundStyle(tint.color)
-                // A fixed box, so switching between a wide symbol and a narrow one does not
-                // shift the name beside it — a list whose text jumps as you customise rows
-                // reads as broken.
-                .frame(width: 20)
+            // The icon — and, under the pointer on a project with sessions to list, the
+            // chevron that folds them away or back. One box for both, of a fixed size, so
+            // neither the swap nor a wide symbol moves the name beside it or the rows
+            // below. The click itself is taken by the sidebar, with the row's other
+            // presses (`SidebarRowPress.clicked`), so a drag can still start here.
+            ZStack {
+                if isOverIcon, hasSessions {
+                    Image(systemName: listsSessions ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Token.Colour.label)
+                } else {
+                    Image(systemName: SessionSymbols.resolved(appearance.symbol))
+                        .font(Token.Type_.tileTitle)
+                        // Grey with the name once the project has gone inactive.
+                        .foregroundStyle(isInactive ? AnyShapeStyle(Token.Colour.tertiaryLabel)
+                                                    : AnyShapeStyle(tint.color))
+                }
+            }
+            .frame(width: Self.iconWidth, height: 16)
+            .contentShape(.rect)
+            .onHover { isOverIcon = $0 }
+            .help(hasSessions ? SessionTerminalVisibility.shared.title(for: store)
+                              : store.workspaceSubtitle ?? store.workspaceTitle)
 
             // The name alone. A pane count under it was a number about the layout, not
             // about the session — it changed every time a pane opened, and told a user
@@ -1091,7 +1281,7 @@ private struct SessionRow: View {
                 // One weight for every row. The badge says what is unread — the filled
                 // check — and a name that changed weight beside it moved the column.
                 // Dimmed once the session has gone quiet for good.
-                .foregroundStyle(state.map { if case .inactive = $0 { true } else { false } } == true
+                .foregroundStyle(isInactive
                                  ? AnyShapeStyle(Token.Colour.tertiaryLabel) : AnyShapeStyle(Token.Colour.label))
                 .lineLimit(1)
 
@@ -1099,8 +1289,8 @@ private struct SessionRow: View {
 
             // How long the state has held: "now", "4m", "2d". Fixed width and trailing, so
             // the symbol beside it does not move as the minutes turn.
-            if let state {
-                Text(state.age(at: AgentMonitor.shared.minute))
+            if let badge {
+                Text(badge.age(at: AgentMonitor.shared.minute))
                     .font(Token.Type_.tileSubtitle)
                     .monospacedDigit()
                     .foregroundStyle(Token.Colour.tertiaryLabel)
@@ -1115,27 +1305,21 @@ private struct SessionRow: View {
             // status light that moves is read as a change of status.
             //
             // The close control wins the slot when both want it, and that costs nothing:
-            // it only appears on the row the pointer is over or the one that is selected,
-            // and in both cases the session's agents are a glance away in the canvas
-            // itself. The badge is for the sessions you are NOT looking at.
+            // it only appears on the row the pointer is over. At rest every row, the
+            // selected one too, shows its badge.
             ZStack {
-                if isSelected || isHovering, canClose {
-                    // Shown on the SELECTED row as well as the hovered one. Hover-only meant
-                    // the close control did not exist for anyone not holding the pointer over
-                    // the row — and the row you are most likely to want to close is the one
-                    // you are in.
+                if isHovering, canClose {
+                    // Under the pointer only, the selected row included: at rest it shows
+                    // its badge like any other. File ▸ Session ▸ Close Session is the key path.
                     Button(action: close) {
                         Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.plain)
-                    // Dimmer until the pointer is actually on the row, so a permanent control
-                    // on the selected row does not compete with the name beside it.
-                    .foregroundStyle(isHovering ? AnyShapeStyle(Token.Colour.label)
-                                                : AnyShapeStyle(.secondary))
+                    .foregroundStyle(Token.Colour.label)
                     .help("Close session")
-                } else if let state {
-                    AgentStateSymbol(state: state)
-                        .help(state.title)
+                } else if let badge {
+                    AgentStateSymbol(state: badge)
+                        .help(badge.title)
                 }
             }
             // Reserved whether or not anything is in it. Without the frame the name beside
@@ -1155,27 +1339,8 @@ private struct SessionRow: View {
         // The PATH, always — a renamed session must still be able to tell you which checkout
         // it actually is, and after a rename the title no longer can.
         .help(store.workspaceSubtitle ?? store.workspaceTitle)
-        // Right-click, where a source list keeps a row's own verbs. A visible button would be
-        // a third control competing for the width the NAME needs. Both items here are views
-        // of a menu command — a context menu is never the only way to reach something.
-        .contextMenu {
-            // Live on a scratch session as well — it is how one is renamed. Its icon is
-            // kept for the session's lifetime (`SessionLook`), so nothing is silently lost.
-            Button("Customize") { beginCustomizing() }
-            // Whether this project's agents and shells are listed under its row. File ▸
-            // Session has the same item, and the palette.
-            Button(SessionTerminalVisibility.shared.title(for: store)) {
-                SessionTerminalVisibility.shared.toggle(for: store)
-            }
-            // What dragging the row out of the sidebar does.
-            if let moveToWindow {
-                Button("Move to New Window", action: moveToWindow)
-            }
-            if canClose {
-                Divider()
-                Button("Close Session", action: close)
-            }
-        }
+        // The right-click menu is the sidebar's (`SessionSidebar.menuItems`), put up by
+        // `SidebarRowPress`: the list's own rings the row in the table's shape.
         .sessionCustomizer(isPresented: isCustomizing, store: store, name: name,
                            appearance: $appearance,
                            defaultName: defaultName, rename: rename)
@@ -1186,13 +1351,6 @@ private struct SessionRow: View {
         // as well, rather than four dots in four colours.
         .accessibilityLabel(state.map { "Session, \(store.workspaceTitle), \($0.title), \($0.spokenAge(at: AgentMonitor.shared.minute))" }
                             ?? "Session, \(store.workspaceTitle)")
-    }
-
-    /// Select as well as open, so the session being customised is the one on screen behind
-    /// the sheet. macOS lets you right-click a row without selecting it.
-    private func beginCustomizing() {
-        select()
-        ui.customizingSessionID = store.workspaceID
     }
 }
 

@@ -50,6 +50,13 @@ enum DemoProjects {
                                        forDirectory: folder.path)
             opened.append(list.open(directory: folder.path).workspaceID)
         }
+        // Three of the projects with no agent in them have gone quiet, each longer ago
+        // than the last: what a row looks like once nobody is working in it.
+        let quiet: [String: TimeInterval] = ["infra": 40 * 60, "blog": 3 * 3600, "data-pipeline": 2 * 86_400]
+        for (spec, id) in zip(specs, opened) {
+            guard let ago = quiet[spec.name] else { continue }
+            AgentMonitor.shared.standIns[id] = .inactive(since: Date().addingTimeInterval(-ago))
+        }
         // A pass through every session before settling on the first. A shell starts on
         // its pane's first layout, and a session that is opened and left in the same
         // turn is never laid out: the eighth project sat with eight dead panes until it
@@ -179,6 +186,8 @@ enum DemoProjects {
         say "${B}╰──────────────────────────────────────────────╯${R}"
         say ""
         say "${D}>${R} Fix the failing test in the orders route and tell me what was wrong."
+        # The pane's title, as an agent sets it: a status glyph, then the work in hand.
+        printf '\e]0;✳ Fix the orders 404\e\\'
         sleep 1
         think 3
         step "Read(src/routes/orders.js)" 1.0 "Read 14 lines"

@@ -17,8 +17,8 @@ import UltraLayout
 ///   prompt look the same to a tty — silent, in front. The difference is on the screen,
 ///   so "needs you" is read from it (`AgentPrompt`): a question, a y/n, a numbered choice.
 /// - DONE IS NEWS ONCE. A finished turn is unread until its session has been looked at —
-///   on screen in a window that has the keyboard — and only then plain "done". An hour
-///   after that, with nothing new, it is inactive.
+///   on screen in a window that has the keyboard — and only then plain "done". Half an
+///   hour after that, with nothing new, it is inactive.
 public enum AgentState: Equatable, Sendable {
     case working(since: Date)
     case needsYou(since: Date)
@@ -134,7 +134,7 @@ public struct AgentPaneReading: Equatable, Sendable {
 /// (`AgentState.rollup`).
 public struct AgentStateTracker: Equatable, Sendable {
     /// How long a turn that has been seen stays "done" before it is "inactive".
-    public static let inactiveAfter: TimeInterval = 3600
+    public static let inactiveAfter: TimeInterval = 1800
 
     public private(set) var stateByPane: [PaneID: AgentState] = [:]
     public private(set) var stateBySession: [UUID: AgentState] = [:]
