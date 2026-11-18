@@ -580,6 +580,55 @@ private struct SessionTerminalRow: View {
     }
 }
 
+/// Whether the pointer is inside the view this is the background of — asked of the
+/// window each time, not remembered from the last enter or exit. A SwiftUI hover in a
+/// list cell ends for a frame whenever the cell is resized under a still pointer; here
+/// an exit, or a rebuilt tracking area, only counts if the pointer has really left.
+private struct PointerInside: NSViewRepresentable {
+    let changed: (Bool) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let probe = Probe()
+        probe.changed = changed
+        return probe
+    }
+
+    func updateNSView(_ view: NSView, context: Context) { (view as? Probe)?.changed = changed }
+
+    private final class Probe: NSView {
+        var changed: ((Bool) -> Void)?
+        private var isInside = false
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(NSTrackingArea(rect: .zero,
+                                           options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                           owner: self))
+            // Not from inside a layout pass: this may be SwiftUI's own update.
+            Task { @MainActor [weak self] in self?.settle() }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if window == nil { settle() }
+        }
+
+        override func mouseEntered(with event: NSEvent) { settle() }
+        override func mouseExited(with event: NSEvent) { settle() }
+
+        private func settle() {
+            let inside = window.map { bounds.contains(convert($0.mouseLocationOutsideOfEventStream, from: nil)) }
+                ?? false
+            guard inside != isInside else { return }
+            isInside = inside
+            changed?(inside)
+        }
+    }
+}
+
 /// A press on a session's row in the sidebar, taken before the list gets it.
 ///
 /// The list is an `NSTableView`, and a table's mouse-down keeps every event until the
@@ -1254,17 +1303,25 @@ private struct SessionRow: View {
                     Image(systemName: listsSessions ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Token.Colour.label)
+                        .contentTransition(.identity)
+                        .transition(.identity)
                 } else {
                     Image(systemName: SessionSymbols.resolved(appearance.symbol))
                         .font(Token.Type_.tileTitle)
                         // Grey with the name once the project has gone inactive.
                         .foregroundStyle(isInactive ? AnyShapeStyle(Token.Colour.tertiaryLabel)
                                                     : AnyShapeStyle(tint.color))
+                        .transition(.identity)
                 }
             }
             .frame(width: Self.iconWidth, height: 16)
+            // A swap, not a move: folding is animated around this row, and that animation
+            // must not reach the box — the chevron turned and cross-faded through the icon.
+            .transaction { $0.animation = nil }
             .contentShape(.rect)
-            .onHover { isOverIcon = $0 }
+            // Where the pointer IS, not what a hover says: folding resizes the cell, the
+            // hover under it ended for a frame, and the icon flashed back mid-click.
+            .background { PointerInside { isOverIcon = $0 } }
             .help(hasSessions ? SessionTerminalVisibility.shared.title(for: store)
                               : store.workspaceSubtitle ?? store.workspaceTitle)
 
