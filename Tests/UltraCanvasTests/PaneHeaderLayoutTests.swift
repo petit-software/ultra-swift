@@ -13,16 +13,20 @@ import AppKit
 @MainActor
 struct PaneHeaderLayoutTests {
 
-    /// Split cluster: two 28-wide controls, 1 apart, 5 trailing padding.
-    private let splitCluster: CGFloat = 68
+    /// Trailing cluster: the split pair, 28 wide each, 1 apart, 5 trailing padding.
+    private let splitCluster: CGFloat = 62
+    /// The same with zoom leading it, which only the focused pane shows.
+    private let focusedCluster: CGFloat = 91
 
-    private func pane(width: CGFloat, title: String, subtitle: String? = nil) -> PaneContainerView {
+    private func pane(width: CGFloat, title: String, subtitle: String? = nil,
+                      focused: Bool = false) -> PaneContainerView {
         let kinds = { [PaneKindChoice(kind: .git, title: "Git", symbol: "arrow.trianglehead.branch")] }
         let actions = PaneActions(split: { _, _ in }, close: { _ in }, focus: { _ in },
                                   kinds: kinds, changeKind: { _, _ in })
         let container = PaneContainerView(paneID: LayoutTree.fixturePane(1),
                                           descriptor: PaneDescriptor(title: title, subtitle: subtitle),
                                           kind: .git, content: NSView(), actions: actions)
+        container.isFocused = focused
         // SwiftUI reports geometry only for a hosting view that is in a window.
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: width, height: 300),
                               styleMask: .borderless, backing: .buffered, defer: false)
@@ -57,5 +61,14 @@ struct PaneHeaderLayoutTests {
         #expect(trailing <= 180 - splitCluster)
         #expect(trailing > 40, "the name collapsed to nothing instead of trimming")
         #expect(container.dragHandleFrameForTesting.width >= 0)
+    }
+
+    @Test("the focused pane makes room for zoom, and its drag handle stops short of it")
+    func focusedPaneShowsZoom() {
+        let container = pane(width: 180, title: "a-deliberately-long-pane-name",
+                             subtitle: "~/Repo/somewhere/deep", focused: true)
+        #expect(container.identityTrailingForTesting <= 180 - focusedCluster)
+        let wide = pane(width: 700, title: "name", focused: true)
+        #expect(wide.dragHandleFrameForTesting.maxX <= 700 - focusedCluster)
     }
 }

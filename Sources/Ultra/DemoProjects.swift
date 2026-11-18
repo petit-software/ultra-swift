@@ -23,7 +23,7 @@ import UltraTiles
 enum DemoProjects {
 
     /// Bumped when the projects or their arrangements change, so an old set is rebuilt.
-    static let version = 6
+    static let version = 7
 
     static var root: URL {
         AppSupport.directory.appendingPathComponent("Demo Projects", isDirectory: true)
@@ -94,9 +94,12 @@ enum DemoProjects {
     /// stays the process the tty sees. `scenario` is `working`, `asking` or `done`: the
     /// state the pane settles in. With no compiler on the machine the script runs in zsh
     /// directly; the pane is still an agent, having been launched as one.
-    static func agentCommand(_ scenario: String) -> String {
+    ///
+    /// `agent` is which CLI it stands in for — `claude` or `codex`, the same program under
+    /// either name — so the sidebar lists both marks and the notifications both names.
+    static func agentCommand(_ scenario: String, agent: String = "claude") -> String {
         let script = bin.appendingPathComponent("agent.zsh").path
-        let launcher = bin.appendingPathComponent("claude").path
+        let launcher = bin.appendingPathComponent(agent).path
         return FileManager.default.isExecutableFile(atPath: launcher)
             ? "\(launcher) \(script) \(scenario)"
             : "/bin/zsh \(script) \(scenario)"
@@ -129,11 +132,13 @@ enum DemoProjects {
     /// wait for the version to be bumped — and compile the launcher once.
     static func installBin() {
         try? FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
-        let launcher = bin.appendingPathComponent("claude")
         let source = bin.appendingPathComponent("claude.c")
-        if (try? String(contentsOf: source, encoding: .utf8)) != launcherSource
-            || !FileManager.default.isExecutableFile(atPath: launcher.path) {
-            try? launcherSource.write(to: source, atomically: true, encoding: .utf8)
+        let changed = (try? String(contentsOf: source, encoding: .utf8)) != launcherSource
+        if changed { try? launcherSource.write(to: source, atomically: true, encoding: .utf8) }
+        // One program under each agent's name: the tty reports the name it was run by.
+        for name in ["claude", "codex"] {
+            let launcher = bin.appendingPathComponent(name)
+            guard changed || !FileManager.default.isExecutableFile(atPath: launcher.path) else { continue }
             try? FileManager.default.removeItem(at: launcher)
             let clang = Process()
             clang.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -605,9 +610,10 @@ enum DemoProjects {
 
     /// An agent pane running the stand-in in `scenario`. Launched as an agent, so the
     /// header, the sidebar and the overview treat it as one.
-    static func agent(_ root: URL, _ scenario: String, into panes: inout [PaneID: PaneRecord]) -> PaneID {
+    static func agent(_ root: URL, _ scenario: String, as agent: String = "claude",
+                      into panes: inout [PaneID: PaneRecord]) -> PaneID {
         let id = PaneID()
-        let command = agentCommand(scenario)
+        let command = agentCommand(scenario, agent: agent)
         panes[id] = ShellPaneFactory.record(for: ShellSpec(cwd: root.path, agentCommand: command),
                                             agent: command, cwd: root.path)
         return id
@@ -1112,7 +1118,7 @@ enum DemoProjects {
             let files = tile(.fileTree, root, into: &panes)
             let editor = tile(.editor, root, file: "Sources/Weather/ForecastClient.swift", into: &panes)
             let tests = shell(root, title: "tests", into: &panes)
-            let agent = agent(root, "working", into: &panes)
+            let agent = agent(root, "working", as: "codex", into: &panes)
             let git = tile(.git, root, into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)
@@ -1259,7 +1265,7 @@ enum DemoProjects {
             let train = shell(root, title: "train", into: &panes)
             let procs = shell(root, title: "procs", into: &panes)
             let download = shell(root, title: "download", into: &panes)
-            let agent = agent(root, "done", into: &panes)
+            let agent = agent(root, "done", as: "codex", into: &panes)
             let resources = tile(.resources, root, into: &panes)
             let todo = tile(.todo, root, into: &panes)
             let context = tile(.context, root, into: &panes)

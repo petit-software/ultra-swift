@@ -217,6 +217,15 @@ final class WorkspaceModel {
     /// once, like the directories above. Set by `FileOpening`.
     @MainActor static var pendingFiles: [URL] = []
 
+    /// Sessions the NEXT window takes as they are, still running: one dragged out of
+    /// another window, or sent out by Move Session to New Window. Consumed once, like the
+    /// directories above. See `SessionList.moveToNewWindow`.
+    @MainActor static var pendingSessions: [LayoutStore] = []
+    /// Where that window comes up: under the pointer that let the session go.
+    @MainActor static var pendingFrame: CGRect?
+    /// This window's frame, when it was opened to take a session to a place.
+    private var placement: CGRect?
+
     /// Opens another workspace window. `openWindow` is an environment action, so this is
     /// set by the first window to come up and is nil before that — which is how
     /// `FileOpening` tells "open another window" from "the first window is on its way".
@@ -244,6 +253,23 @@ final class WorkspaceModel {
     /// actually survived, and idempotent because a `.task` can run again.
     func openInitialSessions() {
         guard sessions.isEmpty else { return }
+        // A session moved out of another window: this window is that session, where it
+        // was dropped. Whatever a closed window left running comes along behind, as with
+        // every window.
+        //
+        // FIRST, before the demo: a window opened to take a session is that session's
+        // whatever else the launch was asked for. Behind the demo's check, a session
+        // dragged out of a `--demo` window was never taken — it left its window and
+        // arrived nowhere, while the new one tried to open the demo a second time.
+        let moved = WorkspaceModel.pendingSessions
+        if !moved.isEmpty {
+            WorkspaceModel.pendingSessions = []
+            placement = WorkspaceModel.pendingFrame
+            WorkspaceModel.pendingFrame = nil
+            sessions.take(moved)
+            sessions.adoptRunning(selecting: false)
+            return
+        }
         // `--demo`, on a dev build: the eight demo projects and nothing of the last run.
         if DemoProjects.isRequestedAtLaunch {
             DemoProjects.show(in: sessions)
@@ -328,8 +354,13 @@ final class WorkspaceModel {
                 ShellWorkspace.Registry.windows[store.workspaceID] = window
             }
         }
-        guard let frame = sessions.selected?.windowFrame else { return }
+        // A session brought here from another window still carries that window's frame.
+        guard let frame = placement ?? sessions.selected?.windowFrame else { return }
         window?.setFrame(frame, display: false)
+        if placement != nil {
+            placement = nil
+            sessions.selected?.noteWindowFrame(frame)
+        }
     }
 
     private var closeObserver: (any NSObjectProtocol)?
@@ -569,6 +600,19 @@ struct WorkspaceCommands: Commands {
 
                 Divider()
 
+                // The sidebar row's right-click item, saying which way it will go.
+                Button(store.map { SessionTerminalVisibility.shared.title(for: $0) }
+                       ?? "Show Active Sessions") {
+                    if let store { PaneCommands.toggleActiveSessions.run(store) }
+                }
+                .disabled(store.map { !PaneCommands.toggleActiveSessions.isEnabled($0) } ?? true)
+
+                // The key path of dragging a tab off the belt or a row out of the sidebar.
+                Button(PaneCommands.moveSessionToNewWindow.title) {
+                    if let store { PaneCommands.moveSessionToNewWindow.run(store) }
+                }
+                .disabled(store.map { !PaneCommands.moveSessionToNewWindow.isEnabled($0) } ?? true)
+
                 // From the registry, which is what puts it in the palette as well.
                 Button(PaneCommands.closeSession.title) {
                     if let store { PaneCommands.closeSession.run(store) }
@@ -709,6 +753,15 @@ struct WorkspaceCommands: Commands {
         // then — and a disabled item swallows the key. An empty stack answers with a beep.
         // The title is computed the same way and can lag a focus change by one update;
         // that is cosmetic, where a swallowed ⌘Z is not.
+        // With the system's own window arrangement items. Native window tabbing is off, so
+        // AppKit's Merge All Windows is not there; this one merges sessions, not tabs.
+        CommandGroup(after: .windowArrangement) {
+            Button(PaneCommands.mergeWindows.title) {
+                if let store { PaneCommands.mergeWindows.run(store) }
+            }
+            .disabled(store.map { !PaneCommands.mergeWindows.isEnabled($0) } ?? true)
+        }
+
         CommandGroup(replacing: .undoRedo) {
             let manager = UndoRouting.current(for: store)
             Button(manager?.undoMenuItemTitle ?? "Undo") {
@@ -1135,6 +1188,9 @@ struct RootView: View {
                             windowBarItem(PaneCommands.equalizeRows)
                             Divider()
                             ForEach(PaneCommands.layouts) { windowBarItem($0) }
+                            // The windows themselves, last: not about this canvas at all.
+                            Divider()
+                            windowBarItem(PaneCommands.mergeWindows)
                         } label: {
                             WindowBarGlyph("More", symbol: "ellipsis")
                         }

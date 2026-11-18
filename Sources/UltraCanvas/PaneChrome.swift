@@ -26,6 +26,9 @@ public final class PaneActions {
     public var split: (PaneID, UltraLayout.Edge) -> Void
     public var close: (PaneID) -> Void
     public var focus: (PaneID) -> Void
+    /// Fill the canvas with this pane, or — already filling it — bring the others back.
+    /// Pane ▸ Toggle Zoom (⇧⌘↩) with a pane named, set by the store like the rest.
+    public var zoom: (PaneID) -> Void = { _ in }
     /// What a pane can become. Supplied by the app, because the canvas knows nothing about
     /// tile kinds — it lays out rectangles.
     public var kinds: () -> [PaneKindChoice]
@@ -137,6 +140,10 @@ public struct PaneHeader: View {
     let currentKind: PaneRecord.Kind?
     let isFocused: Bool
     let canClose: Bool
+    /// Whether this pane is the one filling the canvas, its siblings hidden behind it.
+    var isZoomed = false
+    /// Whether there is anything to zoom over: false on a canvas of one pane.
+    var canZoom = false
     let actions: PaneActions
     /// Whether the close and split controls are drawn. Off for a pane visiting the Agents
     /// overview: its grid cannot be split, and its close is on the strip above the header,
@@ -179,18 +186,36 @@ public struct PaneHeader: View {
             // The split controls never move and never collapse as the pane narrows: they
             // are fixed-size, so the identity control is the only thing that gives, and it
             // gives by trimming its name.
-            if showsControls {
-                HStack(spacing: 1) {
+            HStack(spacing: 1) {
+                // Zoom, on the focused pane only: one pane has it at a time, the one a
+                // keystroke would zoom, and the rest keep their headers to the split pair.
+                // It stays on a pane visiting the Agents overview, whose grid cannot be
+                // split but can be zoomed. Dimmed, not gone, on a canvas of one pane.
+                // While zoomed it wears the accent at full strength: every other pane is
+                // hidden, and this is the one mark on screen that says so and the one
+                // control that brings them back.
+                if isFocused || isZoomed {
+                    PaneHeaderButton(symbol: isZoomed ? "arrow.down.right.and.arrow.up.left"
+                                                      : "arrow.up.left.and.arrow.down.right",
+                                     help: isZoomed ? "Restore Panes (⇧⌘↩)" : "Zoom Pane (⇧⌘↩)",
+                                     isEnabled: canZoom,
+                                     tint: isZoomed ? Token.Colour.accent : nil) {
+                        actions.zoom(paneID)
+                    }
+                    .opacity(isZoomed ? 1 : controlOpacity)
+                }
+                if showsControls {
                     PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                         actions.split(paneID, .right)
                     }
+                    .opacity(controlOpacity)
                     PaneHeaderButton(symbol: "square.split.1x2", help: "Split Down (⇧⌘D)") {
                         actions.split(paneID, .bottom)
                     }
+                    .opacity(controlOpacity)
                 }
-                .opacity(controlOpacity)
-                .fixedSize()
             }
+            .fixedSize()
         }
         // 4, not 10: the leading control wears the standard 28-wide hover plate, which
         // carries ~6.5pt of slack either side of the glyph. Padding the header as if the
@@ -226,11 +251,14 @@ struct PaneHeaderButton: View {
     let symbol: String
     let help: String
     var isDestructive = false
+    var isEnabled = true
+    var tint: Color?
     let action: () -> Void
 
     var body: some View {
         ChromeIconButton(symbol: symbol, help: help,
-                         isDestructive: isDestructive, action: action)
+                         isDestructive: isDestructive, isEnabled: isEnabled,
+                         tint: tint, action: action)
     }
 }
 
@@ -564,6 +592,17 @@ public final class PaneContainerView: NSView {
         didSet { guard canClose != oldValue else { return }; refresh() }
     }
 
+    /// Whether this pane is filling the canvas — see `LayoutTree.zoomed`. The header's
+    /// zoom control reads it, and nothing else does: the frame comes from the layout.
+    public var isZoomed = false {
+        didSet { guard isZoomed != oldValue else { return }; rebuildHeader(); needsLayout = true }
+    }
+
+    /// Whether the canvas has other panes to zoom over.
+    public var canZoom = false {
+        didSet { guard canZoom != oldValue else { return }; rebuildHeader() }
+    }
+
     /// A surface that is not a pane: no header, no ring, no drag handle, no lift. What
     /// the Agents overview shows when it has no panes to show — a note on the canvas's
     /// own material, which a pane's chrome round it would make look like a pane with
@@ -756,7 +795,8 @@ public final class PaneContainerView: NSView {
     /// in the header unable to respond, the menu included.
     private func rebuildHeader() {
         header.rootView = PaneHeader(paneID: paneID, descriptor: descriptor, currentKind: kind,
-                                     isFocused: isFocused, canClose: canClose, actions: actions,
+                                     isFocused: isFocused, canClose: canClose,
+                                     isZoomed: isZoomed, canZoom: canZoom, actions: actions,
                                      showsControls: visitStrip == nil,
                                      onIdentityTrailing: { [weak self] in
                                          self?.noteIdentityTrailing($0)
@@ -920,7 +960,8 @@ public final class PaneContainerView: NSView {
         // cluster. Both ends are controls, and a drag that starts on one of them is a
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
-        let trailingGutter: CGFloat = 68
+        let trailingGutter = Self.trailingGutter(showsZoom: isFocused || isZoomed,
+                                                 showsSplit: visitStrip == nil)
         dragHandle.frame = isPlain ? .zero
             : CGRect(x: leadingGutter, y: stripHeight,
                      width: max(0, bounds.width - leadingGutter - trailingGutter),
@@ -929,18 +970,35 @@ public final class PaneContainerView: NSView {
     }
 
     public override func updateLayer() { applyLayerState() }
+
+    /// The width the header's trailing controls take, which the drag handle stops short
+    /// of: zoom on the focused pane, and the split pair unless the pane is visiting. Each
+    /// is a 28-wide plate, 1 apart, with the header's 5 of trailing padding and 6 of air
+    /// before the first.
+    static func trailingGutter(showsZoom: Bool, showsSplit: Bool) -> CGFloat {
+        let controls: CGFloat = (showsZoom ? 1 : 0) + (showsSplit ? 2 : 0)
+        guard controls > 0 else { return 5 }
+        return controls * ChromeIconLabel.width + (controls - 1) + 5 + 6
+    }
+}
+
+#Preview("Pane header — zoomed", traits: .fixedLayout(width: 420, height: 40)) {
+    PaneHeader(paneID: LayoutTree.fixturePane(1),
+               descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
+               currentKind: nil, isFocused: true, canClose: true,
+               isZoomed: true, canZoom: true, actions: .inert)
 }
 
 #Preview("Pane header — focused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
-               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: true, canZoom: true, actions: .inert)
 }
 
 #Preview("Pane header — unfocused", traits: .fixedLayout(width: 420, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
-               currentKind: nil, isFocused: false, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: false, canClose: true, canZoom: true, actions: .inert)
 }
 
 #Preview("Pane header — last pane, no close", traits: .fixedLayout(width: 420, height: 40)) {
@@ -952,13 +1010,13 @@ public final class PaneContainerView: NSView {
 #Preview("Pane header — narrow", traits: .fixedLayout(width: 190, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "Ultra", subtitle: "~/Repo/Ultra"),
-               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: true, canZoom: true, actions: .inert)
 }
 
 #Preview("Pane header — narrower than its name", traits: .fixedLayout(width: 140, height: 40)) {
     PaneHeader(paneID: LayoutTree.fixturePane(1),
                descriptor: PaneDescriptor(title: "ultra-swift-workspace", subtitle: "~/Repo/Ultra"),
-               currentKind: nil, isFocused: true, canClose: true, actions: .inert)
+               currentKind: nil, isFocused: true, canClose: true, canZoom: true, actions: .inert)
 }
 
 // MARK: - Visiting strip

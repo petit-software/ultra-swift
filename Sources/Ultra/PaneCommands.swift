@@ -19,6 +19,7 @@ enum PaneCommands {
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
+                                 + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
                                  + [showAgents, openAgentProject, openWaiting]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
 
@@ -242,6 +243,43 @@ enum PaneCommands {
         keywords: ["Close Project"],
         isEnabled: { SessionList.holding($0)?.canCloseSelected ?? false }) { store in
             SessionList.holding(store)?.askToClose(store.workspaceID)
+        }
+
+    /// The session on screen, into a window of its own — still running, nothing reopened.
+    /// The key path of dragging its tab off the belt or its row out of the sidebar. Dims
+    /// on a window's only session: that one already has the window to itself. No chord:
+    /// ⇧⌘M is the pane's move, and the palette is one ⌘K away.
+    static let moveSessionToNewWindow = AppCommand(
+        id: "session.moveToNewWindow", title: "Move Session to New Window",
+        symbol: "macwindow.badge.plus", menuPath: ["File", "Session"],
+        keywords: ["Move Project to New Window", "Detach Session", "Tear Off Session",
+                   "Open Project in New Window"],
+        isEnabled: { SessionList.holding($0)?.canMoveToNewWindow($0.workspaceID) ?? false }) { store in
+            SessionList.holding(store)?.moveToNewWindow(store.workspaceID)
+        }
+
+    /// Whether the sidebar lists the project's agents and shells under its row — the row's
+    /// right-click Show / Hide Active Sessions, from the keys. One title here, since a
+    /// registry command has one; File ▸ Session's item says which way it will go.
+    static let toggleActiveSessions = AppCommand(
+        id: "session.toggleActiveSessions", title: "Show or Hide Active Sessions",
+        symbol: "list.bullet.indent", menuPath: ["File", "Session"],
+        keywords: ["Show Active Sessions", "Hide Active Sessions", "Show Agents in Sidebar",
+                   "Hide Agents in Sidebar"],
+        isEnabled: { SessionList.holding($0) != nil }) { store in
+            SessionTerminalVisibility.shared.toggle(for: store)
+        }
+
+    /// Every other window's sessions into this one, and every pane window's panes back
+    /// to their canvases. Window ▸ Merge All Windows and the window bar's ellipsis. Dims
+    /// with one window open and no pane in a window of its own.
+    static let mergeWindows = AppCommand(
+        id: "window.mergeAll", title: "Merge All Windows",
+        symbol: "macwindow.on.rectangle", menuPath: ["Window"],
+        keywords: ["Move All Windows into One", "Combine Windows", "Gather Windows",
+                   "Merge Projects"],
+        isEnabled: { SessionList.holding($0)?.canMergeWindows ?? false }) { store in
+            SessionList.holding(store)?.mergeAllWindows()
         }
 
     /// A chat pane's verbs that a keystroke should reach: another thread, stop, and its
@@ -879,6 +917,7 @@ enum PaneCommands {
         AppCommand(id: "pane.zoom", title: "Toggle Zoom",
                    symbol: "arrow.up.left.and.arrow.down.right", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),
+                   keywords: ["Full Screen Pane", "Maximize Pane", "Restore Panes"],
                    isEnabled: { $0.tree.paneCount > 1 }) { $0.toggleZoom() },
         AppCommand(id: "pane.equalize", title: "Equalize Panes", symbol: "equal", menuPath: ["Pane"],
                    binding: KeyBinding("=", [.command]),

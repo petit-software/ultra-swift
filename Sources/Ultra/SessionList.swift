@@ -4,6 +4,7 @@ import Observation
 import UltraCanvas
 import UltraCore
 import UltraDesign
+import UltraLayout
 import UltraTerminal
 
 /// The sessions one window is holding, and which of them is on screen.
@@ -167,6 +168,123 @@ final class SessionList {
     private func hold(_ store: LayoutStore) {
         sessions.append(store)
         if let window { ShellWorkspace.Registry.windows[store.workspaceID] = window }
+    }
+
+    // MARK: - Between windows
+
+    /// Whether a session can leave for a window of its own: this window has to keep one,
+    /// and a window has to have come up to open the next from.
+    func canMoveToNewWindow(_ id: UUID?) -> Bool {
+        guard let id else { return false }
+        return sessions.count > 1 && sessions.contains { $0.workspaceID == id }
+            && WorkspaceModel.openNewWindow != nil
+    }
+
+    /// Move a session into a new window, as it is: the same store, the same panes, the
+    /// same processes. What dragging a tab off the belt or a row out of the sidebar does,
+    /// and File ▸ Session ▸ Move Session to New Window.
+    ///
+    /// `point` is where the drag was let go, on screen: the new window comes up with its
+    /// title bar under it. Without one it steps down and right of this window.
+    ///
+    /// Handed over through `WorkspaceModel.pendingSessions`, the road a chosen folder
+    /// takes into a new window, because `openWindow` cannot carry a value.
+    func moveToNewWindow(_ id: UUID, at point: CGPoint? = nil) {
+        guard canMoveToNewWindow(id),
+              let index = sessions.firstIndex(where: { $0.workspaceID == id }) else {
+            NSSound.beep()
+            return
+        }
+        let size = window?.frame.size ?? CGSize(width: 1200, height: 780)
+        var frame: CGRect
+        if let point {
+            // The title bar under the pointer, a little in from its leading end.
+            frame = CGRect(x: point.x - min(160, size.width / 2), y: point.y + 18 - size.height,
+                           width: size.width, height: size.height)
+        } else {
+            frame = (window?.frame ?? CGRect(origin: CGPoint(x: 120, y: 120), size: size))
+                .offsetBy(dx: 28, dy: -28)
+        }
+        let screen = NSScreen.screens.first { $0.frame.contains(point ?? frame.origin) }
+            ?? window?.screen ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            frame.size.width = min(frame.width, visible.width)
+            frame.size.height = min(frame.height, visible.height)
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        }
+
+        let store = sessions.remove(at: index)
+        store.persistNow()
+        ShellWorkspace.Registry.windows[id] = nil
+        if selectedID == id {
+            selectedID = sessions[max(0, index - 1)].workspaceID
+            selected?.reclaimKeyboardFocus()
+        }
+        persist()
+        WorkspaceModel.pendingSessions.append(store)
+        WorkspaceModel.pendingFrame = frame
+        WorkspaceModel.openNewWindow?()
+        // A session must never be left in no window. If nothing has taken it shortly —
+        // the window did not open, or opened on something else — it comes back here.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let index = WorkspaceModel.pendingSessions.firstIndex(where: { $0 === store }) else { return }
+            WorkspaceModel.pendingSessions.remove(at: index)
+            WorkspaceModel.pendingFrame = nil
+            (self ?? SessionList.anyShowing)?.take([store])
+        }
+    }
+
+    /// Take sessions that are already running — handed over by another window. The first
+    /// one comes on screen.
+    func take(_ stores: [LayoutStore], selecting: Bool = true) {
+        let fresh = stores.filter { store in !sessions.contains { $0 === store } }
+        guard !fresh.isEmpty else { return }
+        for store in fresh { hold(store) }
+        if selecting { select(fresh[0].workspaceID) }
+        persist()
+    }
+
+    /// Whether Merge All Windows has anything to do: another window showing sessions, or
+    /// a pane in a window of its own.
+    var canMergeWindows: Bool {
+        othersAreShowingSessions
+            || Self.lists.allObjects.contains { $0.sessions.contains { !$0.paneWindows.isEmpty } }
+    }
+
+    /// Every window into this one. Panes in windows of their own go back to their
+    /// sessions' canvases; every other window's sessions come here, after this window's
+    /// own, and those windows close. Nothing stops: a session is moved, not reopened.
+    /// The session on screen here stays on screen.
+    func mergeAllWindows() {
+        guard canMergeWindows else { NSSound.beep(); return }
+        for store in Self.lists.allObjects.flatMap(\.sessions) {
+            for paneWindow in store.paneWindows { paneWindow.returnAllPanes() }
+        }
+        // Frontmost first, so the order they arrive in is the order they were stacked in.
+        let order = NSApp.orderedWindows
+        let others = Self.others(than: self).filter { !$0.sessions.isEmpty }
+            .sorted { a, b in
+                (a.window.flatMap { order.firstIndex(of: $0) } ?? .max)
+                    < (b.window.flatMap { order.firstIndex(of: $0) } ?? .max)
+            }
+        for other in others {
+            // Its overview's panes go home before the sessions they are lent from leave.
+            if other.ui?.showsAgents == true { AgentsOverview.shared.close() }
+            let moving = other.sessions
+            for store in moving {
+                store.persistNow()
+                ShellWorkspace.Registry.windows[store.workspaceID] = nil
+            }
+            other.sessions = []
+            other.selectedID = nil
+            take(moving, selecting: false)
+            // Empty now, so the `relinquish` its closing ends in lets go of nothing.
+            other.window?.close()
+        }
+        persist()
+        window?.makeKeyAndOrderFront(nil)
+        selected?.reclaimKeyboardFocus()
     }
 
     // MARK: - Windows closing, and coming back
@@ -348,6 +466,20 @@ final class SessionList {
         selected?.reclaimKeyboardFocus()
     }
 
+    /// Go to one pane of a session: the session on screen, the pane focused. A pane in a
+    /// window of its own is focused there, and that window comes forward. What a click on
+    /// a terminal listed under a sidebar row does.
+    func reveal(_ paneID: PaneID, in id: UUID) {
+        guard let store = sessions.first(where: { $0.workspaceID == id }) else { return }
+        if let paneWindow = store.paneWindows.first(where: { $0.tree.contains(paneID) }) {
+            paneWindow.focus(paneID)
+            PaneWindows.window(for: paneWindow)?.makeKeyAndOrderFront(nil)
+            return
+        }
+        select(id)
+        store.focus(paneID)
+    }
+
     /// Wraps, for the same reason the editor's list does: stopping at the end just means
     /// pressing the other shortcut to get anywhere — and wraps THROUGH the Agents
     /// overview, the entry before the first session, as the sidebar draws it.
@@ -444,7 +576,10 @@ final class SessionList {
 
     // MARK: - Persistence
 
-    /// The window's sessions, as an ordered list of project folders.
+    /// The open sessions, as an ordered list of project folders: this window's, then
+    /// every other window's. It was this window's alone, and each window wrote over the
+    /// last — so a project moved to a second window, or opened in one, was missing from
+    /// the list the next launch reopens whenever the other window wrote after it.
     ///
     /// The LIST is all that is stored here — each session's own layout is already a document
     /// saved by `WorkspaceStorage` under its directory, and duplicating it would give the two
@@ -453,7 +588,10 @@ final class SessionList {
     private static let selectedKey = "sessions.selected"
 
     private func persist() {
-        let paths = sessions.compactMap(\.workspaceDirectory)
+        var seen = Set<String>()
+        let paths = ([self] + Self.others(than: self)).flatMap(\.sessions)
+            .compactMap(\.workspaceDirectory)
+            .filter { seen.insert(WorkspaceDocument.canonical($0)).inserted }
         Preferences.store.set(paths, forKey: Self.directoriesKey)
         Preferences.store.set(selected?.workspaceDirectory, forKey: Self.selectedKey)
     }

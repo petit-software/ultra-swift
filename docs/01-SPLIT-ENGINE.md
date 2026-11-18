@@ -487,7 +487,7 @@ discoverable, remappable by the system, and reachable from the Help menu search.
 | `⌘W` | Close focused pane (`⇧⌘W` closes the tab) |
 | `⌘⌥ ← → ↑ ↓` | Move focus (spatial, § 5) |
 | `⌃⌘ ← → ↑ ↓` | Resize focused pane's nearest divider by 16pt (`⇧` → 1pt) |
-| `⇧⌘↩` | Toggle zoom on the focused pane |
+| `⇧⌘↩` | Toggle zoom on the focused pane. The focused pane's header carries the same verb as a control, leading its split pair, and while zoomed wears the accent and brings the others back |
 | `⌘=` | Equalize the focused pane's container (`⌥⌘=` equalizes everything) |
 | — | Equalize Column Widths: every row of side-by-side panes shared out evenly, heights untouched. No chord: the Pane menu, the window bar's ellipsis (first item) and the palette |
 | — | Equalize Row Heights: every stack of panes shared out evenly, widths untouched. Beside Equalize Column Widths in all three places |

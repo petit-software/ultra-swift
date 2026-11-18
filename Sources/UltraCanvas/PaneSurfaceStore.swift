@@ -259,6 +259,8 @@ public final class PaneSurfaceStore {
         container.rewire(to: other.actions)
         container.theme = other.theme
         container.isFocused = false
+        // Zoom is the canvas's, not the pane's: the next layout there says what it is.
+        container.isZoomed = false
         // Whatever the last canvas said about where the pane was from, it is not said here.
         container.visitStrip = nil
         other.containers[paneID] = container
@@ -299,6 +301,20 @@ public final class PaneSurfaceStore {
         self.theme = theme
         for container in containers.values { container.theme = theme }
         for standIn in standIns.values { standIn.theme = theme }
+    }
+
+    /// Which pane, if any, is filling the canvas, and whether there are others to fill it
+    /// over. Pushed with every layout, like focus, so the header's control cannot say
+    /// one thing while the tree says another.
+    public func setZoom(_ zoomed: PaneID?, canZoom: Bool) {
+        for (paneID, container) in containers {
+            container.isZoomed = paneID == zoomed
+            container.canZoom = canZoom
+        }
+        for (paneID, standIn) in standIns {
+            standIn.isZoomed = paneID == zoomed
+            standIn.canZoom = canZoom
+        }
     }
 
     /// The last remaining pane hides its close control — there is nothing to close back to.

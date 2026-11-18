@@ -409,6 +409,7 @@ public final class SplitCanvasView: NSView {
 
         store.surfaces.setFocused(displayTree.focused)
         store.surfaces.setCanClose(displayTree.paneCount > 1)
+        store.surfaces.setZoom(displayTree.zoomed, canZoom: displayTree.paneCount > 1)
         overlay.update(result: result)
     }
 

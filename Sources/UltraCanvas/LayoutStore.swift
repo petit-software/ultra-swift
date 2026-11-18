@@ -166,6 +166,7 @@ public final class LayoutStore {
         surfaces.actions.split = { [weak self] paneID, edge in self?.split(edge: edge, paneID: paneID) }
         surfaces.actions.close = { [weak self] paneID in self?.close(paneID) }
         surfaces.actions.focus = { [weak self] paneID in self?.focus(paneID) }
+        surfaces.actions.zoom = { [weak self] paneID in self?.toggleZoom(paneID) }
         surfaces.actions.windowMove = { [weak self] paneID in self?.windowMove(for: paneID) }
         // A pane lent to this store whose home has released it: off this canvas, no
         // release of this store's own.
@@ -423,8 +424,13 @@ public final class LayoutStore {
         onGeometrySettled?()
     }
 
-    public func toggleZoom() {
-        let pane = tree.focused
+    /// Fill the canvas with a pane — the focused one unless named — or bring the others
+    /// back. A pane zoomed from its header takes focus first: it is about to be the only
+    /// pane on screen, and keystrokes going to one that is hidden is a lost caret.
+    public func toggleZoom(_ paneID: PaneID? = nil) {
+        let pane = paneID ?? tree.focused
+        guard tree.paneCount > 1, tree.contains(pane) else { NSSound.beep(); return }
+        focus(pane)
         apply("Zoom Pane") { $0.toggleZoom(pane); return true }
     }
 

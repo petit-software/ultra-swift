@@ -154,6 +154,34 @@ struct SurfaceLifetimeTests {
         }
     }
 
+    @Test("a header's zoom fills the canvas with its own pane, focuses it, and gives the rest back")
+    func headerZoom() {
+        let host = Host(.grid2x2)
+        let panes = host.store.tree.paneIDs
+        let before = host.store.layoutResult.frames
+        host.store.focus(panes[0])
+        host.settle()
+        #expect(panes.allSatisfy { host.store.surfaces.surface(for: $0).canZoom })
+
+        // The header's control, on a pane that is not the focused one.
+        host.store.surfaces.actions.zoom(panes[3])
+        host.settle()
+        #expect(host.store.tree.zoomed == panes[3])
+        #expect(host.store.tree.focused == panes[3])
+        #expect(panes.filter { host.store.surfaces.surface(for: $0).isZoomed } == [panes[3]])
+        #expect(panes.filter { !host.store.surfaces.surface(for: $0).isHidden } == [panes[3]])
+
+        host.store.surfaces.actions.zoom(panes[3])
+        host.settle()
+        #expect(host.store.tree.zoomed == nil)
+        #expect(panes.allSatisfy { !host.store.surfaces.surface(for: $0).isZoomed })
+        for (paneID, frame) in before {
+            let surface = host.store.surfaces.surface(for: paneID)
+            #expect(!surface.isHidden && surface.frame == frame)
+        }
+        #expect(panes.allSatisfy { host.factory.builds[$0] == 1 })
+    }
+
     @Test("exactly one pane wears the focus border")
     func singleFocus() {
         let host = Host(.grid2x2)

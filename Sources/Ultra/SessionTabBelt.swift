@@ -16,7 +16,9 @@ import UltraTerminal
 /// A VIEW of the sidebar, not a second list: the same `SessionList`, the same selection,
 /// the same icon, and the same Customize sheet on a right-click. No agent badge: the belt
 /// names sessions, and the sidebar is where their agents are watched. Reordering is
-/// by dragging a tab along the belt, and on View ▸ Move Session Up / Down.
+/// by dragging a tab along the belt, and on View ▸ Move Session Up / Down. A tab dragged
+/// OFF the belt and let go opens its project in a window of its own, there — File ▸
+/// Session ▸ Move Session to New Window from the keys.
 struct SessionTabBelt: View {
     @Bindable var sessions: SessionList
     /// For the customise flag, which File ▸ Session ▸ Customize Session… sets as well.
@@ -78,7 +80,10 @@ struct SessionTabBelt: View {
         }
         // A pane header plus 10pt, for tabs 10pt taller than a header's controls.
         .frame(height: Self.height)
-        .onDisappear { endEscapeMonitor() }
+        .onDisappear {
+            endEscapeMonitor()
+            SessionDragGhost.shared.hide()
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sessions")
     }
@@ -155,7 +160,9 @@ struct SessionTabBelt: View {
                           mode: mode(of: index, id: id),
                           select: { sessions.select(id) },
                           rename: { sessions.rename(id, to: $0) },
-                          close: { ui.closingSessionID = id })
+                          close: { ui.closingSessionID = id },
+                          moveToWindow: sessions.canMoveToNewWindow(id)
+                              ? { sessions.moveToNewWindow(id) } : nil)
             .id(id)
             .zIndex(drag?.id == id ? 1 : 0)
             .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { _, width in
@@ -185,6 +192,11 @@ struct SessionTabBelt: View {
         guard let drag, let strip else { return .resting(shift: 0) }
         let x = draggedMinX(drag, in: strip)
         let to = strip.destination(dragging: drag.from, minX: x)
+        // Off the belt, on its way to a window: the tab is drawn under the pointer by
+        // `SessionDragGhost`, its place here stays where it was, and nothing makes room.
+        if drag.isLeaving {
+            return drag.id == id ? .dragged(slot: 0, float: nil) : .resting(shift: 0)
+        }
         if drag.id == id {
             return .dragged(slot: strip.slotOffset(dragging: drag.from, to: to),
                             float: x - strip.minX(of: drag.from))
@@ -217,6 +229,19 @@ struct SessionTabBelt: View {
         guard !dragCancelled else { return }
         if drag != nil {
             drag?.pointerX = value.location.x
+            // Only a tab that could be a window leaves: a window's one session stays put,
+            // and its tab goes back when let go, as it always did.
+            let leaving = !isOnBelt(value.location.y) && sessions.canMoveToNewWindow(id)
+            if drag?.isLeaving != leaving { drag?.isLeaving = leaving }
+            if leaving, let store = sessions.sessions.first(where: { $0.workspaceID == id }) {
+                let look = SessionLook.appearance(for: store)
+                SessionDragGhost.shared.show(title: store.workspaceTitle,
+                                             symbol: SessionSymbols.resolved(look.symbol),
+                                             tint: SessionTint(storedValue: look.tint).color,
+                                             at: NSEvent.mouseLocation)
+            } else {
+                SessionDragGhost.shared.hide()
+            }
             return
         }
         guard let strip,
@@ -227,13 +252,22 @@ struct SessionTabBelt: View {
         beginEscapeMonitor()
     }
 
-    /// Let go on the belt, or near it: the tab lands. Well above or below it: it goes back,
-    /// the way a tab dragged off Safari's bar and dropped nowhere does.
+    private func isOnBelt(_ y: CGFloat) -> Bool {
+        y > -Self.releaseMargin && y < Self.height + Self.releaseMargin
+    }
+
+    /// Let go on the belt, or near it: the tab lands. Well above or below it: the session
+    /// opens in a window of its own, where it was let go — unless it is the window's only
+    /// one, which goes back. Escape puts the tab back from either.
     private func dragEnded(_ id: UUID, _ value: DragGesture.Value) {
         defer { dragCancelled = false }
         guard !dragCancelled else { return }
-        let y = value.location.y
-        let onBelt = y > -Self.releaseMargin && y < Self.height + Self.releaseMargin
+        let onBelt = isOnBelt(value.location.y)
+        if drag?.isLeaving == true, !onBelt {
+            finishDrag(commit: false)
+            sessions.moveToNewWindow(id, at: NSEvent.mouseLocation)
+            return
+        }
         guard drag != nil else {
             // The press travelled far enough to stop being a tap, and no drag ever began —
             // the tabs had not all been measured. Still a press on this tab.
@@ -250,6 +284,7 @@ struct SessionTabBelt: View {
     /// came up. See `TabStripReorder.release`.
     private func finishDrag(commit: Bool) {
         endEscapeMonitor()
+        SessionDragGhost.shared.hide()
         guard let drag else { return }
         let release = strip.map {
             $0.release(dragging: drag.from, minX: draggedMinX(drag, in: $0), onStrip: commit)
@@ -291,11 +326,14 @@ private struct TabDrag: Equatable {
     let grab: CGFloat
     /// The pointer, in the belt's viewport — not its content, which scrolls.
     var pointerX: CGFloat
+    /// Whether the pointer has carried the tab off the belt, where letting go makes a
+    /// window of it.
+    var isLeaving = false
 }
 
-/// Swallows Escape while a tab is being dragged, and reports it.
+/// Swallows Escape while a tab or a sidebar row is being dragged, and reports it.
 @MainActor
-private final class EventMonitor {
+final class EventMonitor {
     private var token: Any?
 
     init(onEscape: @escaping @MainActor () -> Void) {
@@ -324,6 +362,8 @@ private struct SessionTab: View {
     let select: () -> Void
     let rename: (String) -> Void
     let close: () -> Void
+    /// Into a window of its own, or nil on a window's only session.
+    let moveToWindow: (() -> Void)?
     @State private var isHovering = false
 
     /// Where a tab is while the belt is being reordered. Offsets only: the list is not
@@ -332,8 +372,9 @@ private struct SessionTab: View {
         /// Moved aside by `shift` to open the gap the dragged tab will land in.
         case resting(shift: CGFloat)
         /// The dragged tab: its empty slot `slot` from where it started, and the tab itself
-        /// `float` from there, under the pointer.
-        case dragged(slot: CGFloat, float: CGFloat)
+        /// `float` from there, under the pointer — or nil once it has left the belt, where
+        /// `SessionDragGhost` draws it.
+        case dragged(slot: CGFloat, float: CGFloat?)
     }
     /// Seeded from disk, and moved by the Customize sheet — the same arrangement as a
     /// sidebar row, so the tab wears a new icon the moment it is picked.
@@ -341,7 +382,9 @@ private struct SessionTab: View {
 
     init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
          glass: Namespace.ID, mode: DragMode, select: @escaping () -> Void,
-         rename: @escaping (String) -> Void, close: @escaping () -> Void) {
+         rename: @escaping (String) -> Void, close: @escaping () -> Void,
+         moveToWindow: (() -> Void)? = nil) {
+        self.moveToWindow = moveToWindow
         self.store = store
         self.ui = ui
         self.isSelected = isSelected
@@ -406,7 +449,7 @@ private struct SessionTab: View {
             // pointer exactly instead of easing after it; the overlay sits on the tab's
             // starting frame, which is what `float` is measured from.
             .overlay(alignment: .leading) {
-                if case .dragged(_, let float) = mode {
+                if case .dragged(_, let float?) = mode {
                     label(showsClose: false)
                         .background(.regularMaterial, in: .capsule)
                         .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
@@ -427,6 +470,10 @@ private struct SessionTab: View {
                 Button("Customize") {
                     select()
                     ui.customizingSessionID = store.workspaceID
+                }
+                // What dragging the tab off the belt does.
+                if let moveToWindow {
+                    Button("Move to New Window", action: moveToWindow)
                 }
                 if canClose {
                     Divider()

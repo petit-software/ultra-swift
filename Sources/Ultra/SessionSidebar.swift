@@ -3,6 +3,7 @@ import SwiftUI
 import UltraCanvas
 import UltraCore
 import UltraDesign
+import UltraLayout
 import UltraTerminal
 
 /// The window's sessions, as the sidebar column of a `NavigationSplitView`.
@@ -107,6 +108,202 @@ struct SessionSidebar: View {
     private static let agentsGap: CGFloat = 6
     /// The content height every list row is at least stretched to; see the Agents row.
     @Environment(\.defaultMinListRowHeight) private var minRowHeight
+    /// A row's height: the list's minimum and 1pt more above and below what is in it. A
+    /// row's content is shorter than the minimum and is stretched to it, so padding the
+    /// content alone changed nothing; the minimum itself is what has to grow.
+    private var rowHeight: CGFloat { minRowHeight + 2 }
+
+    // MARK: Dragging
+    //
+    // The belt's drag, turned on its side, and for the belt's reasons: the sidebar owns
+    // the whole of it — where the row is, where it would land (`TabStripReorder`, counting
+    // down instead of along), and whether it lands at all. It was the list's own `onMove`,
+    // which reorders and nothing else: it draws its own image, says nothing about a row
+    // let go anywhere but on the list, and so could not tell a row dragged out to become
+    // a window from one dropped nowhere.
+    //
+    // The press is NOT a SwiftUI gesture. A `DragGesture` on a list row never fires: the
+    // list is an `NSTableView`, whose own mouse-down runs a tracking loop that takes every
+    // move until the button comes up. So the press is taken before the table sees it, by
+    // `SidebarRowPress`, which reports a click, a pick-up, every move and the release.
+
+    /// Each session row's frame as last laid out, in the window.
+    @State private var rowFrames: [UUID: CGRect] = [:]
+    /// The list's frame, in the window: what the rows are drawn against while dragging,
+    /// and the edge past which a row has left.
+    @State private var listFrame: CGRect = .zero
+    @State private var drag: RowDrag?
+    /// Escape cancelled a drag the pointer is still holding; the rest of it is ignored.
+    @State private var dragCancelled = false
+    @State private var escapeMonitor: EventMonitor?
+
+    /// How far outside the list a release still counts as on it.
+    private static let releaseMargin: CGFloat = 24
+    /// The capsule's inset from the column's sides, as `SelectedProjectGlass` has it.
+    private static let capsuleInset: CGFloat = 10
+
+    /// The rows as a strip running down: each as tall as it is — a project listing its
+    /// terminals is taller than one that is not — with the list's own gap between. Nil
+    /// until every row is measured, and with one session, which has nowhere to go.
+    private var strip: TabStripReorder? {
+        let frames = sessions.sessions.compactMap { rowFrames[$0.workspaceID] }
+        guard frames.count == sessions.sessions.count, frames.count > 1 else { return nil }
+        return TabStripReorder(widths: frames.map(\.height),
+                               spacing: max(0, frames[1].minY - frames[0].maxY),
+                               leading: frames[0].minY)
+    }
+
+    private func draggedMinY(_ drag: RowDrag) -> CGFloat {
+        drag.strip.clampedMinX(drag.pointer.y - drag.grab, dragging: drag.from)
+    }
+
+    /// Where the dragged row would land. Its own place while it is leaving for a window.
+    private func destination(_ drag: RowDrag) -> Int {
+        drag.isLeaving ? drag.from
+            : drag.strip.destination(dragging: drag.from, minX: draggedMinY(drag))
+    }
+
+    /// Put the dragged row at `index` in the list itself, now. The rows make room by
+    /// BEING reordered, as the drag goes, not by being drawn somewhere else: a list row
+    /// drawn outside its own cell is clipped by it, so rows slid aside with an offset —
+    /// the belt's way — simply vanished here. The dragged row is in the list all along,
+    /// emptied, and is the gap; put back where it started if the drag comes to nothing.
+    private func settle(at index: Int) {
+        guard let current = drag?.current, current != index else { return }
+        withAnimation(Token.Motion.structuralRespectingPreferences) {
+            sessions.move(fromOffsets: [current],
+                          toOffset: TabStripReorder.moveOffset(from: current, to: index))
+        }
+        drag?.current = index
+    }
+
+    /// Whether a point, in the window, is still over the sidebar. From the list's frame;
+    /// before that has been measured, from the row's own, which spans the column.
+    private func isOnList(_ point: CGPoint, row id: UUID) -> Bool {
+        if listFrame.width > 0 {
+            return listFrame.insetBy(dx: -Self.releaseMargin, dy: -Self.releaseMargin).contains(point)
+        }
+        guard let row = rowFrames[id] else { return true }
+        return point.x > row.minX - 2 * Self.releaseMargin && point.x < row.maxX + 2 * Self.releaseMargin
+    }
+
+    /// A row has been picked up: `SidebarRowPress` saw the press travel. False when
+    /// there is nothing to drag it among — the rows are not measured, or there is one.
+    private func beginDrag(_ index: Int, at point: CGPoint) -> Bool {
+        guard drag == nil, sessions.sessions.indices.contains(index), var strip else { return false }
+        // Picked up, a project is its own row and nothing more: what is listed under it
+        // folds away until it is put down, so the place it leaves, the place it will land
+        // in and the pill under the pointer are all one row tall. The strip is the rows as
+        // they stand with that done, taken once — rows slide while the drag runs, and a
+        // strip measured from where they have slid to chases itself.
+        var heights = strip.widths
+        heights[index] = min(heights[index], rowHeight)
+        strip = TabStripReorder(widths: heights, spacing: strip.spacing, leading: strip.leading)
+        let top = strip.minX(of: index)
+        drag = RowDrag(id: sessions.sessions[index].workspaceID, from: index, current: index,
+                       strip: strip,
+                       grab: min(max(point.y - top, 0), rowHeight), pointer: point)
+        beginEscapeMonitor()
+        return true
+    }
+
+    private func pointerMoved(to point: CGPoint) {
+        guard let id = drag?.id else { return }
+        drag?.pointer = point
+        // Only a row that could be a window leaves: a window's one session stays put.
+        let leaving = !isOnList(point, row: id) && sessions.canMoveToNewWindow(id)
+        if drag?.isLeaving != leaving { drag?.isLeaving = leaving }
+        if let drag { settle(at: destination(drag)) }
+        // Out of the sidebar it is what a tab off the belt is: the pill with the window
+        // glyph, under the pointer, anywhere on screen.
+        if leaving, let store = sessions.sessions.first(where: { $0.workspaceID == id }) {
+            let look = SessionLook.appearance(for: store)
+            SessionDragGhost.shared.show(title: store.workspaceTitle,
+                                         symbol: SessionSymbols.resolved(look.symbol),
+                                         tint: SessionTint(storedValue: look.tint).color,
+                                         at: NSEvent.mouseLocation)
+        } else {
+            SessionDragGhost.shared.hide()
+        }
+    }
+
+    /// Let go on the list: the row lands, or — back where it started — is selected. Let
+    /// go anywhere else: the session opens in a window of its own, there; a window's only
+    /// session goes back instead.
+    private func pointerReleased() {
+        guard let drag else { return }
+        if drag.isLeaving {
+            finishDrag(commit: false)
+            sessions.moveToNewWindow(drag.id, at: NSEvent.mouseLocation)
+            return
+        }
+        finishDrag(commit: isOnList(drag.pointer, row: drag.id))
+    }
+
+    /// Put down where it has got to, or — the drag called off — back where it started.
+    /// One let go where it started is SELECTED: the press travelled, but moved nothing.
+    private func finishDrag(commit: Bool) {
+        endEscapeMonitor()
+        SessionDragGhost.shared.hide()
+        guard let drag else { return }
+        let to = commit ? destination(drag) : drag.from
+        settle(at: to)
+        self.drag = nil
+        if commit, to == drag.from { sessions.select(drag.id) }
+    }
+
+    /// Escape puts the row back. A local monitor, because the keyboard is in a terminal.
+    private func beginEscapeMonitor() {
+        endEscapeMonitor()
+        escapeMonitor = EventMonitor { [self] in
+            dragCancelled = true
+            finishDrag(commit: false)
+        }
+    }
+
+    private func endEscapeMonitor() {
+        escapeMonitor?.stop()
+        escapeMonitor = nil
+    }
+
+    /// What is drawn over the list while a row is dragged: the empty place it would land
+    /// in, and the project as a pill under the pointer — its icon and name, nothing
+    /// else — until it leaves the sidebar, where `SessionDragGhost` takes over. Over the
+    /// LIST rather than in the row, so no row below the dragged one is drawn on top of
+    /// it, and placed from the list's frame as it is at this moment, not a remembered one.
+    @ViewBuilder private var dragOverlay: some View {
+        if let drag, let store = sessions.sessions.first(where: { $0.workspaceID == drag.id }) {
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                // A row's capsule is its cell less a point above and below, and the cell
+                // is the row and the list's gap round it.
+                let gap = drag.strip.spacing
+                let height = max(0, drag.strip.widths[drag.from] + gap - 2)
+                let home = drag.strip.minX(of: drag.from) - gap / 2 + 1
+                let to = drag.current
+                let width = max(0, proxy.size.width - Self.capsuleInset * 2)
+                ZStack(alignment: .topLeading) {
+                    Capsule(style: .continuous)
+                        .fill(Token.Colour.label.opacity(0.1))
+                        .frame(width: width, height: height)
+                        .offset(x: Self.capsuleInset,
+                                y: home + drag.strip.slotOffset(dragging: drag.from, to: to) - origin.y)
+                        .animation(Token.Motion.structuralRespectingPreferences, value: to)
+                    if !drag.isLeaving {
+                        SessionRowGhost(store: store)
+                            .padding(.leading, max(0, (rowFrames[drag.id]?.minX ?? origin.x)
+                                                      - origin.x - Self.capsuleInset))
+                            .frame(width: width, height: height, alignment: .leading)
+                            .background(.regularMaterial, in: .capsule)
+                            .shadow(color: .black.opacity(0.25), radius: 8, y: 2)
+                            .offset(x: Self.capsuleInset, y: draggedMinY(drag) - gap / 2 + 1 - origin.y)
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
 
     private var list: some View {
         List(selection: selection) {
@@ -125,42 +322,79 @@ struct SessionSidebar: View {
                 // counted as this row's content, so this row was never stretched at all,
                 // and its capsule, drawn from the cell's edges, came out shorter than a
                 // session's by the gap. Measured: 25pt against 30pt.
-                .frame(minHeight: minRowHeight)
+                .frame(minHeight: rowHeight)
                 .padding(.bottom, Self.agentsGap)
                 .tag(AgentsOverview.selectionID)
                 .listRowBackground(
                     SelectedProjectGlass(isSelected: ui.showsAgents)
                         .padding(.bottom, Self.agentsGap))
             ForEach(sessions.sessions, id: \.workspaceID) { store in
-                SessionRow(store: store,
-                           ui: ui,
-                           // Not while the overview is up: the row stays the one the
-                           // overview was opened from, but nothing on it is selected.
-                           isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID,
-                           canClose: sessions.canCloseSelected,
-                           select: { sessions.select(store.workspaceID) },
-                           rename: { sessions.rename(store.workspaceID, to: $0) },
-                           close: { ui.closingSessionID = store.workspaceID })
+                let isDragged = drag?.id == store.workspaceID
+                // The row, and under it the project's terminals when an agent is in one
+                // of them. One list row for both, so a project is dragged, slid aside and
+                // selected as one thing.
+                VStack(alignment: .leading, spacing: 0) {
+                    SessionRow(store: store,
+                               ui: ui,
+                               // Not while the overview is up: the row stays the one the
+                               // overview was opened from, but nothing on it is selected.
+                               isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID,
+                               canClose: sessions.canCloseSelected,
+                               select: { sessions.select(store.workspaceID) },
+                               rename: { sessions.rename(store.workspaceID, to: $0) },
+                               close: { ui.closingSessionID = store.workspaceID },
+                               moveToWindow: sessions.canMoveToNewWindow(store.workspaceID)
+                                   ? { sessions.moveToNewWindow(store.workspaceID) } : nil)
+                        .frame(minHeight: rowHeight)
+                    // Not while the project is being dragged: picked up, it is one row.
+                    if !isDragged, SessionTerminalVisibility.shared.isShown(for: store),
+                       let terminals = AgentMonitor.shared.terminalsBySession[store.workspaceID] {
+                        SessionTerminalRows(terminals: terminals) {
+                            sessions.reveal($0, in: store.workspaceID)
+                        }
+                    }
+                }
+                    // The whole of the row's height, so it can be picked up anywhere on it.
+                    .contentShape(.rect)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                        rowFrames[store.workspaceID] = $0
+                    }
+                    // The dragged row's place is empty: it is drawn over the list, under
+                    // the pointer (`dragOverlay`), and its emptied row is the gap.
+                    .opacity(isDragged ? 0 : 1)
+                    // Picked up and put down through `SidebarRowPress`, under the list.
+                    // The keyboard paths are View ▸ Move Session Up / Down (⇧⌥⌘[ and
+                    // ⇧⌥⌘]) and File ▸ Session ▸ Move Session to New Window.
                     .tag(store.workspaceID)
                     // The selection, drawn here as a capsule — see `.tint(.clear)` below.
+                    // It goes with the row being dragged.
                     .listRowBackground(
-                        SelectedProjectGlass(isSelected: !ui.showsAgents && sessions.selectedID == store.workspaceID))
+                        SelectedProjectGlass(isSelected: !ui.showsAgents && !isDragged
+                                             && sessions.selectedID == store.workspaceID))
             }
-            // Drag a row to reorder. `List` gives this for nothing once a `ForEach` says it
-            // is possible, including the insertion line and the drag image.
-            //
-            // The keyboard path is View ▸ Move Session Up / Down (⇧⌥⌘[ and ⇧⌥⌘]),
-            // which is the rule rather than a courtesy: a drag-only reorder cannot be
-            // reached at all by someone whose hands are on the keys, which here is everyone.
-            .onMove { offsets, destination in
-                sessions.move(fromOffsets: offsets, toOffset: destination)
-            }
+        }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
+        .background {
+            SidebarRowPress(origin: listFrame.origin, rowHeight: rowHeight,
+                            count: sessions.sessions.count,
+                            clicked: { index in
+                                guard sessions.sessions.indices.contains(index) else { return }
+                                sessions.select(sessions.sessions[index].workspaceID)
+                            },
+                            began: beginDrag, moved: pointerMoved, released: pointerReleased)
+        }
+        .overlay(alignment: .topLeading) { dragOverlay }
+        .onDisappear {
+            endEscapeMonitor()
+            SessionDragGhost.shared.hide()
         }
         // A sidebar list draws its selection in the TINT colour, as a rounded rectangle
         // whose radius there is no way to set. Clear, so the list's own goes unseen, and the
         // row's background above draws it instead: fully rounded, in the neutral wash —
         // see `Token.Colour.selectionWash` for why a coloured one fights the row's own icon.
         .tint(.clear)
+        // Every row, the sessions' included: see `rowHeight`.
+        .environment(\.defaultMinListRowHeight, rowHeight)
         // The footer floats OVER the list, and the list's content — not the list itself —
         // is inset to clear it. `safeAreaInset` was the obvious spelling and it is the wrong
         // one, for the reason written out on `View.tileFooter`: it shrinks the container, so
@@ -174,18 +408,302 @@ struct SessionSidebar: View {
     }
 }
 
+/// Whether a project's active sessions — its agents and shells — are listed under its
+/// row in the sidebar. Shown unless hidden, per project: the folder is remembered, so a
+/// project hidden once stays hidden in every window and at the next launch. A session on
+/// no folder is remembered for as long as it runs.
+@MainActor
+@Observable
+final class SessionTerminalVisibility {
+    static let shared = SessionTerminalVisibility()
+
+    private static let key = "sidebar.hidesActiveSessions"
+    private var hidden: Set<String>
+
+    private init() {
+        hidden = Set(Preferences.store.stringArray(forKey: Self.key) ?? [])
+    }
+
+    private func name(of store: LayoutStore) -> String {
+        store.workspaceDirectory.map(WorkspaceDocument.canonical) ?? store.workspaceID.uuidString
+    }
+
+    func isShown(for store: LayoutStore) -> Bool { !hidden.contains(name(of: store)) }
+
+    /// The menu item's title: what choosing it will do.
+    func title(for store: LayoutStore) -> String {
+        isShown(for: store) ? "Hide Active Sessions" : "Show Active Sessions"
+    }
+
+    func toggle(for store: LayoutStore) {
+        let name = name(of: store)
+        if hidden.remove(name) == nil { hidden.insert(name) }
+        // Folders only: a scratch session's id means nothing to the next launch.
+        Preferences.store.set(hidden.filter { $0.hasPrefix("/") }.sorted(), forKey: Self.key)
+    }
+}
+
+/// A project's terminal panes, listed under its row: each agent by its mark and name with
+/// its own state beside it, each plain shell by a terminal and its title. Shown only for
+/// a project with an agent in it (`AgentMonitor.terminalsBySession`).
+///
+/// A click goes to the pane. From the keys: the project by ⌥⌘] and ⌥⌘[, the pane by
+/// ⌘1…⌘9 — these rows are a view of panes the canvas already reaches.
+private struct SessionTerminalRows: View {
+    let terminals: [AgentMonitor.SessionTerminal]
+    let open: (PaneID) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(terminals) { terminal in
+                SessionTerminalRow(terminal: terminal) { open(terminal.id) }
+            }
+        }
+        .padding(.bottom, 4)
+    }
+}
+
+private struct SessionTerminalRow: View {
+    let terminal: AgentMonitor.SessionTerminal
+    let open: () -> Void
+    @State private var isHovering = false
+
+    private var state: AgentState? {
+        terminal.agent == nil ? nil : AgentMonitor.shared.stateByPane[terminal.id]
+    }
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 6) {
+                // Under the project's icon, in the same 20-wide slot.
+                AgentGlyph(agent: terminal.agent, size: 13)
+                    .foregroundStyle(Token.Colour.secondaryLabel)
+                    .frame(width: 20)
+                Text(terminal.title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(isHovering ? Token.Colour.label : Token.Colour.secondaryLabel)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                // The slot the project's row keeps for its badge, so the column lines up.
+                ZStack {
+                    if let state { AgentStateSymbol(state: state) }
+                }
+                .frame(width: 16, height: 16)
+            }
+            .frame(height: 24)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help(state.map { "\(terminal.title) — \($0.title)" } ?? terminal.title)
+        .accessibilityLabel(state.map { "\(terminal.title), \($0.title)" } ?? terminal.title)
+    }
+}
+
+/// A press on a session's row in the sidebar, taken before the list gets it.
+///
+/// The list is an `NSTableView`, and a table's mouse-down keeps every event until the
+/// button comes up — a SwiftUI drag gesture on a row is never told the pointer moved. So
+/// this watches the app's events from a view under the list: a press on a session's own
+/// row (not the terminals listed under it, and not its close button, which keep their
+/// clicks) is held back from the table, and what follows is reported — a click if the
+/// pointer went nowhere, otherwise a pick-up, each move and the release.
+///
+/// Points are reported in SwiftUI's global space, the one the sidebar measures its rows
+/// in: this view lies exactly under the list, whose global origin it is handed.
+struct SidebarRowPress: NSViewRepresentable {
+    /// The list's origin in SwiftUI's global space.
+    let origin: CGPoint
+    /// How much of a row's top is the project's own row.
+    let rowHeight: CGFloat
+    /// How many sessions the list has; the table's first row is Agents.
+    let count: Int
+    let clicked: (Int) -> Void
+    let began: (Int, CGPoint) -> Bool
+    let moved: (CGPoint) -> Void
+    let released: () -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let probe = Probe()
+        probe.press = self
+        return probe
+    }
+
+    func updateNSView(_ view: NSView, context: Context) { (view as? Probe)?.press = self }
+
+    static func dismantleNSView(_ view: NSView, coordinator: ()) { (view as? Probe)?.stop() }
+
+    private final class Probe: NSView {
+        var press: SidebarRowPress?
+        private var monitor: Any?
+        /// The row pressed and where, on screen, until the button comes up.
+        private var held: (index: Int, start: CGPoint)?
+        private var isDragging = false
+        /// How far the pointer travels before a press is a drag.
+        private static let travel: CGFloat = 4
+        /// The trailing end of a row, where its close button is.
+        private static let trailingControls: CGFloat = 40
+
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stop()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
+                    // A flag back, not the event: an event is not something to carry
+                    // across an isolation boundary, even one that is not really crossed.
+                    let swallowed = MainActor.assumeIsolated { self?.handle(event) == nil && self != nil }
+                    return swallowed ? nil : event
+                }
+        }
+
+        func stop() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            held = nil
+            isDragging = false
+        }
+
+        /// The table the list is: the nearest one in a view this probe is inside of.
+        private var table: NSTableView? {
+            var view = superview
+            while let current = view {
+                if let table = Self.table(in: current) { return table }
+                view = current.superview
+            }
+            return nil
+        }
+
+        private static func table(in view: NSView) -> NSTableView? {
+            if let table = view as? NSTableView { return table }
+            for subview in view.subviews {
+                if let table = table(in: subview) { return table }
+            }
+            return nil
+        }
+
+        /// An event's pointer in SwiftUI's global space.
+        private func global(_ event: NSEvent) -> CGPoint {
+            let local = convert(event.locationInWindow, from: nil)
+            let origin = press?.origin ?? .zero
+            return CGPoint(x: origin.x + local.x, y: origin.y + local.y)
+        }
+
+        private func screen(_ event: NSEvent) -> CGPoint {
+            event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? NSEvent.mouseLocation
+        }
+
+        /// Nil swallows the event: it was this probe's.
+        private func handle(_ event: NSEvent) -> NSEvent? {
+            guard let press else { return event }
+            switch event.type {
+            case .leftMouseDown:
+                held = nil
+                isDragging = false
+                guard event.window === window, event.clickCount == 1, let table else { return event }
+                let point = table.convert(event.locationInWindow, from: nil)
+                guard table.visibleRect.contains(point) else { return event }
+                let row = table.row(at: point)
+                // Row 0 is the Agents overview: not a session, and the list's own.
+                guard row >= 1, row - 1 < press.count else { return event }
+                let cell = table.rect(ofRow: row)
+                // The project's own row only. The terminals under it are buttons, and so
+                // is the close at the row's end: both keep their press.
+                let depth = table.isFlipped ? point.y - cell.minY : cell.maxY - point.y
+                guard depth <= press.rowHeight + 4, point.x < cell.maxX - Self.trailingControls else {
+                    return event
+                }
+                held = (row - 1, screen(event))
+                return nil
+            case .leftMouseDragged:
+                guard let held else { return event }
+                if !isDragging {
+                    let now = screen(event)
+                    guard hypot(now.x - held.start.x, now.y - held.start.y) >= Self.travel else { return nil }
+                    // Nothing to drag among: the press stays a click.
+                    guard press.began(held.index, global(event)) else { return nil }
+                    isDragging = true
+                }
+                press.moved(global(event))
+                return nil
+            case .leftMouseUp:
+                guard let held else { return event }
+                self.held = nil
+                if isDragging {
+                    isDragging = false
+                    press.moved(global(event))
+                    press.released()
+                } else {
+                    press.clicked(held.index)
+                }
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+}
+
+/// A row on its way down the sidebar.
+private struct RowDrag: Equatable {
+    let id: UUID
+    /// Its index when the drag began.
+    let from: Int
+    /// Its index in the list now: the list is reordered as the drag goes.
+    var current: Int
+    /// The rows as they stood when it was picked up.
+    let strip: TabStripReorder
+    /// Where the pointer took hold of it, from its top edge.
+    let grab: CGFloat
+    /// The pointer, in the window.
+    var pointer: CGPoint
+    /// Whether the pointer has carried the row out of the sidebar, where letting go
+    /// makes a window of it.
+    var isLeaving = false
+}
+
+/// A session row's icon and name, as the row draws them: what is under the pointer while
+/// the row is dragged down the list.
+private struct SessionRowGhost: View {
+    let store: LayoutStore
+
+    var body: some View {
+        let look = SessionLook.appearance(for: store)
+        HStack(spacing: 6) {
+            Image(systemName: SessionSymbols.resolved(look.symbol))
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(SessionTint(storedValue: look.tint).color)
+                .frame(width: 20)
+            Text(store.workspaceTitle)
+                .font(Token.Type_.tileTitle)
+                .foregroundStyle(Token.Colour.label)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.trailing, 10)
+    }
+}
+
 /// A selected row's capsule — a project's, or the Agents row's: the same glass the belt's
 /// selected tab wears, so every place that says "this one" says it the same way. Under
 /// Reduce Transparency, the neutral wash.
 private struct SelectedProjectGlass: View {
     let isSelected: Bool
 
+    /// Half a row's height: a capsule on a row of one line, and the same corners on a
+    /// project that lists its terminals under it — where a capsule's would be a lozenge.
+    static let radius: CGFloat = 15
+
     var body: some View {
         Group {
             if Token.Environment_.reduceTransparency {
-                Capsule(style: .continuous).fill(Token.Colour.selectionWash)
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .fill(Token.Colour.selectionWash)
             } else {
-                Color.clear.glassEffect(.regular.interactive(), in: .capsule)
+                Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: Self.radius))
             }
         }
         .padding(.horizontal, 10)
@@ -497,6 +1015,8 @@ private struct SessionRow: View {
     let select: () -> Void
     let rename: (String) -> Void
     let close: () -> Void
+    /// Into a window of its own, or nil on a window's only session.
+    var moveToWindow: (() -> Void)? = nil
     @State private var isHovering = false
     /// Read straight off the monitor, which is `@Observable`, so a row redraws when its own
     /// session's state changes and not when another's does. There is no per-row timer here
@@ -513,7 +1033,7 @@ private struct SessionRow: View {
 
     init(store: LayoutStore, ui: UIState, isSelected: Bool, canClose: Bool,
          select: @escaping () -> Void, rename: @escaping (String) -> Void,
-         close: @escaping () -> Void) {
+         close: @escaping () -> Void, moveToWindow: (() -> Void)? = nil) {
         self.store = store
         self.ui = ui
         self.isSelected = isSelected
@@ -521,6 +1041,7 @@ private struct SessionRow: View {
         self.select = select
         self.rename = rename
         self.close = close
+        self.moveToWindow = moveToWindow
         _appearance = State(initialValue: SessionLook.appearance(for: store))
     }
 
@@ -627,13 +1148,10 @@ private struct SessionRow: View {
         // of a wide sidebar — was dead to a click.
         .contentShape(.rect)
         .onHover { isHovering = $0 }
-        // NO tap gesture here, however tempting. One was added to catch the click on the
-        // row that is ALREADY selected — SwiftUI does not call a selection binding's setter
-        // when the value does not change, so that click had no path back to the terminal —
-        // and even as a `simultaneousGesture` it swallowed the List's own click handling,
-        // which made rows unselectable by their label. A focus nicety is not worth the
-        // sidebar's primary verb. The same-row case is covered from the keyboard instead:
-        // ⌘1…⌘9 and the focus commands reclaim even when the pane is already focused.
+        // No gestures here: the sidebar puts the row's tap and drag on it, together, where
+        // the drag's state lives. A tap alone, added here once to catch the click on the
+        // row that is ALREADY selected, swallowed the List's own click handling and made
+        // rows unselectable by their label — which is why the sidebar's tap selects.
         // The PATH, always — a renamed session must still be able to tell you which checkout
         // it actually is, and after a rename the title no longer can.
         .help(store.workspaceSubtitle ?? store.workspaceTitle)
@@ -644,6 +1162,15 @@ private struct SessionRow: View {
             // Live on a scratch session as well — it is how one is renamed. Its icon is
             // kept for the session's lifetime (`SessionLook`), so nothing is silently lost.
             Button("Customize") { beginCustomizing() }
+            // Whether this project's agents and shells are listed under its row. File ▸
+            // Session has the same item, and the palette.
+            Button(SessionTerminalVisibility.shared.title(for: store)) {
+                SessionTerminalVisibility.shared.toggle(for: store)
+            }
+            // What dragging the row out of the sidebar does.
+            if let moveToWindow {
+                Button("Move to New Window", action: moveToWindow)
+            }
             if canClose {
                 Divider()
                 Button("Close Session", action: close)

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UltraCore
 import UltraDesign
 import UltraLayout
 import UltraTerminal
@@ -56,6 +57,19 @@ final class AgentMonitor {
     /// The same, per pane: what the Agents overview's strips show.
     private(set) var stateByPane: [PaneID: AgentState] = [:]
 
+    /// One terminal pane of a session, as the sidebar lists it under the session's row.
+    struct SessionTerminal: Identifiable, Equatable {
+        let id: PaneID
+        /// The agent in it, as the tty names its binary; nil for a plain shell.
+        let agent: String?
+        let title: String
+    }
+
+    /// The terminal panes of every session that has an agent in one, in the order the
+    /// canvas reads — panes in windows of their own after it. A session of plain shells
+    /// is not here: its row already says all there is to say.
+    private(set) var terminalsBySession: [UUID: [SessionTerminal]] = [:]
+
     /// The time, to the minute, for the rows' "4m". Moves once a minute, so a row that
     /// reads it redraws once a minute and no oftener — the rows hold no timers of their own.
     private(set) var minute = Date()
@@ -110,9 +124,29 @@ final class AgentMonitor {
             }
         }
         observe(present)
+        observeTerminals(byWorkspace)
         observeStatuses(byWorkspace)
         // After the states, so a pane arriving on the overview wears its state at once.
         AgentsOverview.shared.refresh(byWorkspace)
+    }
+
+    /// What the sidebar lists under each session. Published only when it moved: this runs
+    /// every second, and an equal value assigned is still a redraw of every row.
+    private func observeTerminals(_ byWorkspace: [UUID: [PaneID: AgentPaneSample]]) {
+        var next: [UUID: [SessionTerminal]] = [:]
+        for (workspaceID, samples) in byWorkspace {
+            guard samples.values.contains(where: { $0.agent != nil }),
+                  let store = ShellWorkspace.Registry.stores[workspaceID] else { continue }
+            next[workspaceID] = ([store] + store.paneWindows).flatMap { canvas in
+                canvas.tree.paneIDs.compactMap { paneID -> SessionTerminal? in
+                    guard let sample = samples[paneID] else { return nil }
+                    let title = sample.agent.map { AgentDefinition.displayName(forBinary: $0) }
+                        ?? canvas.surfaces.records[paneID]?.title ?? "Shell"
+                    return SessionTerminal(id: paneID, agent: sample.agent, title: title)
+                }
+            }
+        }
+        if next != terminalsBySession { terminalsBySession = next }
     }
 
     /// Fold one round of per-pane samples into a status for every session.

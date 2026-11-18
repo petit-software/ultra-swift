@@ -1,3 +1,28 @@
+## Sidebar: a project's terminals
+
+- [x] A project with an agent running lists its terminal panes under its row: Claude's mark for Claude Code, the Codex mark for Codex, `apple.terminal.fill` for a plain shell, each agent with its own state (`AgentMonitor.terminalsBySession`, `AgentGlyph`, `SessionTerminalRows`)
+- [x] Each sits under the project's icon, in the same slot
+- [x] A row's right-click has Show / Hide Active Sessions, per project and remembered by folder; File ▸ Session has the same item and the palette finds it (`SessionTerminalVisibility`, `session.toggleActiveSessions`)
+- [x] A click on one goes to that project and focuses that pane, in its own window if it has one (`SessionList.reveal`)
+- [x] The demo's agents are Claude Code and Codex: a second stand-in binary called `codex`, in two of the four agent projects (`DemoProjects.agentCommand`)
+
+## Sessions between windows
+
+- [x] A sidebar row is 2pt taller: 1pt more above and below what is in it (`SessionSidebar.rowHeight`)
+- [x] A tab dragged off the belt, or a row dragged out of the sidebar, opens that project in a window of its own where it was let go; nothing in it restarts. Off either, the session follows the pointer as a pill with a window glyph (`SessionList.moveToNewWindow`, `SessionDragGhost`)
+- [x] A sidebar row is dragged as a belt tab is: picked up it is a pill — the project's icon and name, whatever is listed under it folded away until it is put down — the other rows reorder round it as it goes, Escape puts it back; out of the sidebar it is the belt's pill with the window glyph (`SessionSidebar.dragOverlay`, `RowDrag`)
+- [x] The press is taken under the list, not by a SwiftUI gesture, which a list row never hears; the list's own `onMove` is gone (`SidebarRowPress`)
+- [x] A session dragged out of a `--demo` window arrives in its new window; one that no window takes within two seconds goes back (`WorkspaceModel.openInitialSessions`)
+- [x] File ▸ Session ▸ Move Session to New Window, in the palette and on a row's or tab's right-click: the drag's key path (`session.moveToNewWindow`)
+- [x] Window ▸ Merge All Windows, and in the window bar's ellipsis: every other window's projects come into this one and those windows close; panes in windows of their own go back to their canvases (`SessionList.mergeAllWindows`, `window.mergeAll`)
+- [x] The saved list of open projects is every window's, so a project in a second window is reopened at the next launch (`SessionList.persist`)
+
+## Pane header: zoom
+
+- [x] The focused pane's header has a zoom control, leading the split pair; the other panes do not show it: the pane fills the canvas, its siblings hidden and untouched; pressed again they come back as they were (`PaneHeader`, `PaneActions.zoom`)
+- [x] While zoomed the control wears the accent and the inward arrows; dimmed on a canvas of one pane (`PaneSurfaceStore.setZoom`)
+- [x] The same verb as Pane ▸ Toggle Zoom, ⇧⌘↩, which the palette also finds as "Full Screen" and "Maximize" (`LayoutStore.toggleZoom`)
+
 ## Links: ask where to open
 
 - [x] A ⌘-click on a link in a shell or agent pane shows a menu at the pointer: Open in Ultra (a page in the browser pane, a file in the editor) or Open in Browser / Show in Finder, Open with the file's app, Copy Link or Path (`TerminalLinkMenu`, `ShellTerminalView.linkMenu`)
