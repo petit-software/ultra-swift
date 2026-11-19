@@ -1,3 +1,13 @@
+## Git pane: worktrees
+
+- [x] A worktree's chip points the pane at that worktree — its branch, its changes — where it typed a `cd`; the chip's right-click has the `cd`, Show in Finder and Remove (`GitTile.worktreeChips`)
+- [x] The current worktree is the deepest one holding the pane's folder, so a worktree nested in the repository is not read as the repository's own (`GitModel.parseWorktrees`)
+- [x] New Worktree… asks for a branch — an existing one is checked out, a new one is made from HEAD — and adds it beside the repository as `repo-branch`, then shows it (`GitModel.addWorktree`, `worktreePath`)
+- [x] Remove Worktree… asks first and never forces: git's own refusal — uncommitted changes, a lock — is shown as it was said; the main worktree cannot be removed (`GitModel.removeWorktree`)
+- [x] The footer has a worktree menu: the list with the current one ticked, New, Remove, and the `cd`
+- [x] Pane ▸ Git: New Worktree…, Show Next / Previous Worktree, Remove Worktree…, Go to Worktree in Shell — on the focused Git pane or the first, in the palette (`git.worktree.*`, `ShellWorkspace.gitPane`)
+- [x] Tests against a real repository; docs/03-TILES.md says what landed
+
 ## Sidebar: a project's terminals
 
 - [x] A project with an agent running lists its terminal panes under its row: Claude's mark for Claude Code, the Codex mark for Codex, `apple.terminal.fill` for a plain shell, each agent with its own state (`AgentMonitor.terminalsBySession`, `AgentGlyph`, `SessionTerminalRows`)
@@ -20,6 +30,7 @@
 - [x] An inactive project's icon is grey with its name, and its sessions are folded away under it, the chevron with them; the next turn brings both back (`SessionSidebar.sessionsToList`)
 - [x] The demo has three inactive projects — infra, blog and data-pipeline, quiet for 40 minutes, 3 hours and 2 days — so the grey rows can be seen without waiting (`AgentMonitor.standIns`, `DemoProjects.show`)
 - [x] Hiding or showing a project's sessions leaves its name where it is: the row is held at the top of its cell, the list under it fades and the cell shortens
+- [x] And it stays there while they fold: the project's own row takes no part in the fold's animation — the name rode to the middle of the opening cell and back, its icon left at the top (`SessionSidebar`, `listsTerminals`)
 - [x] A right-click on a project's row rings it at the pill's own radius, not the table's: the menu is the sidebar's own, put up from the press it already watches (`SidebarRowPress.menu`, `SidebarMenuItem`)
 
 ## Sessions between windows

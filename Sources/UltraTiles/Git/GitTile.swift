@@ -11,9 +11,11 @@ public struct GitTile: View {
     @State private var confirming: GitModel.Change?
     private let context: TileContext
 
-    public init(context: TileContext) {
+    /// `model` is the one the factory holds for this pane, so a menu command — New
+    /// Worktree… — acts on the repository the pane is showing. A preview passes none.
+    public init(context: TileContext, model: GitModel? = nil) {
         self.context = context
-        _model = State(initialValue: GitModel(root: context.root))
+        _model = State(initialValue: model ?? GitModel(root: context.root))
     }
 
     public var body: some View {
@@ -58,6 +60,10 @@ public struct GitTile: View {
                 }
             }
         }
+        // A worktree verb git refused, in git's words: the one failure here that is not
+        // already on screen as the state of a file.
+        .tileToast(model.worktreeFailure.map(TileNotice.failed),
+                   dismiss: { model.worktreeFailure = nil })
         .tileFooter { footer }
         .task { await poll() }
         .confirmationDialog("Discard changes to \(confirming?.path ?? "")?",
@@ -79,6 +85,10 @@ public struct GitTile: View {
             // A Git tile follows the shell it was opened beside, and that shell may never
             // have been in the repository the user wants.
             TileFolderMenu(context: context, title: "Repository Folder")
+            if model.isRepository {
+                ChromeMenuButton(symbol: "square.stack.3d.up", help: "Worktrees",
+                                 entries: worktreeEntries)
+            }
             TileFooterButton(symbol: "arrow.clockwise", help: "Refresh now",
                              isEnabled: !model.isRefreshing) {
                 Task { await model.refresh() }
@@ -138,34 +148,103 @@ public struct GitTile: View {
                 PullRequestRow(pullRequest: pullRequest)
             }
 
-            if model.worktrees.count > 1 {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        ForEach(model.worktrees) { worktree in
-                            Text(worktree.branch ?? worktree.name)
-                                .font(Token.Type_.monoSmall)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(worktree.isCurrent
-                                            ? Token.Colour.accentWash
-                                            : Token.Colour.label.opacity(0.06),
-                                            in: .capsule)
-                                .foregroundStyle(worktree.isCurrent
-                                                 ? Token.Colour.accentInk
-                                                 : Token.Colour.secondaryLabel)
-                                .onTapGesture {
-                                    context.injectIntoShell("cd " + shellQuoted(worktree.path))
-                                }
-                        }
-                    }
-                }
-                // Horizontal, and already hiding its indicator. The tile scroll bar reports
-                // VERTICAL position; on a row of worktree chips it would be a marker for an
-                // axis that does not move.
-            }
+            if model.worktrees.count > 1 { worktreeChips }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+    }
+
+    /// The repository's worktrees, the one this pane is showing marked.
+    ///
+    /// A chip POINTS THE PANE at its worktree. It used to type a `cd` at the shell, which
+    /// left the pane on the checkout it was already showing: the chip said "feature" and
+    /// the list under it went on being main's. The `cd` is still here, on the right-click
+    /// and in the footer's menu, with the rest of what can be done to a worktree.
+    private var worktreeChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(model.worktrees) { worktree in
+                    Button { show(worktree) } label: {
+                        Text(worktree.label)
+                            .font(Token.Type_.monoSmall)
+                            .strikethrough(worktree.isPrunable)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(worktree.isCurrent
+                                        ? Token.Colour.accentWash
+                                        : Token.Colour.label.opacity(0.06),
+                                        in: .capsule)
+                            .foregroundStyle(worktree.isCurrent
+                                             ? Token.Colour.accentInk
+                                             : Token.Colour.secondaryLabel)
+                            .contentShape(.capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(worktree.isPrunable)
+                    .help(worktree.isPrunable
+                          ? "\(TileFactory.abbreviate(worktree.path)) — its folder is gone"
+                          : TileFactory.abbreviate(worktree.path))
+                    .accessibilityLabel("Worktree \(worktree.label)")
+                    .accessibilityHint("Shows this worktree in the pane")
+                    .accessibilityAddTraits(worktree.isCurrent ? .isSelected : [])
+                    .contextMenu {
+                        Button("Show in This Pane") { show(worktree) }
+                            .disabled(worktree.isCurrent || worktree.isPrunable)
+                        Button("Go to Worktree in Shell") { sendToShell(worktree) }
+                            .disabled(worktree.isPrunable)
+                        Button("Show in Finder") {
+                            context.revealInFinder(URL(fileURLWithPath: worktree.path))
+                        }
+                        .disabled(worktree.isPrunable)
+                        Divider()
+                        Button("Remove Worktree…") { remove(worktree) }
+                            .disabled(worktree.isMain)
+                    }
+                }
+            }
+        }
+        // Horizontal, and already hiding its indicator. The tile scroll bar reports
+        // VERTICAL position; on a row of worktree chips it would be a marker for an
+        // axis that does not move.
+    }
+
+    /// The footer's worktree menu: the list, then what can be done. The same verbs as
+    /// Pane ▸ Git, and there with a single worktree too — which is when New is wanted.
+    private func worktreeEntries() -> [ChromeMenuEntry] {
+        var entries: [ChromeMenuEntry] = [.caption("Worktrees")]
+        entries += model.worktrees.map { worktree in
+            .item(title: worktree.label + (worktree.isPrunable ? " — folder gone" : ""),
+                  isOn: worktree.isCurrent, isEnabled: !worktree.isPrunable) { show(worktree) }
+        }
+        let current = model.currentWorktree
+        entries += [
+            .separator,
+            .item(title: "New Worktree…", symbol: "plus") {
+                model.newWorktreeAfterAsking(show: context.setRoot)
+            },
+            .item(title: "Remove Worktree…", symbol: "minus.circle",
+                  isEnabled: current.map { !$0.isMain } ?? false) {
+                if let current { remove(current) }
+            },
+            .item(title: "Go to Worktree in Shell", symbol: "apple.terminal",
+                  isEnabled: current != nil) {
+                if let current { sendToShell(current) }
+            },
+        ]
+        return entries
+    }
+
+    private func show(_ worktree: GitModel.Worktree) {
+        guard !worktree.isCurrent else { return }
+        context.setRoot(URL(fileURLWithPath: worktree.path))
+    }
+
+    private func sendToShell(_ worktree: GitModel.Worktree) {
+        context.injectIntoShell("cd " + shellQuoted(worktree.path))
+    }
+
+    private func remove(_ worktree: GitModel.Worktree) {
+        model.removeWorktreeAfterConfirming(worktree, show: context.setRoot)
     }
 
     @ViewBuilder
@@ -210,6 +289,57 @@ public struct GitTile: View {
             // call can live with — usually this returns without asking GitHub anything.
             await model.refreshPullRequest()
             await TilePolling.tick(Preferences.gitInterval)
+        }
+    }
+}
+
+// MARK: Worktree verbs that ask first
+
+@MainActor
+public extension GitModel {
+
+    /// Ask for a branch, add a worktree for it, and hand its folder to `show` — which
+    /// points the pane there. Shared by the footer's menu and Pane ▸ Git ▸ New Worktree…,
+    /// so both ask the same question.
+    func newWorktreeAfterAsking(show: @escaping (URL) -> Void) {
+        guard isRepository else { return }
+        let main = worktrees.first(where: \.isMain)?.name ?? root.lastPathComponent
+        let alert = NSAlert()
+        alert.messageText = "New Worktree"
+        alert.informativeText = "A branch to check out, or a name for a new one from HEAD. "
+            + "It is added beside the repository, as \(main)-branch."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = "branch"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Add Worktree")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let branch = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty else { return }
+        Task {
+            if let url = await addWorktree(branch: branch) { show(url) }
+        }
+    }
+
+    /// Remove a worktree once the user has said so. A pane that was showing it is handed
+    /// the repository's own worktree, since its folder is gone.
+    func removeWorktreeAfterConfirming(_ worktree: Worktree,
+                                       show: @escaping (URL) -> Void) {
+        guard !worktree.isMain else { return }
+        let alert = NSAlert()
+        alert.messageText = "Remove the worktree \(worktree.label)?"
+        alert.informativeText = TileFactory.abbreviate(worktree.path)
+            + " is deleted. Its branch and commits stay. A worktree with uncommitted changes"
+            + " is not removed."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Remove Worktree").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let main = worktrees.first(where: \.isMain)
+        Task {
+            guard await removeWorktree(worktree), worktree.isCurrent, let main else { return }
+            show(URL(fileURLWithPath: main.path))
         }
     }
 }

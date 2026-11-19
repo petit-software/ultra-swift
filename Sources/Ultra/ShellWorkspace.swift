@@ -651,6 +651,18 @@ enum ShellWorkspace {
         return tiles.portsModel(for: pane)
     }
 
+    /// The Git pane a worktree command acts on — the focused one, else the first — with the
+    /// repository it is showing.
+    static func gitPane(in store: LayoutStore) -> (pane: PaneID, model: GitModel)? {
+        guard let tiles = Registry.tiles[store.workspaceID] else { return nil }
+        let panes = tiles.gitPanes()
+        let focused = store.tree.focused
+        guard let pane = panes.contains(focused) ? focused : store.tree.paneIDs.first(where: { panes.contains($0) }),
+              let model = tiles.gitModel(for: pane)
+        else { return nil }
+        return (pane, model)
+    }
+
     static func contextModel(in store: LayoutStore) -> ContextModel? {
         guard let pane = contextPane(in: store) else { return nil }
         return Registry.tiles[store.workspaceID]?.contextModel(for: pane)

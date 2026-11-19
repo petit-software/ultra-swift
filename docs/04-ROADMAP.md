@@ -219,6 +219,10 @@ what makes opening files common enough for this to matter.
 >   two lines share too little, no highlight at all, since marking the whole of both says
 >   nothing the colour did not already say.
 >
+> **Worktrees — LANDED.** A chip points the pane at its worktree; New Worktree… and Remove
+> Worktree… are in the footer's menu and under Pane ▸ Git, with Show Next / Previous Worktree.
+> See `03-TILES.md` § 4.
+>
 > Outstanding: hunk-level stage/unstage, which is where this stops being small.
 
 - Worktree list, branch, ahead/behind, status v2, per-file changes.

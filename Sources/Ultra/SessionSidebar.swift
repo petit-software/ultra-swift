@@ -373,6 +373,9 @@ struct SessionSidebar: View {
                 // The row, and under it the project's terminals when an agent is in one
                 // of them. One list row for both, so a project is dragged, slid aside and
                 // selected as one thing.
+                // Whether its terminals are listed under it right now: what folding changes.
+                let listsTerminals = !isDragged && SessionTerminalVisibility.shared.isShown(for: store)
+                    && sessionsToList(for: store) != nil
                 VStack(alignment: .leading, spacing: 0) {
                     SessionRow(store: store,
                                ui: ui,
@@ -387,9 +390,15 @@ struct SessionSidebar: View {
                                moveToWindow: sessions.canMoveToNewWindow(store.workspaceID)
                                    ? { sessions.moveToNewWindow(store.workspaceID) } : nil)
                         .frame(minHeight: rowHeight)
+                        // Folding moves nothing in the project's own row, so nothing in it
+                        // is animated by a fold. The table gives the cell its new height
+                        // at once while the stack's height is still on its way there, and
+                        // a stack shorter or taller than its cell is centred in it: the
+                        // name rode down to the middle of the opening cell and back up,
+                        // with the icon — never animated — left at the top without it.
+                        .transaction(value: listsTerminals) { $0.animation = nil }
                     // Not while the project is being dragged: picked up, it is one row.
-                    if !isDragged, SessionTerminalVisibility.shared.isShown(for: store),
-                       let terminals = sessionsToList(for: store) {
+                    if listsTerminals, let terminals = sessionsToList(for: store) {
                         SessionTerminalRows(terminals: terminals) {
                             sessions.reveal($0, in: store.workspaceID)
                         }

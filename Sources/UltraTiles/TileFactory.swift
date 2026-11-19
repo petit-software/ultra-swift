@@ -86,6 +86,16 @@ public final class TileFactory {
     /// Each Ports pane's listeners and address filter, so a menu command can set the filter.
     private var ports: [PaneID: PortsModel] = [:]
 
+    /// Each Git pane's repository, so a menu command — New Worktree… — acts on the one the
+    /// pane is showing. Replaced when the pane is pointed at another folder.
+    private var gits: [PaneID: GitModel] = [:]
+
+    /// This pane's repository, or nil for a pane that is not a Git pane.
+    public func gitModel(for paneID: PaneID) -> GitModel? { gits[paneID] }
+
+    /// Which panes are Git panes, so the app can find one for a command.
+    public func gitPanes() -> Set<PaneID> { Set(gits.keys) }
+
     /// This pane's ports, or nil for a pane that is not a Ports pane.
     public func portsModel(for paneID: PaneID) -> PortsModel? { ports[paneID] }
 
@@ -261,7 +271,11 @@ public final class TileFactory {
         case .ultra:
             view = UltraPaneView(frame: .zero)
         case .git:
-            view = NSHostingView(rootView: GitTile(context: paneContext))
+            // A retargeted pane gets a model of its own: nothing of one checkout's state —
+            // its branch, its pull request — belongs on another's.
+            let model = gits[paneID].flatMap { $0.root == root ? $0 : nil } ?? GitModel(root: root)
+            gits[paneID] = model
+            view = NSHostingView(rootView: GitTile(context: paneContext, model: model))
         case .context:
             let model = contexts[paneID] ?? ContextModel(root: root)
             contexts[paneID] = model
@@ -344,6 +358,7 @@ public final class TileFactory {
         todos.removeValue(forKey: paneID)
         contexts.removeValue(forKey: paneID)
         ports.removeValue(forKey: paneID)
+        gits.removeValue(forKey: paneID)
     }
 
     /// Keep a Ports pane's record on its address filter, so a restored workspace shows the
@@ -525,6 +540,7 @@ public final class TileFactory {
         browsers.removeValue(forKey: paneID)?.closeAll()
         simulators.removeValue(forKey: paneID)?.close()
         todos.removeValue(forKey: paneID)
+        gits.removeValue(forKey: paneID)
     }
 
     public static func record(for kind: PaneRecord.Kind,

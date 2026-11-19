@@ -44,8 +44,17 @@ public final class GitModel {
         public let path: String
         public let branch: String?
         public let isCurrent: Bool
+        /// The repository's own checkout: the first one git lists. It is where the others
+        /// hang from, and git will not remove it.
+        public var isMain = false
+        /// Locked against removal and pruning, by `git worktree lock`.
+        public var isLocked = false
+        /// Its folder is gone; only git's record of it is left.
+        public var isPrunable = false
         public var id: String { path }
         public var name: String { (path as NSString).lastPathComponent }
+        /// What a chip or a menu row calls it: its branch, or its folder when detached.
+        public var label: String { branch ?? name }
     }
 
     public private(set) var branch: String?
@@ -63,8 +72,12 @@ public final class GitModel {
     /// way there can be no link to offer: no `gh` on this Mac, not signed in, a remote that
     /// is not GitHub, or a branch nobody has opened a PR for.
     public private(set) var pullRequest: PullRequest?
+    /// Why the last worktree verb did not happen, in git's words. Cleared by the next one
+    /// that works, or by the tile once it has been read.
+    public var worktreeFailure: String?
 
-    private let root: URL
+    /// The folder this model reads: the pane's, which may be a worktree or a folder in one.
+    public let root: URL
     /// Which branch the answer in `pullRequest` is about, and when it was asked for. The
     /// rest of this tile reads local files and can poll on a few seconds; `gh pr view` is a
     /// NETWORK call, so it is re-asked only when the branch changes or the answer has gone
@@ -286,42 +299,162 @@ public final class GitModel {
         }
     }
 
-    /// `git worktree list --porcelain`: blocks of `worktree <path>` / `branch refs/heads/x`.
+    /// `git worktree list --porcelain`: blocks of `worktree <path>` / `branch refs/heads/x`,
+    /// with `locked` and `prunable` lines on the ones that are.
     static func parseWorktrees(_ output: String, current: String) -> [Worktree] {
-        var result: [Worktree] = []
-        var path: String?
-        var branch: String?
-        // Resolved, because git reports /private/var while Foundation hands us /var for the
-        // same directory, and a plain string compare then says no worktree is current.
-        let here = canonical(current)
+        struct Block { var path: String; var branch: String?; var isLocked = false; var isPrunable = false }
+        var blocks: [Block] = []
+        var open: Block?
         func flush() {
-            guard let path else { return }
-            let there = canonical(path)
-            // The trailing slash is load-bearing: without it "/x/repo" prefixes
-            // "/x/repo-feature" and a sibling worktree is reported as the current one.
-            let isCurrent = here == there || here.hasPrefix(there + "/")
-            result.append(Worktree(path: path, branch: branch, isCurrent: isCurrent))
-            branch = nil
+            if let block = open { blocks.append(block) }
+            open = nil
         }
         for line in output.split(separator: "\n", omittingEmptySubsequences: false) {
             if line.hasPrefix("worktree ") {
                 flush()
-                path = String(line.dropFirst("worktree ".count))
+                open = Block(path: String(line.dropFirst("worktree ".count)))
             } else if line.hasPrefix("branch ") {
-                branch = String(line.dropFirst("branch ".count))
+                open?.branch = String(line.dropFirst("branch ".count))
                     .replacingOccurrences(of: "refs/heads/", with: "")
+            } else if line == "locked" || line.hasPrefix("locked ") {
+                open?.isLocked = true
+            } else if line == "prunable" || line.hasPrefix("prunable ") {
+                open?.isPrunable = true
             } else if line.isEmpty {
-                flush(); path = nil
+                flush()
             }
         }
         flush()
-        return result
+
+        // Resolved, because git reports /private/var while Foundation hands us /var for the
+        // same directory, and a plain string compare then says no worktree is current.
+        let here = canonical(current)
+        // The DEEPEST one that holds this folder. A worktree made inside the repository —
+        // `.claude/worktrees/x` is where agents put theirs — sits under the main checkout's
+        // path too, and the first match would call both of them current.
+        var currentIndex: Int?
+        var depth = -1
+        for (index, block) in blocks.enumerated() {
+            let there = canonical(block.path)
+            // The trailing slash is load-bearing: without it "/x/repo" prefixes
+            // "/x/repo-feature" and a sibling worktree is reported as the current one.
+            guard here == there || here.hasPrefix(there + "/"), there.count > depth else { continue }
+            currentIndex = index
+            depth = there.count
+        }
+        return blocks.enumerated().map { index, block in
+            Worktree(path: block.path, branch: block.branch, isCurrent: index == currentIndex,
+                     isMain: index == 0, isLocked: block.isLocked, isPrunable: block.isPrunable)
+        }
     }
 
     /// Symlinks resolved and the path standardised, so two spellings of one directory
     /// compare equal.
     static func canonical(_ path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    // MARK: Worktrees
+
+    /// The worktree this pane is showing.
+    public var currentWorktree: Worktree? { worktrees.first(where: \.isCurrent) }
+
+    /// The one after the current, or before it, going round: what Show Next and Show
+    /// Previous Worktree point the pane at. Nil with one worktree or none. A worktree whose
+    /// folder is gone is passed over — there is nothing there to show.
+    public func worktree(after offset: Int) -> Worktree? {
+        let shown = worktrees.filter { !$0.isPrunable || $0.isCurrent }
+        guard shown.count > 1, let index = shown.firstIndex(where: \.isCurrent) else { return nil }
+        return shown[((index + offset) % shown.count + shown.count) % shown.count]
+    }
+
+    /// Where a new worktree for `branch` goes: beside the repository, as `repo-branch`.
+    ///
+    /// Beside, not inside: a checkout inside another is a folder every tool that walks the
+    /// repository — search, the file tree, a build — then walks twice. Named for both, so
+    /// it sorts next to its repository and says which branch it is from the Finder. A
+    /// branch's slashes become dashes; `feature/login` is one folder, not two.
+    static func worktreePath(forBranch branch: String, mainWorktree: String) -> String {
+        let main = URL(fileURLWithPath: mainWorktree).standardizedFileURL
+        let slug = branch.split(whereSeparator: { $0 == "/" || $0 == " " }).joined(separator: "-")
+        return main.deletingLastPathComponent()
+            .appendingPathComponent(main.lastPathComponent + "-" + slug).path
+    }
+
+    /// Add a worktree for `branch` and return where it is, or nil with `worktreeFailure`
+    /// set. A branch that exists — here or on a remote — is checked out; one that does not
+    /// is made from HEAD.
+    @discardableResult
+    public func addWorktree(branch name: String) async -> URL? {
+        let branch = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // git's own judgement of what a branch may be called, not a regex that agrees with
+        // it most of the time.
+        let valid = await git(["check-ref-format", "--branch", branch])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !branch.isEmpty, !branch.hasPrefix("-"), valid == branch else {
+            worktreeFailure = "“\(branch)” is not a name a branch can have."
+            return nil
+        }
+        let listed = Self.parseWorktrees(await git(["worktree", "list", "--porcelain"]),
+                                         current: root.path)
+        guard let main = listed.first else {
+            worktreeFailure = "No repository in \(root.lastPathComponent)."
+            return nil
+        }
+        let path = Self.worktreePath(forBranch: branch, mainWorktree: main.path)
+        guard !FileManager.default.fileExists(atPath: path) else {
+            worktreeFailure = "\((path as NSString).lastPathComponent) is already there, beside the repository."
+            return nil
+        }
+        let exists = !(await git(["for-each-ref", "--format=%(refname)",
+                                  "refs/heads/" + branch, "refs/remotes/*/" + branch]))
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // A checkout of a large repository is not a four-second job.
+        let outcome = await CommandProbe.attempt(
+            "/usr/bin/git",
+            ["-C", root.path, "worktree", "add"] + (exists ? [path, branch] : ["-b", branch, path]),
+            timeout: 120)
+        guard outcome.succeeded else {
+            worktreeFailure = Self.gitReason(outcome.message)
+            return nil
+        }
+        worktreeFailure = nil
+        await refresh()
+        return URL(fileURLWithPath: path)
+    }
+
+    /// Remove a linked worktree. NEVER forced: one with uncommitted changes, or a lock, is
+    /// refused by git and the refusal is what `worktreeFailure` then says. The branch is
+    /// left alone — removing a checkout is not deleting the work on it.
+    @discardableResult
+    public func removeWorktree(_ worktree: Worktree) async -> Bool {
+        guard !worktree.isMain, let main = worktrees.first(where: \.isMain) else {
+            worktreeFailure = "The repository's own worktree cannot be removed."
+            return false
+        }
+        // Run from the MAIN worktree: the one being removed may be the folder this model
+        // reads, and a command cannot stand in the directory it is deleting.
+        let outcome = await CommandProbe.attempt(
+            "/usr/bin/git", ["-C", main.path, "worktree", "remove", worktree.path], timeout: 60)
+        guard outcome.succeeded else {
+            worktreeFailure = Self.gitReason(outcome.message)
+            return false
+        }
+        worktreeFailure = nil
+        await refresh()
+        return true
+    }
+
+    /// git's reason without its own prefix: "fatal: 'x' is already checked out at …" reads
+    /// as the tile's sentence once the "fatal:" is off it.
+    static func gitReason(_ message: String) -> String {
+        let line = message.split(separator: "\n").last(where: { $0.hasPrefix("fatal:") || $0.hasPrefix("error:") })
+            ?? message.split(separator: "\n").last ?? ""
+        var text = String(line)
+        for prefix in ["fatal: ", "error: "] where text.hasPrefix(prefix) {
+            text = String(text.dropFirst(prefix.count))
+        }
+        return text.isEmpty ? "git could not do that." : text
     }
 
     // MARK: Actions — every one explicit, none automatic

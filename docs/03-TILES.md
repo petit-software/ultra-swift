@@ -301,6 +301,16 @@ The project's dedicated worktree, its branch, and its changes.
   untracked sections with per-file rows and +/- counts.
 - **Actions**: create a worktree for a branch (`git worktree add`), point a pane's cwd at a
   worktree, stage/unstage/discard (discard confirms, always), open a file's diff, copy branch name.
+- **Worktrees** are chips under the branch once there is more than one, the pane's own marked —
+  the deepest worktree holding the pane's folder, since one nested in the repository sits under
+  the main checkout's path too. A chip points the PANE at its worktree (`setRoot`, so the tile is
+  rebuilt there); its right-click and the footer's worktree menu have the `cd` for the shell,
+  Show in Finder, New and Remove. New Worktree… asks for a branch — an existing one, local or
+  remote, is checked out; a new name is made from HEAD — and adds it BESIDE the repository as
+  `repo-branch`, then shows it. Remove Worktree… confirms, is never forced, leaves the branch,
+  and runs from the main worktree, since the one going may be the folder the pane is in. git's
+  refusals — a branch checked out elsewhere, uncommitted changes, a lock — are a toast in git's
+  words. All of it is Pane ▸ Git (`git.worktree.*`), on the focused Git pane or the first.
 - **The branch's pull request** is a row under the branch — number, title, and state in GitHub's
   own colours — that opens the PR in the browser. Read through `gh pr view --json`, because a PR
   number is a fact only the forge has; `gh` is located by path, since a bundled app inherits

@@ -16,7 +16,7 @@ enum PaneCommands {
 
     static let all: [AppCommand] = splits + focusMoves + swaps + resizes + numbered + others
                                  + layouts + chat + editor + browser
-                                 + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + paneKinds + folders
+                                 + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + git + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
@@ -505,6 +505,58 @@ enum PaneCommands {
                        return model.addressFilter != filter
                    }) { store in
             ShellWorkspace.portsModel(in: store)?.addressFilter = filter
+        }
+    }
+
+    /// A Git pane's worktrees. The chips and the footer's menu are the pointer's way to
+    /// these; they act on the focused Git pane, else the first, and dim when there is none
+    /// or nothing to act on. No chords: found in the palette.
+    static let git: [AppCommand] = [
+        AppCommand(id: "git.worktree.new", title: "New Worktree…", symbol: "plus.square.on.square",
+                   menuPath: ["Pane", "Git"],
+                   keywords: ["Add Worktree", "Branch", "Checkout"],
+                   isEnabled: { ShellWorkspace.gitPane(in: $0)?.model.isRepository ?? false }) { store in
+            guard let git = ShellWorkspace.gitPane(in: store) else { return }
+            git.model.newWorktreeAfterAsking { [weak store] url in
+                guard let store else { return }
+                ShellWorkspace.setFolder(url, of: git.pane, in: store)
+            }
+        },
+        worktreeStep(1, id: "git.worktree.next", title: "Show Next Worktree", symbol: "chevron.right.square"),
+        worktreeStep(-1, id: "git.worktree.previous", title: "Show Previous Worktree", symbol: "chevron.left.square"),
+        AppCommand(id: "git.worktree.shell", title: "Go to Worktree in Shell", symbol: "apple.terminal",
+                   menuPath: ["Pane", "Git"],
+                   keywords: ["cd", "Change Directory"],
+                   isEnabled: { ShellWorkspace.gitPane(in: $0)?.model.currentWorktree != nil }) { store in
+            guard let worktree = ShellWorkspace.gitPane(in: store)?.model.currentWorktree else { return }
+            ShellWorkspace.Registry.tiles[store.workspaceID]?
+                .context.injectIntoShell("cd " + shellQuoted(worktree.path))
+        },
+        // Asks first, hence the ellipsis; dimmed on the repository's own worktree, which
+        // git will not remove.
+        AppCommand(id: "git.worktree.remove", title: "Remove Worktree…", symbol: "minus.square",
+                   menuPath: ["Pane", "Git"],
+                   keywords: ["Delete Worktree"],
+                   isEnabled: { store in
+                       ShellWorkspace.gitPane(in: store)?.model.currentWorktree.map { !$0.isMain } ?? false
+                   }) { store in
+            guard let git = ShellWorkspace.gitPane(in: store),
+                  let worktree = git.model.currentWorktree else { return }
+            git.model.removeWorktreeAfterConfirming(worktree) { [weak store] url in
+                guard let store else { return }
+                ShellWorkspace.setFolder(url, of: git.pane, in: store)
+            }
+        },
+    ]
+
+    private static func worktreeStep(_ offset: Int, id: String, title: String, symbol: String) -> AppCommand {
+        AppCommand(id: id, title: title, symbol: symbol,
+                   menuPath: ["Pane", "Git"],
+                   keywords: ["Switch Worktree", "Cycle Worktrees"],
+                   isEnabled: { ShellWorkspace.gitPane(in: $0)?.model.worktree(after: offset) != nil }) { store in
+            guard let git = ShellWorkspace.gitPane(in: store),
+                  let worktree = git.model.worktree(after: offset) else { return }
+            ShellWorkspace.setFolder(URL(fileURLWithPath: worktree.path), of: git.pane, in: store)
         }
     }
 

@@ -334,3 +334,190 @@ struct GitDiffTests {
 private final class NoFilesManager: FileManager, @unchecked Sendable {
     override func isExecutableFile(atPath path: String) -> Bool { false }
 }
+
+@Suite("Git worktrees")
+@MainActor
+struct GitWorktreeTests {
+
+    @Test("the main worktree is the first, and locked and prunable ones say so")
+    func flags() {
+        let output = """
+        worktree /Users/x/repo
+        HEAD abc
+        branch refs/heads/main
+
+        worktree /Users/x/repo-kept
+        HEAD def
+        branch refs/heads/kept
+        locked being used on the other machine
+
+        worktree /Users/x/repo-gone
+        HEAD 123
+        detached
+        prunable gitdir file points to non-existent location
+
+        """
+        let trees = GitModel.parseWorktrees(output, current: "/Users/x/repo")
+        #expect(trees.map(\.isMain) == [true, false, false])
+        #expect(trees.map(\.isLocked) == [false, true, false])
+        #expect(trees.map(\.isPrunable) == [false, false, true])
+        // Detached: no branch, so it is called by its folder.
+        #expect(trees.map(\.label) == ["main", "kept", "repo-gone"])
+    }
+
+    /// Where an agent puts its worktrees. The repository's path prefixes the nested one's,
+    /// and both were reported as current.
+    @Test("a worktree nested in the repository is the current one, and the repository is not")
+    func nested() {
+        let output = """
+        worktree /Users/x/repo
+        branch refs/heads/main
+
+        worktree /Users/x/repo/.claude/worktrees/fix
+        branch refs/heads/fix
+
+        """
+        let inside = GitModel.parseWorktrees(output, current: "/Users/x/repo/.claude/worktrees/fix/Sources")
+        #expect(inside.map(\.isCurrent) == [false, true])
+        let outside = GitModel.parseWorktrees(output, current: "/Users/x/repo/Sources")
+        #expect(outside.map(\.isCurrent) == [true, false])
+    }
+
+    @Test("a new worktree goes beside the repository, named for it and the branch")
+    func path() {
+        #expect(GitModel.worktreePath(forBranch: "login", mainWorktree: "/Users/x/repo")
+                == "/Users/x/repo-login")
+        #expect(GitModel.worktreePath(forBranch: "feature/login", mainWorktree: "/Users/x/repo/")
+                == "/Users/x/repo-feature-login")
+    }
+
+    @Test("git's refusal is shown without its prefix")
+    func reason() {
+        #expect(GitModel.gitReason("Preparing worktree\nfatal: 'main' is already used by worktree at '/x'")
+                == "'main' is already used by worktree at '/x'")
+        #expect(GitModel.gitReason("") == "git could not do that.")
+    }
+
+    // MARK: Against a real repository
+
+    private func git(_ root: URL, _ args: [String]) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.arguments = ["-C", root.path] + args
+        p.standardOutput = Pipe(); p.standardError = Pipe()
+        try? p.run(); p.waitUntilExit()
+    }
+
+    /// A repository in a folder of its own, so the worktrees made beside it are cleaned up
+    /// with it.
+    private func makeRepo() throws -> (folder: URL, root: URL) {
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ultra-worktree-\(UUID().uuidString)")
+        let root = folder.appendingPathComponent("repo")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        git(root, ["init", "-q", "-b", "main"])
+        git(root, ["config", "user.email", "t@example.com"])
+        git(root, ["config", "user.name", "Test"])
+        try "one\n".write(to: root.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        git(root, ["add", "-A"])
+        git(root, ["commit", "-qm", "first"])
+        return (folder, root)
+    }
+
+    @Test("a new branch gets a worktree beside the repository, and a model there reads it")
+    func addNewBranch() async throws {
+        let (folder, root) = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = GitModel(root: root)
+        await model.refresh()
+
+        let urlMade = await model.addWorktree(branch: "feature/login")
+        let url = try #require(urlMade)
+        #expect(url.lastPathComponent == "repo-feature-login")
+        #expect(FileManager.default.fileExists(atPath: url.appendingPathComponent("a.txt").path))
+        #expect(model.worktreeFailure == nil)
+        #expect(model.worktrees.map(\.branch) == ["main", "feature/login"])
+        #expect(model.worktrees.map(\.isCurrent) == [true, false])
+
+        // The pane pointed at it: its branch, and it is the current one.
+        let there = GitModel(root: url)
+        await there.refresh()
+        #expect(there.branch == "feature/login")
+        #expect(there.currentWorktree?.branch == "feature/login")
+        #expect(there.currentWorktree?.isMain == false)
+        #expect(there.worktree(after: 1)?.branch == "main")
+        #expect(there.worktree(after: -1)?.branch == "main")
+    }
+
+    @Test("an existing branch is checked out, not made again")
+    func addExistingBranch() async throws {
+        let (folder, root) = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        git(root, ["branch", "old"])
+        let model = GitModel(root: root)
+        await model.refresh()
+        let urlMade = await model.addWorktree(branch: "old")
+        let url = try #require(urlMade)
+        let there = GitModel(root: url)
+        await there.refresh()
+        #expect(there.branch == "old")
+    }
+
+    @Test("what git refuses is reported, and nothing is made")
+    func addRefused() async throws {
+        let (folder, root) = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = GitModel(root: root)
+        await model.refresh()
+
+        // The branch the repository itself has checked out.
+        #expect(await model.addWorktree(branch: "main") == nil)
+        #expect(model.worktreeFailure?.isEmpty == false)
+        #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("repo-main").path))
+
+        #expect(await model.addWorktree(branch: "no good..name") == nil)
+        #expect(model.worktreeFailure?.contains("not a name") == true)
+        #expect(await model.addWorktree(branch: "--force") == nil)
+        #expect(model.worktrees.count == 1)
+
+        // A folder already in the way.
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("repo-taken"),
+                                                withIntermediateDirectories: true)
+        #expect(await model.addWorktree(branch: "taken") == nil)
+        #expect(model.worktreeFailure?.contains("already there") == true)
+    }
+
+    @Test("a clean worktree is removed and its branch stays; a dirty one and the main one are not")
+    func remove() async throws {
+        let (folder, root) = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let model = GitModel(root: root)
+        await model.refresh()
+        let cleanMade = await model.addWorktree(branch: "clean")
+        let clean = try #require(cleanMade)
+        let dirtyMade = await model.addWorktree(branch: "dirty")
+        let dirty = try #require(dirtyMade)
+        try "edited\n".write(to: dirty.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let main = try #require(model.worktrees.first { $0.isMain })
+        #expect(await model.removeWorktree(main) == false)
+        #expect(FileManager.default.fileExists(atPath: root.path))
+
+        let dirtyTree = try #require(model.worktrees.first { $0.branch == "dirty" })
+        #expect(await model.removeWorktree(dirtyTree) == false)
+        #expect(model.worktreeFailure?.isEmpty == false)
+        #expect(FileManager.default.fileExists(atPath: dirty.path))
+
+        // Removed from a model that is IN the worktree being removed, as the pane is.
+        let inside = GitModel(root: clean)
+        await inside.refresh()
+        let cleanTree = try #require(inside.currentWorktree)
+        #expect(await inside.removeWorktree(cleanTree))
+        #expect(!FileManager.default.fileExists(atPath: clean.path))
+        await model.refresh()
+        #expect(model.worktrees.map(\.branch) == ["main", "dirty"])
+        #expect(model.worktreeFailure != nil)   // the dirty refusal, still to be read
+        let branches = await CommandProbe.run("/usr/bin/git", ["-C", root.path, "branch", "--list", "clean"])
+        #expect(branches.contains("clean"))
+    }
+}
