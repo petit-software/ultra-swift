@@ -19,7 +19,7 @@ public enum Token {
         /// At 6pt the glass was there and invisible, which is the worst of both.
         public static let canvasPadding: CGFloat = 8
         /// Now a setting — see `Appearance.paneGutter`. The default is 8.
-        public static var gutter: CGFloat { Appearance.paneGutter }
+        public static var gutter: CGFloat { Appearance.canvasGutter }
         public static let dividerLine: CGFloat = 1
         /// A line that only has to be there: one device pixel on a Retina display. For
         /// where content meets a tile's own chrome and a full point would be a border.

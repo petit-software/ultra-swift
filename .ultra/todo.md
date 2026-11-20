@@ -35,3 +35,23 @@
 - [x] The sidebar's panel is the colour of the panes: a pane's frost and unfocused wash, or the panes' glass with Glass panes on (`PaneSurface`)
 - [x] The selected row is the neutral wash on the sidebar's glass, not a glass capsule of its own (`SelectedProjectWash`)
 - [ ] Try in Ultra Dev by hand: the floating sidebar in dark mode, collapsed and reopened, a row dragged, and in full screen
+
+## Sidebar without a background, controls by the traffic lights
+
+- [x] The sidebar has no background: the window's surface is laid inside the column again, flush with the window, and the pane-coloured panel is gone (`SessionSidebar`, `PaneSurface` removed)
+- [x] The sidebar toggle is beside the traffic lights, level with them; ⌘, `+` and `…` are in the sidebar's top right corner, on the same line — all drawn in the title band rather than as toolbar items (`RootView.sidebarToggle`, `RootView.windowBarMenus`, `SessionSidebar.headControls`)
+- [x] The sidebar is 290pt at its narrowest and 480pt at its widest; dragged narrower it hides. Neither limit was ever applied: `toolbar(removing: .sidebarToggle)` drops a column width set inside it, so the width is now set outside it (`RootView`, `WindowBarControls.sidebarMinWidth`)
+- [x] The canvas runs to the top of the window, a window padding in from it, sidebar open or hidden; the project's name is off the main window and there is no title band (`RootView.canvasTopInset`, `SplitCanvasView.topInset`)
+- [x] With the sidebar hidden only the sidebar's button stays beside the traffic lights, and the pane in the window's top-left corner moves its header's close and name clear of both (`RootView.canvasCornerReserve`, `SplitCanvasView.cornerReserve`, `PaneContainerView.headerLeadingInset`)
+- [x] A pane under the transparent titlebar is not pushed down by its safe area (`SplitCanvasView.cancelTitlebarSafeArea`)
+- [x] The window's `…` menu is grouped into submenus — Arrange Panes, Layout, Windows — and has Switch Color Mode ▸ Light, Dark, System, the current one ticked (`ColourModeMenu`)
+- [x] View ▸ Switch Color Mode ▸ Light, Dark, System, and the three in the palette (`PaneCommands.colourModes`)
+- [x] Grid Mode ▸ Relaxed / Compact. Compact: no gutters between the panes and no inset from the window's edges, square corners, no surface or shadow of a pane's own — every pane the same on the window's surface —, no focus ring, and a hairline round each; the settings are kept for Relaxed. View ▸ Grid Mode, the window's `…` menu, the palette (`Appearance.GridMode`, `canvasGutter`, `canvasPadding`, `canvasPaneRadius`, `PaneContainerView.isBare`, `PaneCommands.gridModes`)
+- [x] The traffic lights, the title band's controls and the top row of pane headers are one line in either grid mode: 26pt down under the unified titlebar in Relaxed, 20pt under the compact titlebar in Compact, where the panes start 2pt down to meet it. The system places the lights; nothing moves them by hand, which made the zoom button slide during a sidebar collapse (`WindowBarControls.line`, `WindowChrome.compactTitlebar`)
+- [x] Compact: no focus ring — the focused pane is told by its header; and the session belt keeps 12pt from the window's edges and from the panes above it (`RootView.beltPadding`)
+- [x] The title band's controls wear a pane header button's colours: the secondary label at rest, the label on a plate under the pointer (`WindowBarControlLook`)
+- [x] Unfolding a project in the sidebar is not animated: the cell opens at once, the project's name does not move, and its sessions fade in inside it (`SessionTerminalRows`)
+- [x] The selected project in the sidebar is Liquid Glass again; the neutral wash under Reduce Transparency (`SelectedProjectWash`)
+- [x] A pane's header keeps 44pt between its name and its controls to be picked up by: a long name — an agent at work — took the whole band, and a floating pane could not be moved by its header (`PaneHeader.minDragBand`)
+- [x] Back in the Relaxed grid the title band's controls return to the traffic lights' line: their height was read inside a modifier that was never run again (`WindowBarControlStyle.line`)
+- [ ] Try in Ultra Dev by hand: full screen, where the traffic lights are gone and the titlebar is a window of AppKit's own — the controls, and the corner pane's header; the sidebar's edge against the canvas in light mode; a pane's header at the top of the window — its buttons, dragging it, and a browser or editor pane there; dragging the window, by the sidebar's head and with the sidebar hidden; the Agents overview with the sidebar hidden

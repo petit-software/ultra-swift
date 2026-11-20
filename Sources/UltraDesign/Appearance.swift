@@ -57,6 +57,24 @@ public enum Appearance {
         }
     }
 
+    /// How the panes lie on the window — Grid Mode.
+    ///
+    /// RELAXED is the app as it was designed: each pane a rounded sheet of its own, with
+    /// the window's material showing in the gutters between them and in a frame round
+    /// them all. COMPACT gives every point of the window to a pane: no gutters, no frame,
+    /// square corners, and no surface of a pane's own — the panes are cells ruled off by
+    /// hairlines on the window's one surface, and all look alike.
+    public enum GridMode: String, CaseIterable, Sendable, Identifiable {
+        case relaxed, compact
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .relaxed: "Relaxed"
+            case .compact: "Compact"
+            }
+        }
+    }
+
     /// The material behind the whole window, under the panes and their gutters.
     ///
     /// Only the materials that make sense edge-to-edge behind a window are offered.
@@ -323,6 +341,30 @@ public enum Appearance {
                                         current: windowPadding, in: 0...48) }
     }
 
+    /// Grid Mode — see `GridMode`. In compact the gutter, the padding and the radius keep
+    /// the values they were set to, and come back with relaxed; the canvas reads them
+    /// through `canvasGutter`, `canvasPadding` and `canvasPaneRadius`, which are what
+    /// compact zeroes.
+    public static var gridMode: GridMode {
+        get { choice("gridMode", default: .relaxed) }
+        set { setChoice("gridMode", newValue, current: gridMode) }
+    }
+
+    public static var compact: Bool { gridMode == .compact }
+
+    /// The gutter the canvas is laid out with: `paneGutter`, or none in compact.
+    public static var canvasGutter: CGFloat { compact ? 0 : paneGutter }
+
+    /// The window inset the canvas is laid out with: `windowPadding`, or none in compact.
+    public static var canvasPadding: CGFloat { compact ? 0 : windowPadding }
+
+    /// A tiled pane's corner radius: `paneRadius`, or square in compact.
+    public static var canvasPaneRadius: CGFloat { compact ? 0 : paneRadius }
+
+    /// The hairline round a pane in compact: half a point on each of two panes that meet,
+    /// so one point between them.
+    public static let compactHairline: CGFloat = 0.5
+
     public static var focusRingWidth: CGFloat {
         get { PreferenceStore.number(key("focusRingWidth"), default: 1, in: 0...6) }
         set { PreferenceStore.setNumber(key("focusRingWidth"), newValue,
@@ -447,6 +489,7 @@ public enum Appearance {
         "paneRadius", "paneShadowRadius", "paneShadowOpacity", "paneGutter",
         "focusRingWidth", "focusRingStrength",
         "windowMaterial", "windowTintDark", "windowTintLight", "windowRadius", "windowPadding",
+        "gridMode",
         "headerBlurRadius", "headerTintOpacity",
         "aurora", "auroraStrength",
     ]

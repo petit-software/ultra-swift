@@ -21,6 +21,7 @@ enum PaneCommands {
                                  + [nextSession, previousSession] + prompt
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
                                  + [showAgents, openAgentProject, openWaiting, toggleAppearance]
+                                 + colourModes + gridModes
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
@@ -80,6 +81,45 @@ enum PaneCommands {
             }
             Preferences.themeMode = isDark ? .light : .dark
         }
+
+    /// The theme by name, where the toggle only flips it: light, dark, or whatever the Mac
+    /// is showing. View ▸ Switch Color Mode, the window's `…` menu, and the palette — the
+    /// only way back to following the system short of Settings.
+    static let colourModes: [AppCommand] = [
+        AppCommand(id: "view.colourMode.light", title: "Switch to Light Mode",
+                   symbol: "sun.max", menuPath: ["View", "Switch Color Mode"],
+                   keywords: ["Color Mode Light", "Light Theme", "Light Appearance"]) { _ in
+            Preferences.themeMode = .light
+        },
+        AppCommand(id: "view.colourMode.dark", title: "Switch to Dark Mode",
+                   symbol: "moon", menuPath: ["View", "Switch Color Mode"],
+                   keywords: ["Color Mode Dark", "Dark Theme", "Dark Appearance"]) { _ in
+            Preferences.themeMode = .dark
+        },
+        AppCommand(id: "view.colourMode.system", title: "Switch to System Color Mode",
+                   symbol: "circle.lefthalf.filled", menuPath: ["View", "Switch Color Mode"],
+                   keywords: ["Follow System", "Color Mode System", "Automatic Appearance",
+                              "Match System Appearance"]) { _ in
+            Preferences.themeMode = .system
+        },
+    ]
+
+    /// Grid Mode: relaxed — rounded panes with the window showing between and round them
+    /// — or compact, the panes edge to edge as cells ruled off by hairlines
+    /// (`Appearance.GridMode`). View ▸ Grid Mode, the window's `…` menu, and the palette.
+    static let gridModes: [AppCommand] = [
+        AppCommand(id: "view.gridMode.relaxed", title: "Switch to Relaxed Grid",
+                   symbol: "rectangle.split.2x2", menuPath: ["View", "Grid Mode"],
+                   keywords: ["Grid Mode Relaxed", "Gaps Between Panes", "Rounded Panes"]) { _ in
+            Appearance.gridMode = .relaxed
+        },
+        AppCommand(id: "view.gridMode.compact", title: "Switch to Compact Grid",
+                   symbol: "squareshape.split.2x2", menuPath: ["View", "Grid Mode"],
+                   keywords: ["Grid Mode Compact", "Compact Mode", "Remove Gaps", "No Gaps",
+                              "No Gutters", "Edge to Edge", "Dense Layout"]) { _ in
+            Appearance.gridMode = .compact
+        },
+    ]
 
     /// The pane that has waited longest for an answer, wherever it is: on the overview
     /// when that is up, else in its session, raised. The keyboard answer to the orange

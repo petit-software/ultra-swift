@@ -28,12 +28,16 @@ struct SessionSidebar: View {
     /// The folder picker lives in the app's command layer, so the bar asks for it rather
     /// than opening its own — two `NSOpenPanel`s configured separately drift apart.
     let openFolder: () -> Void
-    /// Bumped when a setting changes: whether the panes are glass is not state of this view.
+    /// The window's controls for the head of the column: drawn in its top right corner,
+    /// level with the traffic lights. The window's, not the sidebar's — it only gives
+    /// them their place — so they are handed in (`RootView.windowBarMenus`).
+    var headControls = AnyView(EmptyView())
+    /// Bumped when a project's look or the aurora setting changes — see `Aurora`.
     @State private var lookRevision = 0
 
-    private var panesAreGlass: Bool {
+    private var auroraColour: NSColor? {
         _ = lookRevision
-        return Appearance.paneGlass
+        return Aurora.colour(sessions: sessions, ui: ui)
     }
 
     private var selection: Binding<UUID?> {
@@ -55,20 +59,23 @@ struct SessionSidebar: View {
     }
 
     var body: some View {
-        // A FLOATING sidebar, as macOS 26 has them: a glass panel inset from the window's
-        // edges with corners of its own, the window's surface showing round it.
-        //
-        // The panel IS the column. The split view holds the column in a sheet of glass
-        // flush with the window, with a divider and a shadow down its edge; that glass is
-        // drawn in from the window's edges and given a pane's corners, and the line and
-        // the shadow are taken off (`SidebarColumnChrome`). So the traffic lights sit on
-        // the panel, and nothing parts the sidebar's side of the window from the canvas's.
-        //
-        // In the colour of the panes: a pane's own surface laid inside the panel, or —
-        // with Settings ▸ Glass panes on — the panel's glass given the panes' style.
+        // NO background of its own: the list sits on the window's surface, as the panes'
+        // gutters do. On macOS 26 the column is a sheet of glass holding its content, and
+        // that glass reads as a second surface beside the canvas. It cannot be taken off —
+        // it IS the column — so the window's material is laid inside it, the same view
+        // `RootView` puts behind the canvas. The divider and the shadow the split view
+        // lays down the column's edge are taken off too (`SidebarColumnChrome`), so
+        // nothing parts the sidebar's side of the window from the canvas's.
         ZStack {
-            if !panesAreGlass {
-                PaneSurface().ignoresSafeArea()
+            if Token.Environment_.reduceTransparency {
+                Token.Colour.tileBackground.ignoresSafeArea()
+            } else {
+                // The LEFT corners only: those are the window's. With the project's
+                // colour, since this surface covers the window's own: the aurora is placed
+                // by the window, so the part of its arc that falls here is drawn here.
+                WindowSurface(corners: [.layerMinXMinYCorner, .layerMinXMaxYCorner],
+                              aurora: auroraColour)
+                    .ignoresSafeArea()
             }
             list
                 // Under the list, which is where every source list on this platform puts
@@ -79,19 +86,24 @@ struct SessionSidebar: View {
                     SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder)
                 }
         }
+        .onReceive(NotificationCenter.default.publisher(for: SessionAppearanceStore.didChange)) { _ in
+            lookRevision &+= 1
+        }
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
             lookRevision &+= 1
         }
         // One kind of thing in one group, so a header would be a word explaining a list that
         // explains itself. The editor's sidebar has two sections because it holds two kinds.
-        .navigationSplitViewColumnWidth(min: 160, ideal: 200, max: 320)
+        // In the title band, over the column's top right corner — the selected row's
+        // capsule ends as far in from the edge.
+        .overlay(alignment: .topTrailing) {
+            headControls
+                .padding(.trailing, Self.capsuleInset)
+                .ignoresSafeArea()
+        }
         // In an overlay because a `background` on the column's root is never built.
         .overlay { SidebarColumnChrome().accessibilityHidden(true) }
     }
-
-    /// How far the panel rests inside the window's edges: the canvas's own padding, so the
-    /// sidebar and the panes keep one margin round the window.
-    fileprivate static var panelInset: CGFloat { max(Appearance.windowPadding, 6) }
 
     /// The space between the Agents row and the first project.
     private static let agentsGap: CGFloat = 6
@@ -321,9 +333,8 @@ struct SessionSidebar: View {
         // list: an item that shows or hides nothing is not an item.
         if sessionsToList(for: store) != nil {
             items.append(SidebarMenuItem(SessionTerminalVisibility.shared.title(for: store)) {
-                withAnimation(Token.Motion.structuralRespectingPreferences) {
-                    SessionTerminalVisibility.shared.toggle(for: store)
-                }
+                // Not animated — see the chevron's click, below.
+                SessionTerminalVisibility.shared.toggle(for: store)
             })
         }
         // What dragging the row out of the sidebar does.
@@ -394,9 +405,6 @@ struct SessionSidebar: View {
                         SessionTerminalRows(terminals: terminals) {
                             sessions.reveal($0, in: store.workspaceID)
                         }
-                        // Folded away, they fade where they are while the cell shortens
-                        // over them.
-                        .transition(.opacity)
                     }
                 }
                     // Held at the top of the cell. A cell changing height centres what is
@@ -439,9 +447,14 @@ struct SessionSidebar: View {
                                 if let row = rowFrames[store.workspaceID],
                                    point.x >= row.minX - 2, point.x <= row.minX + SessionRow.iconWidth + 2,
                                    sessionsToList(for: store) != nil {
-                                    withAnimation(Token.Motion.structuralRespectingPreferences) {
-                                        SessionTerminalVisibility.shared.toggle(for: store)
-                                    }
+                                    // NOT animated. The table grows the cell on its own
+                                    // curve while SwiftUI grows what is in it on another,
+                                    // and the list centres the one in the other: for as
+                                    // long as the two disagreed the project's name rode
+                                    // down the opening cell and back. The cell opens at
+                                    // once, the name stays where it is, and the sessions
+                                    // fade in inside it (`SessionTerminalRows`).
+                                    SessionTerminalVisibility.shared.toggle(for: store)
                                 } else {
                                     sessions.select(store.workspaceID)
                                 }
@@ -473,7 +486,7 @@ struct SessionSidebar: View {
         // ramp has nothing to fade against. Which made the footer read as a bar bolted on —
         // which is what the divider was there to justify.
         .contentMargins(.bottom, Token.Space.tileHeaderHeight, for: .scrollContent)
-        // The list draws nothing of its own behind the rows: the surface is the panel's glass.
+        // The list draws nothing of its own behind the rows: the surface is the ZStack's.
         .scrollContentBackground(.hidden)
         .accessibilityLabel("Sessions")
     }
@@ -523,6 +536,9 @@ final class SessionTerminalVisibility {
 private struct SessionTerminalRows: View {
     let terminals: [AgentMonitor.SessionTerminal]
     let open: (PaneID) -> Void
+    /// False for the first frame: the rows fade in where they stand, in a cell that has
+    /// already opened for them. Nothing else about unfolding a project moves.
+    @State private var isShown = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -531,6 +547,12 @@ private struct SessionTerminalRows: View {
             }
         }
         .padding(.bottom, 4)
+        .opacity(isShown ? 1 : 0)
+        .onAppear {
+            withAnimation(Token.Environment_.reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                isShown = true
+            }
+        }
     }
 }
 
@@ -863,9 +885,11 @@ private struct SessionRowGhost: View {
     }
 }
 
-/// A selected row's capsule — a project's, or the Agents row's: the neutral wash
-/// (`Token.Colour.selectionWash`). Not glass: the sidebar is a panel of its own, as a pane
-/// is, and a glass capsule on it would be glass on glass.
+/// A selected row's capsule — a project's, or the Agents row's: Liquid Glass, the same
+/// the belt's selected tab wears, so every place that says "this one" says it the same
+/// way. The sidebar has no surface of its own now, so the capsule is glass on the
+/// window, not glass on glass. Under Reduce Transparency, the neutral wash
+/// (`Token.Colour.selectionWash`).
 private struct SelectedProjectWash: View {
     let isSelected: Bool
 
@@ -874,8 +898,14 @@ private struct SelectedProjectWash: View {
     static let radius: CGFloat = 15
 
     var body: some View {
-        RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-            .fill(Token.Colour.selectionWash)
+        Group {
+            if Token.Environment_.reduceTransparency {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .fill(Token.Colour.selectionWash)
+            } else {
+                Color.clear.glassEffect(.regular.interactive(), in: .rect(cornerRadius: Self.radius))
+            }
+        }
         .padding(.horizontal, 10)
         .padding(.vertical, 1)
         .opacity(isSelected ? 1 : 0)
@@ -909,9 +939,9 @@ struct SidebarMenuItem {
     static var separator: SidebarMenuItem { SidebarMenuItem() }
 }
 
-/// Takes off the sidebar column what AppKit draws for it, leaving the panel and the list.
+/// Takes off the sidebar column what AppKit draws for it, leaving the list.
 ///
-/// Three things, none of which SwiftUI has a say over, so each is found from a probe
+/// Two things, neither of which SwiftUI has a say over, so each is found from a probe
 /// inside the column:
 ///
 /// - The list's own selection. A sidebar `List` draws it as a rounded rectangle there is no
@@ -919,10 +949,6 @@ struct SidebarMenuItem {
 ///   the rest of the time it draws in grey, behind the capsule. The list is an
 ///   `NSTableView`, and a table can be told to draw no selection at all; selection itself,
 ///   the arrow keys and the binding are untouched.
-/// - The column's glass. The split view holds the column in an `NSGlassEffectView` flush
-///   with the window's edges. The column's content is drawn through that view, so it
-///   cannot be hidden; it is made the floating panel instead — drawn in from the window's
-///   edges, at a pane's corners, and in the panes' glass when the panes are glass.
 /// - The divider and the shadow the split view lays down the column's trailing edge: a
 ///   line between two halves of what is one window. Transparent, not hidden — the divider
 ///   is still dragged to resize the column.
@@ -950,47 +976,9 @@ private struct SidebarColumnChrome: NSViewRepresentable {
         func apply() {
             // Up to the column — the view the split view holds — then down to the table.
             var column: NSView? = self
-            var glass: NSGlassEffectView?
-            while let view = column, !(view.superview is NSSplitView) {
-                if let found = view as? NSGlassEffectView { glass = found }
-                column = view.superview
-            }
+            while let view = column, !(view.superview is NSSplitView) { column = view.superview }
             guard let column else { return }
             Self.unhighlight(in: column)
-            if let glass, let holder = glass.superview {
-                // Drawn in from the window's edges, through the constraints that hold it
-                // flush: a frame set here is put back at the next layout. Nothing on the
-                // trailing side — the canvas keeps the same padding on its leading one.
-                let inset = SessionSidebar.panelInset
-                for constraint in holder.constraints {
-                    let first = constraint.firstItem === glass
-                    guard first || constraint.secondItem === glass else { continue }
-                    let sign: CGFloat = first ? 1 : -1
-                    let constant: CGFloat? = switch first ? constraint.firstAttribute : constraint.secondAttribute {
-                    case .leading, .left, .top: sign * inset
-                    case .bottom: -sign * inset
-                    default: nil
-                    }
-                    if let constant, constraint.constant != constant { constraint.constant = constant }
-                }
-                if glass.cornerRadius != Token.Space.paneRadius { glass.cornerRadius = Token.Space.paneRadius }
-                // The panes' glass, when they are glass; otherwise it is under a pane's
-                // frost (`PaneSurface`) and is left as it is.
-                if Appearance.paneGlass {
-                    let style = Appearance.glassStyle.style
-                    if glass.style != style { glass.style = style }
-                    effectiveAppearance.performAsCurrentDrawingAppearance {
-                        glass.tintColor = switch Appearance.glassTint {
-                        case .off: nil
-                        case .accent: NSColor(Token.Colour.accent)
-                            .withAlphaComponent(Appearance.glassTintStrength)
-                        }
-                    }
-                } else if glass.style != .regular {
-                    glass.style = .regular
-                    glass.tintColor = nil
-                }
-            }
             for sibling in column.superview?.subviews ?? [] {
                 let name = String(describing: type(of: sibling))
                 guard name == "NSSplitDividerView" || name == "_NSSplitViewShadowView" else { continue }

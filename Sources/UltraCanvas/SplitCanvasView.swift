@@ -42,6 +42,30 @@ public final class SplitCanvasView: NSView {
         }
     }
 
+    /// How far under this view's top edge the panes start, or nil to start where the
+    /// window's content layout rect does — under its titlebar. The main window gives one:
+    /// its canvas runs to the top of the window.
+    var topInset: CGFloat? {
+        didSet {
+            guard topInset != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
+    /// How much of this view's top-left corner the window draws over — the traffic lights
+    /// and the sidebar's button, while the sidebar is hidden and the canvas reaches the
+    /// window's corner. The pane lying under it moves its header's contents clear
+    /// (`PaneContainerView.headerLeadingInset`). Zero when nothing is there.
+    var cornerReserve: CGFloat = 0 {
+        didSet {
+            guard cornerReserve != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
+    /// How far down the window's corner controls reach: the traffic lights' lower edge.
+    private static let cornerReserveDepth: CGFloat = 34
+
     /// The inset the panes are laid out with right now: `bottomInset`, or on its way there.
     private var presentedInset: CGFloat = 0
 
@@ -251,6 +275,12 @@ public final class SplitCanvasView: NSView {
         // A floating canvas is laid out in the place it was given, wherever in the
         // window that is.
         guard let window, !store.isFloating else { return bounds }
+        if let topInset {
+            var inset = bounds
+            inset.origin.y += topInset
+            inset.size.height = max(0, inset.height - topInset)
+            return inset
+        }
         // An untitled window has no `contentLayoutRect` to subtract — it reports the whole
         // frame — so the window bar's height is reserved explicitly. Without this the panes
         // slide up under the bar and the traffic lights.
@@ -379,8 +409,20 @@ public final class SplitCanvasView: NSView {
         performDrop(sender)
     }
 
+    /// With a `topInset` the panes lie under the window's transparent titlebar, which is
+    /// a safe area to everything in them: a pane's header, a SwiftUI view, was drawn that
+    /// far down inside its pane. The titlebar covers nothing of a pane, so its share of
+    /// the safe area is taken back off this view, and so off every pane in it.
+    private func cancelTitlebarSafeArea() {
+        let own = additionalSafeAreaInsets.top
+        let titlebar = safeAreaInsets.top - own
+        let wanted = topInset == nil || store.isFloating ? 0 : -titlebar
+        if abs(wanted - own) > 0.5 { additionalSafeAreaInsets.top = wanted }
+    }
+
     public override func layout() {
         super.layout()
+        cancelTitlebarSafeArea()
         let canvas = layoutBounds
         noteCanvasBounds(canvas)
         var metrics = store.metrics
@@ -410,6 +452,9 @@ public final class SplitCanvasView: NSView {
             guard let surface = store.surfaces.existingSurface(for: paneID) else { continue }
             surface.isHidden = false
             surface.frame = frame          // <- the entire rendering step
+            let underCorner = cornerReserve > 0 && !store.isFloating
+                && frame.minY < Self.cornerReserveDepth && frame.minX < cornerReserve
+            surface.headerLeadingInset = underCorner ? cornerReserve - frame.minX : 0
         }
         for paneID in result.hidden {
             store.surfaces.existingSurface(for: paneID)?.isHidden = true

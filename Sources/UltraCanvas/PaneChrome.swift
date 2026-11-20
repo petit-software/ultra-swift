@@ -98,11 +98,11 @@ final class PaneRingView: NSView {
 
     /// Re-read the ring's shape. Both numbers are settings now, so setting them once in
     /// `init` would freeze the ring at whatever the app launched with.
-    func applyMetrics() {
+    func applyMetrics(paneRadius: CGFloat = Token.Space.paneRadius) {
         layer?.borderWidth = Token.Space.focusRingWidth
         // Concentric with the pane: the radius follows the inset, or the ring bulges at the
         // corners against the rounding it is meant to trace.
-        layer?.cornerRadius = max(0, Token.Space.paneRadius - Token.Space.focusRingInset)
+        layer?.cornerRadius = max(0, paneRadius - Token.Space.focusRingInset)
     }
 
     @available(*, unavailable)
@@ -142,6 +142,12 @@ public struct PaneHeader: View {
     /// terms the container's `layout()` understands.
     nonisolated static let coordinateSpace = "paneHeader"
 
+    /// The least of the header left empty between the name and the controls: the band a
+    /// pane is picked up by, and a floating one moved by. It was 4pt — a gap, not a band:
+    /// a name long enough took the rest, and an agent at work names its pane at length,
+    /// so the one floating pane worth moving out of the way was the one that would not.
+    nonisolated static let minDragBand: CGFloat = 44
+
     let paneID: PaneID
     let descriptor: PaneDescriptor
     let currentKind: PaneRecord.Kind?
@@ -156,6 +162,10 @@ public struct PaneHeader: View {
     /// overview: its grid cannot be split, and its close is on the strip above the header,
     /// where the wrapper's own controls live.
     var showsControls = true
+    /// Room kept clear at the head of the header, for what the window draws over this
+    /// pane's corner: the traffic lights and the sidebar's button, on the pane in the
+    /// window's top-left corner while the sidebar is hidden.
+    var leadingInset: CGFloat = 0
     /// Where the identity control's trailing edge landed, in header coordinates. The drag
     /// handle is an AppKit view laid out by the container, and it must start after the
     /// name — the name is a control now, and a handle over it would take its clicks.
@@ -188,7 +198,9 @@ public struct PaneHeader: View {
                     proxy.frame(in: .named(Self.coordinateSpace)).maxX
                 } action: { onIdentityTrailing($0) }
 
-            Spacer(minLength: 4)
+            // The name gives before this does. A little over the band: the handle is laid
+            // out a couple of points inside it.
+            Spacer(minLength: Self.minDragBand + 4)
 
             // The split controls never move and never collapse as the pane narrows: they
             // are fixed-size, so the identity control is the only thing that gives, and it
@@ -221,7 +233,7 @@ public struct PaneHeader: View {
         // 4, not 10: the leading control wears the standard 28-wide hover plate, which
         // carries ~6.5pt of slack either side of the glyph. Padding the header as if the
         // glyph were bare would indent it past everything below it.
-        .padding(.leading, 4)
+        .padding(.leading, 4 + leadingInset)
         .padding(.trailing, 5)
         .frame(height: Token.Space.tileHeaderHeight)
         .frame(maxWidth: .infinity)
@@ -510,6 +522,11 @@ public final class PaneContainerView: NSView {
             clip.layer?.backgroundColor = NSColor(white: 0.1, alpha: 1).cgColor
             return
         }
+        // A cell of the compact grid has no surface: the window's shows through it.
+        if isBare {
+            clip.layer?.backgroundColor = NSColor.clear.cgColor
+            return
+        }
         guard wantsGlass else {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let shade = switch (isDark, showsFocus) {
@@ -554,6 +571,25 @@ public final class PaneContainerView: NSView {
 
     private var wantsGlass: Bool { Appearance.paneGlass || floatsOnGlass }
 
+    /// A cell of the compact grid (`Appearance.GridMode`): no glass and no frost under
+    /// the pane, square corners, no lift, and a hairline round it — every pane the same,
+    /// on the window's one surface. Never a floating pane, which lies over the grid, not
+    /// in it.
+    private var isBare: Bool { Appearance.compact && !floatsOnGlass }
+
+    /// The corners this pane is drawn with.
+    private var cornerRadius: CGFloat { isBare ? 0 : Token.Space.paneRadius }
+
+    /// What `clip` is mounted in. Read off the views, not remembered: `init` puts the
+    /// clip in the glass by hand.
+    private enum Mount { case glass, frost, bare }
+    private var mount: Mount? {
+        if glass.contentView === clip { return .glass }
+        if clip.superview === frost { return .frost }
+        if clip.superview === self { return .bare }
+        return nil
+    }
+
     /// The pane's surface: the clip inside the glass, or — glass off — the clip on `frost`,
     /// a behind-window blur in the glass's place. Re-mounted only when the setting has
     /// changed since the last look, since moving a view with a live terminal in it is not
@@ -565,18 +601,21 @@ public final class PaneContainerView: NSView {
     /// does: an inactive window goes flat all at once, panes included. All of it, and the
     /// material, are `Appearance.frost…` settings, applied in `applyAppearance`.
     private func mountSurface() {
-        guard wantsGlass != (glass.contentView === clip) else { return }
-        if wantsGlass {
-            clip.removeFromSuperview()
-            glass.contentView = clip
-            glass.isHidden = false
-            frost.isHidden = true
-        } else {
-            glass.contentView = nil
-            clip.removeFromSuperview()
-            glass.isHidden = true
-            frost.addSubview(clip)
-            frost.isHidden = false
+        let wanted: Mount = isBare ? .bare : wantsGlass ? .glass : .frost
+        glass.isHidden = wanted != .glass
+        frost.isHidden = wanted != .frost
+        guard wanted != mount else { return }
+        if mount == .glass { glass.contentView = nil }
+        switch wanted {
+        case .glass: glass.contentView = clip
+        case .frost: frost.addSubview(clip)
+        // On the pane itself, with nothing under it — and under the ring.
+        case .bare:
+            if ring.superview === self {
+                addSubview(clip, positioned: .below, relativeTo: ring)
+            } else {
+                addSubview(clip)
+            }
         }
         applyBackdrop()
     }
@@ -591,7 +630,8 @@ public final class PaneContainerView: NSView {
     /// shadow's opacity is left to `applyLayerState`, which also knows about focus.
     private func applyAppearance() {
         mountSurface()
-        let radius = Token.Space.paneRadius
+        let radius = cornerRadius
+        clip.layer?.borderWidth = isBare ? Appearance.compactHairline : 0
         clip.layer?.cornerRadius = radius
         frost.layer?.cornerRadius = radius
         frost.material = Appearance.frostMaterial.material
@@ -612,7 +652,7 @@ public final class PaneContainerView: NSView {
             }
         }
         layer?.shadowRadius = Token.Space.paneShadowRadius
-        ring.applyMetrics()
+        ring.applyMetrics(paneRadius: radius)
         needsLayout = true
     }
 
@@ -627,6 +667,16 @@ public final class PaneContainerView: NSView {
     /// zoom control reads it, and nothing else does: the frame comes from the layout.
     public var isZoomed = false {
         didSet { guard isZoomed != oldValue else { return }; rebuildHeader(); needsLayout = true }
+    }
+
+    /// Room kept clear at the head of the header — see `PaneHeader.leadingInset`. The
+    /// canvas sets it on the pane under the window's traffic lights.
+    public var headerLeadingInset: CGFloat = 0 {
+        didSet {
+            guard headerLeadingInset != oldValue else { return }
+            rebuildHeader()
+            needsLayout = true
+        }
     }
 
     /// Whether the canvas has other panes to zoom over.
@@ -836,6 +886,7 @@ public final class PaneContainerView: NSView {
                                      isFocused: isFocused, canClose: canClose,
                                      isZoomed: isZoomed, canZoom: canZoom, actions: actions,
                                      showsControls: visitStrip == nil,
+                                     leadingInset: headerLeadingInset,
                                      onIdentityTrailing: { [weak self] in
                                          self?.noteIdentityTrailing($0)
                                      })
@@ -858,12 +909,19 @@ public final class PaneContainerView: NSView {
         // Handed the accent as an `NSColor`, still dynamic: `PaneRingView` resolves it
         // against its OWN appearance, which is the only one that can be right for it.
         ring.tint = Token.Colour.focusBorder.nsColor
-        ring.isHidden = !showsFocus
+        // No ring in the compact grid: its cells are all drawn alike, and the focused one
+        // is told by its header — the name at full strength, the controls brought up.
+        ring.isHidden = !showsFocus || isBare
         // Colour never carries a signal alone here: the focused pane also lifts, which is
         // what keeps focus legible for anyone who cannot separate the accent from grey.
-        layer?.shadowOpacity = showsFocus
+        // A cell of the compact grid does not lift: there is nothing under it to lift off.
+        layer?.shadowOpacity = isBare ? 0 : showsFocus
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
+        // Its hairline, resolved here for the reason the ring's tint is.
+        effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
+            clip.layer?.borderColor = NSColor.separatorColor.cgColor
+        }
     }
 
     /// What this pane's header was handed. Test seam: an empty kind list renders a menu
@@ -967,8 +1025,8 @@ public final class PaneContainerView: NSView {
         let inset = Token.Space.focusRingInset
         ring.frame = bounds.insetBy(dx: inset, dy: inset)
         layer?.shadowPath = CGPath(roundedRect: bounds,
-                                   cornerWidth: Token.Space.paneRadius,
-                                   cornerHeight: Token.Space.paneRadius,
+                                   cornerWidth: cornerRadius,
+                                   cornerHeight: cornerRadius,
                                    transform: nil)
         let headerHeight = isPlain ? 0 : Token.Space.tileHeaderHeight
         // A visiting pane's strip sits above everything, and the rest moves down by it.

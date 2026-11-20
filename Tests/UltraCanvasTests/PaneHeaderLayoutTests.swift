@@ -52,6 +52,15 @@ struct PaneHeaderLayoutTests {
         #expect(container.dragHandleFrameForTesting.maxX <= 700 - splitCluster)
     }
 
+    /// A working agent names its pane for what it is doing, at length. The name took the
+    /// whole band, and a floating pane — moved by that band — could not be moved.
+    @Test("a long name leaves a band to pick the pane up by")
+    func longNameLeavesABand() {
+        let container = pane(width: 320, title: "Refactoring the layout engine and its tests",
+                                   subtitle: "claude · ~/Repo/somewhere/deep/inside")
+        #expect(container.dragHandleFrameForTesting.width >= PaneHeader.minDragBand)
+    }
+
     @Test("a narrow pane trims the name rather than pushing the split controls")
     func narrowPaneTrimsTheName() {
         let container = pane(width: 180, title: "a-deliberately-long-pane-name",

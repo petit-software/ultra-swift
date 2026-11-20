@@ -8,10 +8,15 @@ import UltraLayout
 public struct SplitCanvas: NSViewRepresentable {
     private let store: LayoutStore
     private let bottomInset: CGFloat
+    private let topInset: CGFloat?
+    private let cornerReserve: CGFloat
 
-    public init(store: LayoutStore, bottomInset: CGFloat = 0) {
+    public init(store: LayoutStore, bottomInset: CGFloat = 0, topInset: CGFloat? = nil,
+                cornerReserve: CGFloat = 0) {
         self.store = store
         self.bottomInset = bottomInset
+        self.topInset = topInset
+        self.cornerReserve = cornerReserve
     }
 
     public func makeNSView(context: Context) -> SplitCanvasView {
@@ -29,6 +34,8 @@ public struct SplitCanvas: NSViewRepresentable {
         // reads as focused, and which canvas takes the first responder.
         _ = store.session.floatRevision
         view.bottomInset = bottomInset
+        view.topInset = topInset
+        view.cornerReserve = cornerReserve
         view.sync()
         // Separate from `sync`, which re-asserts focus only as a side effect of the model
         // having changed. This is the model asking for it directly — see
@@ -50,12 +57,21 @@ public struct SplitCanvas: NSViewRepresentable {
 public struct CanvasSurface: View {
     private let store: LayoutStore
     private let bottomInset: CGFloat
+    private let topInset: CGFloat?
+    private let cornerReserve: CGFloat
 
     /// - `bottomInset`: room to leave under the panes for something the window floats over
     ///   the canvas's bottom edge — the session tab belt. See `SplitCanvasView.bottomInset`.
-    public init(store: LayoutStore, bottomInset: CGFloat = 0) {
+    /// - `topInset`: how far under the window's top edge the panes start, or nil for under
+    ///   the titlebar. See `SplitCanvasView.topInset`.
+    /// - `cornerReserve`: how much of the canvas's top-left corner the window draws over.
+    ///   See `SplitCanvasView.cornerReserve`.
+    public init(store: LayoutStore, bottomInset: CGFloat = 0, topInset: CGFloat? = nil,
+                cornerReserve: CGFloat = 0) {
         self.store = store
         self.bottomInset = bottomInset
+        self.topInset = topInset
+        self.cornerReserve = cornerReserve
     }
 
     public var body: some View {
@@ -69,7 +85,8 @@ public struct CanvasSurface: View {
             // alternative, and it is the one with somewhere for a PTY to get dropped:
             // every cached frame, focus target and drag in flight belongs to the old
             // tree. Identity is the blunter tool and the safer one.
-            SplitCanvas(store: store, bottomInset: bottomInset)
+            SplitCanvas(store: store, bottomInset: bottomInset, topInset: topInset,
+                        cornerReserve: cornerReserve)
                 .id(store.workspaceID)
             // The panes floating over the tiling, in the canvas's own coordinates.
             FloatingPanes(store: store)
@@ -83,8 +100,11 @@ public struct CanvasSurface: View {
         // What macOS calls the window — the same string `RootView` and `PaneWindowView`
         // give `navigationTitle`, so the two writers of `window.title` cannot disagree
         // about what it says. See `LayoutStore.systemWindowTitle`.
-        .background(WindowChrome(theme: store.theme,
-                                 title: store.systemWindowTitle) { store.noteWindowFrame($0) })
+        .background(WindowChrome(theme: store.theme, title: store.systemWindowTitle,
+                                 // The main window's canvas is the one given a top inset.
+                                 compactTitlebar: topInset != nil && Appearance.compact) {
+            store.noteWindowFrame($0)
+        })
     }
 }
 
@@ -96,11 +116,16 @@ public struct WindowChrome: NSViewRepresentable {
     private let theme: TerminalTheme
     private let title: String
     private let onFrameChange: ((CGRect) -> Void)?
+    /// Whether the window wears the compact titlebar — the main window's, in the compact
+    /// grid. It is what puts the traffic lights 6pt higher and 7pt further in, level with
+    /// panes that start at the window's edge.
+    private let compactTitlebar: Bool
 
-    public init(theme: TerminalTheme, title: String = "Ultra",
+    public init(theme: TerminalTheme, title: String = "Ultra", compactTitlebar: Bool = false,
                 onFrameChange: ((CGRect) -> Void)? = nil) {
         self.theme = theme
         self.title = title
+        self.compactTitlebar = compactTitlebar
         self.onFrameChange = onFrameChange
     }
 
@@ -179,7 +204,10 @@ public struct WindowChrome: NSViewRepresentable {
         // a second NSToolbar here would fight it. This only picks the STYLE: `.unified` is
         // what gives the tall Finder-style titlebar the traffic lights are placed in.
         window.toolbar?.showsBaselineSeparator = false
-        window.toolbarStyle = .unified
+        // `.unifiedCompact` in the compact grid: the same bar, shorter, with the traffic
+        // lights nearer the corner.
+        let style: NSWindow.ToolbarStyle = compactTitlebar ? .unifiedCompact : .unified
+        if window.toolbarStyle != style { window.toolbarStyle = style }
         // Native macOS tabs are OFF, because the window now has its own session sidebar and
         // two tab systems in one window is worse than either. A native tab bar also hides
         // itself at one tab, has room for a name only until there are about four, and lives

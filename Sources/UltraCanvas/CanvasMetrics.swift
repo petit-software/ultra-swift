@@ -21,12 +21,12 @@ public extension LayoutMetrics {
     /// Bring the settings-owned fields of an existing value up to date, leaving everything
     /// else — `scale`, `minPaneSize`, the divider widths — exactly as it was.
     mutating func applySettings() {
-        gutter = Appearance.paneGutter
+        gutter = Appearance.canvasGutter
         // The whole window inset goes in `padding`, and `edgeInset` is zeroed. The layout
         // adds the two together for the same three edges, so one user-facing knob has to
         // pick one of them to live in; splitting a slider across both would be two controls
         // for one distance. `topPadding` stays at zero — see `Appearance.windowPadding`.
-        padding = Appearance.windowPadding
+        padding = Appearance.canvasPadding
         edgeInset = 0
     }
 
@@ -34,6 +34,6 @@ public extension LayoutMetrics {
     /// fires on EVERY preference write, and re-laying out a canvas for a setting that did
     /// not change is a visible hitch in a window with a lot of panes.
     var matchesSettings: Bool {
-        gutter == Appearance.paneGutter && padding == Appearance.windowPadding && edgeInset == 0
+        gutter == Appearance.canvasGutter && padding == Appearance.canvasPadding && edgeInset == 0
     }
 }

@@ -711,6 +711,9 @@ struct WorkspaceCommands: Commands {
                 if let store { PaneCommands.toggleAppearance.run(store) }
             }
             .disabled(store == nil)
+            // And by name: the three the toggle moves between, the current one ticked.
+            ColourModeMenu()
+            GridModeMenu()
             if AgentsOverview.isDevBuild {
                 Button(PaneCommands.agentsDemo.title) {
                     if let store { PaneCommands.agentsDemo.run(store) }
@@ -843,8 +846,24 @@ struct RootView: View {
     /// belt's height, not a header's: the two were 6pt apart, and the belt sat in the gap
     /// meant to part it from the panes.
     private var beltSpace: CGFloat {
-        SessionTabBelt.height + Appearance.windowPadding + (Self.beltGap - Appearance.windowPadding)
+        _ = lookRevision
+        return SessionTabBelt.height + beltPadding + (beltGap - Appearance.canvasPadding)
     }
+
+    /// The belt's inset from the window's sides and bottom: the canvas's own padding, so
+    /// its tabs line up with the panes' edges — and in the compact grid, where the canvas
+    /// has none, a padding of its own, since tabs hard against the window's edge and
+    /// corners are clipped by them.
+    private var beltPadding: CGFloat {
+        Appearance.compact ? Self.compactBeltPadding : Appearance.canvasPadding
+    }
+
+    /// The whole gap between the last row of panes and the belt.
+    private var beltGap: CGFloat {
+        Appearance.compact ? Self.compactBeltPadding : Self.beltGap
+    }
+
+    private static let compactBeltPadding: CGFloat = 12
 
     /// The whole gap between the last row of panes and the belt. 7pt: half the 14 it was
     /// (the canvas's 8pt padding and 6pt more), close enough to read as one strip with
@@ -896,6 +915,23 @@ struct RootView: View {
         })
     }
 
+    /// Where the panes start under the window's top edge: at the top, a window padding in
+    /// from it like every other edge — or, in the compact grid, the 2pt that puts their
+    /// headers on the traffic lights' line. There is no title band.
+    private var canvasTopInset: CGFloat {
+        _ = lookRevision
+        return WindowBarControls.canvasTop
+    }
+
+    /// How much of the canvas's top-left corner the window draws over. Beside the sidebar,
+    /// none: the traffic lights and the window's controls are over the sidebar. With the
+    /// sidebar hidden the traffic lights and the sidebar's button lie on the first pane,
+    /// whose header moves its own contents clear of them.
+    private var canvasCornerReserve: CGFloat {
+        columnVisibility == .detailOnly
+            ? WindowBarControls.leading + WindowBarControls.box + WindowBarControls.spacing : 0
+    }
+
     /// The canvas on screen: the Agents overview's while the window shows it, else the
     /// selected session's. Nil only for the instant before the first session exists.
     private var store: LayoutStore? {
@@ -923,9 +959,19 @@ struct RootView: View {
             //
             // NO title of its own, either. A `navigationTitle` on this column names the
             // SIDEBAR; the window's own name comes from the detail column, below.
-            SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
-                // Ours instead, without the glass — see the `.navigation` item below.
+            SessionSidebar(sessions: sessions, ui: ui, openFolder: chooseSessionFolder,
+                           headControls: AnyView(windowBarMenus))
+                // Ours instead, beside the traffic lights — see `sidebarToggle`.
                 .toolbar(removing: .sidebarToggle)
+                // Never narrower than what sits over the head of the column: the traffic
+                // lights and the toggle at one end, the window's controls at the other.
+                //
+                // LAST, outside `toolbar(removing:)`: that modifier drops a column width
+                // set inside it, and the split view fell back to its own — 140pt at the
+                // narrowest and no widest at all.
+                .navigationSplitViewColumnWidth(min: WindowBarControls.sidebarMinWidth,
+                                                ideal: WindowBarControls.sidebarMinWidth,
+                                                max: WindowBarControls.sidebarMaxWidth)
         } detail: {
             // The sessions, back on screen when the sidebar is not: a belt under the tiles,
             // inside the canvas's own padding. The canvas already leaves one padding under
@@ -940,9 +986,11 @@ struct RootView: View {
             ZStack(alignment: .bottom) {
                 if ui.showsAgents {
                     // Every working agent's pane, lent to one canvas — see `AgentsOverview`.
-                    CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset)
+                    CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset,
+                                  topInset: canvasTopInset, cornerReserve: canvasCornerReserve)
                 } else if let store {
-                    CanvasSurface(store: store, bottomInset: beltInset)
+                    CanvasSurface(store: store, bottomInset: beltInset, topInset: canvasTopInset,
+                                  cornerReserve: canvasCornerReserve)
                         // Over the canvas, above the belt when it is up: the question is the
                         // session's, not any one pane's.
                         .tileToast(setupNotice(for: store),
@@ -956,21 +1004,13 @@ struct RootView: View {
                 }
                 if ui.showsTabBelt {
                     SessionTabBelt(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
-                        .padding([.horizontal, .bottom], Appearance.windowPadding)
+                        .padding([.horizontal, .bottom], beltPadding)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            // The project's name, centred over the DETAIL column — the canvas, not the whole
-            // window — so it stays centred whether the sidebar is open or shut, the way the
-            // title of any sidebar-plus-content window on this platform sits over the
-            // content. Drawn by the column's own content under the transparent titlebar
-            // rather than as a toolbar item: a `.principal` item is laid out against the
-            // titlebar's leading width, which animates as the sidebar opens, and the name
-            // flickered. An overlay just moves with the column.
-            .overlay(alignment: .top) {
-                WindowHeaderTitle(title: ui.showsAgents ? "Agents" : store?.workspaceTitle ?? "")
-                    .ignoresSafeArea()
-            }
+            // NO name over the canvas, and no title band: the sidebar's selected row says
+            // which project this is, and the belt's selected tab says it when the sidebar
+            // is hidden. The panes have the height the band stood in (`canvasTopInset`).
             // `ui.showsTabBelt` trails `columnVisibility` rather than reading it.
             //
             // Half a second AFTER the sidebar has gone, not with it. Arriving together, the
@@ -992,18 +1032,16 @@ struct RootView: View {
                 showTabBelt()
             }
             // What macOS calls this window — the Dock's menu, the Window menu, Mission
-            // Control: "Ultra". The project's name is drawn over the canvas
-            // (`WindowHeaderTitle`, above), and a pane moved to a window of its own is named
-            // for its pane, so in a list of the app's windows the main one is the app and
-            // each of the others says what it holds. See `LayoutStore.systemWindowTitle`,
+            // Control: "Ultra". A pane moved to a window of its own is named for its pane,
+            // so in a list of the app's windows the main one is the app and each of the
+            // others says what it holds. See `LayoutStore.systemWindowTitle`,
             // which `WindowChrome` writes to `window.title` too.
             //
             // On the DETAIL column, because in a `NavigationSplitView` that is the column
             // whose title becomes the window's.
             .navigationTitle(store?.systemWindowTitle ?? "Ultra")
             // The name is still the window's — the Window menu and Mission Control read it
-            // — but it is not DRAWN in the toolbar's leading slot any more. It is drawn in
-            // the middle of the detail column's header instead (`WindowHeaderTitle`, above).
+            // — but it is not DRAWN anywhere in the window.
             .toolbar(removing: .title)
         }
         // The window's material, at WINDOW scope — behind the sidebar and the canvas alike.
@@ -1041,6 +1079,8 @@ struct RootView: View {
             // The supported way to say "I am drawing that myself", rather than reaching into
             // the full-screen window and clearing the view AppKit put there.
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+            // Under the palette's scrim, over everything else.
+            .overlay(alignment: .topLeading) { sidebarToggle.ignoresSafeArea() }
             // The palette is an OVERLAY, not a sheet. A sheet slides down from the title
             // bar and parks against it, which is where a document's dialogs live; a
             // command list is a thing you summon, and it should arrive where you are
@@ -1076,159 +1116,272 @@ struct RootView: View {
             } message: {
                 Text("Its shells and agents stop. The project folder is not touched.")
             }
-            // In the real toolbar rather than drawn into the titlebar ourselves: the
-            // sidebar toggle, the layout of the strip and its behaviour in full screen are
-            // all things macOS already does.
-            //
-            // WITHOUT the glass capsule macOS 26 puts round each item, though. The window
-            // bar is glass already — the whole window is one surface of it — and a glass
-            // button on it was a lens over a lens: a brighter blob at each end of the
-            // header rather than a glyph on the bar, and glass on glass is the one thing
-            // docs/02 rules out. Each item hides the shared background, so what is left is
-            // the glyph on the window's own material, the way a pane header's controls sit
-            // on the pane's.
+            // The toolbar is kept for what it does to the window — the unified titlebar's
+            // height, which centres the traffic lights on the band — and holds nothing: the
+            // window's controls are drawn in the content (`sidebarToggle`, `windowBarMenus`).
+            // One empty item, so there is a toolbar at all. No glass round it: an item gets
+            // a capsule of its own, and round an empty item that is a stray sliver.
             .toolbar {
-                // The sidebar toggle, bare like every other glyph on the bar. The system's
-                // own wears a glass capsule there is no way to take off it, and it was the
-                // last lens left on a bar that is glass already. It drives the same binding
-                // the system's did, so the belt still steps aside first; View ▸ Show
-                // Sidebar (⌃⌘S) is the system's menu item and is unaffected.
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        withAnimation {
-                            splitVisibility.wrappedValue = columnVisibility == .detailOnly
-                                ? .all : .detailOnly
-                        }
-                    } label: {
-                        // The list that is up now: the belt along the bottom while the
-                        // sidebar is hidden, the sidebar's rail while it shows. In the
-                        // box every glyph on the bar has.
-                        SessionListGlyph(columnVisibility == .detailOnly ? .belt : .sidebar)
-                            .frame(width: 26, height: 26)
-                            .contentShape(.rect)
-                            .accessibilityLabel(columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar")
-                    }
-                    .help(columnVisibility == .detailOnly ? "Show Sidebar (⌃⌘S)" : "Hide Sidebar (⌃⌘S)")
-                }
-                .sharedBackgroundVisibility(.hidden)
-
-                // An empty centre, standing where the system title used to. The title item
-                // is what split the toolbar into a leading and a trailing group; with it
-                // removed (the name is drawn in the middle of the header by
-                // `WindowHeaderTitle`), everything packed up against the palette button.
-                // A centred item puts the split back. Nothing in it, so nothing to lay out
-                // against a titlebar still animating as the sidebar opens.
                 ToolbarItem(placement: .principal) {
                     Color.clear.frame(width: 1, height: 1)
                         .accessibilityHidden(true)
                 }
-                // No glass: an item gets a capsule of its own, and round an empty item that
-                // capsule is a stray sliver just off the name.
-                .sharedBackgroundVisibility(.hidden)
-
-                // Everything else sits hard right; the flexible spacer is what pushes it
-                // there.
-                ToolbarSpacer(.flexible)
-
-                // Split and zoom are PANE verbs, and every pane header already carries
-                // them next to the pane they act on. Up here they acted on whichever pane
-                // happened to be focused, which is a different control wearing the same
-                // icon. What remains here acts on the canvas as a whole: adding to it, and
-                // the layout verbs behind the ellipsis.
-                //
-                // ONE item, three controls, no spacers: as three toolbar items the glyphs
-                // sat a toolbar's own gap apart, which with the glass gone — no capsule
-                // for a group to share — left three bare glyphs strung out across the
-                // corner. In one item, in a stack of our own, the gap is ours to set, and
-                // packed they read as one cluster of controls, the way a pane header's do.
-                // Every glyph is `WindowBarGlyph` — one size, one weight — so none reads
-                // as lesser.
-                //
-                // The palette leads the row. It sat on the LEADING side beside the sidebar
-                // toggle, as the way into everything, next to where navigation starts; it
-                // was moved here so the left holds the sidebar's toggle alone and every
-                // control that acts on the window is in one place on the right.
-                ToolbarItem(placement: .primaryAction) {
-                    HStack(spacing: 2) {
-                        Button { ui.isPaletteShown = true } label: {
-                            // The ⌘ is a big symbol — a closed loop with four lobes — and
-                            // at the row's size it dwarfed the plus and the ellipsis. The
-                            // small scale brings it down to their optical weight.
-                            WindowBarGlyph("Commands", symbol: "command", scale: .small)
-                        }
-                        .help("Command Palette (⌘K)")
-
-                        // Every pane kind, one click from the window itself. Buried in a
-                        // menu bar submenu they may as well not exist — this is where
-                        // someone looks for "another pane", and it is the only place the
-                        // full list is discoverable.
-                        Menu {
-                            if ui.showsAgents {
-                                // On the overview: an agent, in one of the open projects,
-                                // and nothing else — a tile belongs to a project's canvas.
-                                AgentProjectsMenuItems()
-                            } else {
-                                Section("New Pane") {
-                                    Button("Shell") {
-                                        if let store { ShellWorkspace.openShell(in: store) }
-                                    }
-                                    ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
-                                        Button(entry.title) {
-                                            if let store { ShellWorkspace.openTile(entry.kind, in: store) }
-                                        }
-                                    }
-                                }
-                                // Each agent by name, the way the Pane menu has them: "Agent"
-                                // on its own would open the default and leave the rest
-                                // undiscoverable from the one place a new user looks.
-                                Section("New Agent Pane") {
-                                    ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
-                                        Button(agent.name) {
-                                            if let store { ShellWorkspace.openShell(agent: agent, in: store) }
-                                        }
-                                    }
-                                }
-                                // Dimmed rather than silent: with the canvas full, every one
-                                // of these can only beep.
-                                .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
-                            }
-                        } label: {
-                            WindowBarGlyph("Add Pane", symbol: "plus")
-                        }
-                        // A plus already says "this adds something"; the chevron beside
-                        // it said "and it is a menu", which a click answers just as well.
-                        .menuIndicator(.hidden)
-                        .help("New pane")
-
-                        // The window's own verbs, the few that are neither a pane's nor
-                        // worth a button each. A VIEW of the registry: every item here is
-                        // an `AppCommand`, so it is on the Pane menu and in the palette too.
-                        //
-                        // Equal column widths and row heights lead, set apart from the
-                        // rest: they are the ones here that only move dividers, and the
-                        // three under them save or replace the whole arrangement.
-                        Menu {
-                            windowBarItem(PaneCommands.equalizeColumns)
-                            windowBarItem(PaneCommands.equalizeRows)
-                            Divider()
-                            ForEach(PaneCommands.layouts) { windowBarItem($0) }
-                            // The windows themselves, last: not about this canvas at all.
-                            Divider()
-                            windowBarItem(PaneCommands.mergeWindows)
-                        } label: {
-                            WindowBarGlyph("More", symbol: "ellipsis")
-                        }
-                        // The glyph IS the disclosure; a chevron beside it said "menu" twice.
-                        .menuIndicator(.hidden)
-                        .help("More")
-                    }
-                }
                 .sharedBackgroundVisibility(.hidden)
             }
     }
+
+    /// The sidebar's toggle, beside the traffic lights and level with them, sidebar open
+    /// or hidden: nothing moves as it collapses. Hidden, it lies on the first pane's
+    /// header, which keeps clear of it (`canvasCornerReserve`).
+    ///
+    /// Drawn by the window's content under the transparent titlebar, not as a toolbar
+    /// item: a toolbar lays its items out by its own rules and wraps each in glass.
+    private var sidebarToggle: some View {
+        // The sidebar toggle. It drives the same binding the system's did, so the
+        // belt still steps aside first; View ▸ Show Sidebar (⌃⌘S) is the system's
+        // menu item and is unaffected.
+        Button {
+            withAnimation {
+                splitVisibility.wrappedValue = columnVisibility == .detailOnly
+                    ? .all : .detailOnly
+            }
+        } label: {
+            // The list that is up now: the belt along the bottom while the sidebar
+            // is hidden, the sidebar's rail while it shows.
+            SessionListGlyph(columnVisibility == .detailOnly ? .belt : .sidebar)
+                .frame(width: WindowBarControls.box, height: WindowBarControls.box)
+                .contentShape(.rect)
+                .accessibilityLabel(columnVisibility == .detailOnly ? "Show Sidebar" : "Hide Sidebar")
+        }
+        .help(columnVisibility == .detailOnly ? "Show Sidebar (⌃⌘S)" : "Hide Sidebar (⌃⌘S)")
+        .modifier(WindowBarControlLook())
+        .modifier(WindowBarControlStyle(line: WindowBarControls.line))
+        .padding(.leading, WindowBarControls.leading)
+    }
+
+    /// The window's own controls — the palette, Add Pane and the layout verbs — in the
+    /// top right corner of the sidebar, level with the traffic lights. The sidebar draws
+    /// them at its head, so they go where it goes: hidden with it, when the palette, the
+    /// Pane menu and the belt still have every one of them.
+    ///
+    /// Split and zoom are PANE verbs and are on every pane's header; what is here acts on
+    /// the window or the canvas as a whole. Every one is a menu command first.
+    private var windowBarMenus: some View {
+        HStack(spacing: WindowBarControls.spacing) {
+            Button { ui.isPaletteShown = true } label: {
+                // The ⌘ is a big symbol — a closed loop with four lobes — and at the
+                // row's size it dwarfed the plus and the ellipsis. The small scale brings
+                // it down to their optical weight.
+                WindowBarGlyph("Commands", symbol: "command", scale: .small)
+            }
+            .help("Command Palette (⌘K)")
+            .modifier(WindowBarControlLook())
+
+            // Every pane kind, one click from the window itself. Buried in a menu bar
+            // submenu they may as well not exist — this is where someone looks for
+            // "another pane", and it is the only place the full list is discoverable.
+            Menu {
+                if ui.showsAgents {
+                    // On the overview: an agent, in one of the open projects, and nothing
+                    // else — a tile belongs to a project's canvas.
+                    AgentProjectsMenuItems()
+                } else {
+                    Section("New Pane") {
+                        Button("Shell") {
+                            if let store { ShellWorkspace.openShell(in: store) }
+                        }
+                        ForEach(PaneKind.offered.filter { !$0.isShell }) { entry in
+                            Button(entry.title) {
+                                if let store { ShellWorkspace.openTile(entry.kind, in: store) }
+                            }
+                        }
+                    }
+                    // Each agent by name, the way the Pane menu has them: "Agent" on its
+                    // own would open the default and leave the rest undiscoverable from
+                    // the one place a new user looks.
+                    Section("New Agent Pane") {
+                        ForEach(store.map(ShellWorkspace.availableAgents(in:)) ?? []) { agent in
+                            Button(agent.name) {
+                                if let store { ShellWorkspace.openShell(agent: agent, in: store) }
+                            }
+                        }
+                    }
+                    // Dimmed rather than silent: with the canvas full, every one of these
+                    // can only beep.
+                    .disabled(store.map { !ShellWorkspace.canOpenNewPane(in: $0) } ?? true)
+                }
+            } label: {
+                WindowBarGlyph("Add Pane", symbol: "plus")
+            }
+            .help("New pane")
+            .modifier(WindowBarControlLook())
+
+            // The window's own verbs, the few that are neither a pane's nor worth a
+            // button each. A VIEW of the registry: every item here is an `AppCommand`, so
+            // it is on the Pane menu and in the palette too.
+            //
+            // Equal column widths and row heights lead: they are the ones here that only
+            // move dividers, where Layout's three save or replace the whole arrangement.
+            Menu {
+                // Grouped by what they act on, each group a submenu: the menu's first
+                // level is four short lines that say where to look, not eight commands
+                // to read through.
+                Menu("Arrange Panes") {
+                    windowBarItem(PaneCommands.equalizeColumns)
+                    windowBarItem(PaneCommands.equalizeRows)
+                }
+                Menu("Layout") {
+                    ForEach(PaneCommands.layouts) { windowBarItem($0) }
+                }
+                Menu("Windows") {
+                    windowBarItem(PaneCommands.moveSessionToNewWindow)
+                    windowBarItem(PaneCommands.mergeWindows)
+                }
+                // Not about this canvas at all: how the whole app looks.
+                Divider()
+                ColourModeMenu()
+                GridModeMenu()
+            } label: {
+                WindowBarGlyph("More", symbol: "ellipsis")
+            }
+            .help("More")
+            .modifier(WindowBarControlLook())
+        }
+        .modifier(WindowBarControlStyle(line: WindowBarControls.line))
+    }
 }
 
-/// A glyph in the window bar's trailing row: the same size, weight and width for every one.
+/// Switch Color Mode ▸ Light, Dark, System — the current one ticked. One definition for
+/// the View menu and the window's `…` menu, so the two cannot drift apart; the same three
+/// are `PaneCommands.colourModes` in the palette.
+struct ColourModeMenu: View {
+    /// Bumped when a setting changes, so the tick follows a change made anywhere else.
+    @State private var revision = 0
+
+    private var mode: Binding<Preferences.ThemeMode> {
+        Binding(get: { _ = revision; return Preferences.themeMode },
+                set: { Preferences.themeMode = $0 })
+    }
+
+    var body: some View {
+        Picker("Switch Color Mode", selection: mode) {
+            Text("Light").tag(Preferences.ThemeMode.light)
+            Text("Dark").tag(Preferences.ThemeMode.dark)
+            Text("System").tag(Preferences.ThemeMode.system)
+        }
+        .pickerStyle(.menu)
+        .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+            revision &+= 1
+        }
+    }
+}
+
+/// Grid Mode ▸ Relaxed, Compact — the current one ticked (`Appearance.GridMode`). One
+/// definition for the View menu and the window's `…` menu; `PaneCommands.gridModes` are
+/// the same two in the palette.
+struct GridModeMenu: View {
+    @State private var revision = 0
+
+    private var mode: Binding<Appearance.GridMode> {
+        Binding(get: { _ = revision; return Appearance.gridMode },
+                set: { Appearance.gridMode = $0 })
+    }
+
+    var body: some View {
+        Picker("Grid Mode", selection: mode) {
+            ForEach(Appearance.GridMode.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.menu)
+        .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+            revision &+= 1
+        }
+    }
+}
+
+/// What every control in the title band wears.
+private struct WindowBarControlStyle: ViewModifier {
+    /// The traffic lights' line, handed in rather than read here: a modifier with nothing
+    /// in it is never run again, and the controls stayed on the compact grid's line after
+    /// the grid went back to relaxed.
+    let line: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            // Button menus in the plain style, so each label is drawn as it is written —
+            // see `OpenProjectButton` — and with no chevron: the glyph is the disclosure.
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            // Never the keyboard's — see `ChromeIconButton`.
+            .focusable(false)
+            .fixedSize()
+            // Centred on the traffic lights' line.
+            .frame(height: 2 * line)
+    }
+}
+
+/// The colours of a control in the title band: a pane header's own (`ChromeIconLabel`,
+/// `PaneHeader.controlOpacity`). The secondary label at a focused header's strength at
+/// rest; under the pointer the label, at full strength, on the same plate. They sit on
+/// one line with the headers' buttons and were a shade brighter than every one of them.
+private struct WindowBarControlLook: ViewModifier {
+    @State private var isHovering = false
+
+    private var colour: Color { isHovering ? Token.Colour.label : Token.Colour.secondaryLabel }
+
+    func body(content: Content) -> some View {
+        content
+            // Both: a menu draws its label in the tint, a button in the foreground.
+            .foregroundStyle(colour)
+            .tint(colour)
+            .opacity(isHovering ? 1 : 0.72)
+            .background {
+                if isHovering {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Token.Colour.label.opacity(0.10))
+                }
+            }
+            .onHover { isHovering = $0 }
+    }
+}
+
+/// Where the window's controls sit in the title band (`RootView.sidebarToggle`).
+enum WindowBarControls {
+    /// Each control's box, and the gap between two.
+    static let box: CGFloat = 26
+    static let spacing: CGFloat = 2
+    /// The line the traffic lights are centred on, from the window's top, and so the line
+    /// for every control in the title band and for the top row of pane headers: the
+    /// lights, the controls and the headers' own buttons are one row.
+    ///
+    /// The SYSTEM's line, not one of ours. 26pt under the unified titlebar the relaxed
+    /// grid has, 20pt under the compact one the compact grid has (`WindowChrome`) — the
+    /// window's titlebar is chosen so the lights fall where the headers are, and nothing
+    /// moves them. They were moved by hand for a while: AppKit puts the zoom button back
+    /// through the whole of a sidebar collapse, and it slid about on its own.
+    static var line: CGFloat { Appearance.compact ? 20 : 26 }
+    /// Where the system starts the first traffic light, under each titlebar.
+    static var lightsLeading: CGFloat { Appearance.compact ? 12 : 19 }
+    /// Where the canvas starts under the window's top edge, so the top row's headers are
+    /// centred on `line`: the window padding in the relaxed grid, which is that already,
+    /// and 2pt in the compact one.
+    static var canvasTop: CGFloat {
+        Appearance.compact ? line - Token.Space.tileHeaderHeight / 2 : Appearance.canvasPadding
+    }
+    /// From one traffic light to the next, as the system spaces them.
+    static let lightsStep: CGFloat = 23
+    /// Where the sidebar's toggle starts: clear of the third traffic light.
+    static var leading: CGFloat { lightsLeading + 2 * lightsStep + 14 + 7 }
+    /// The sidebar's narrowest: the traffic lights and the toggle at one end of its head,
+    /// the three controls at the other, and air between. Dragged narrower than this it
+    /// does not squeeze: the split view holds it here, and hides it once the drag has
+    /// gone half the width past — the column is the split view's own, and collapsible.
+    static let sidebarMinWidth: CGFloat = 290
+    /// Its widest.
+    static let sidebarMaxWidth: CGFloat = 480
+}
+
+/// A glyph in the window's row of controls: the same size, weight and width for every one.
 ///
 /// The plus and the ellipsis are SMALL symbols — two strokes, three dots — and at the
 /// toolbar's own size they read as lighter, lesser controls beside the command glyph. A
@@ -1252,7 +1405,7 @@ struct WindowBarGlyph: View {
             .font(.system(size: 17, weight: .semibold))
             .imageScale(scale)
             .labelStyle(.iconOnly)
-            .frame(width: 26, height: 26)
+            .frame(width: WindowBarControls.box, height: WindowBarControls.box)
             .contentShape(.rect)
     }
 }

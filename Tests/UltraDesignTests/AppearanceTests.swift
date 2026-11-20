@@ -55,6 +55,32 @@ struct AppearanceTests {
         }
     }
 
+    /// Compact mode takes the gaps away without forgetting them: turned off, the gutter and
+    /// the padding are what they were.
+    @Test("the compact grid zeroes the canvas's gutter, padding and radius, and keeps the settings")
+    func compactModeRemovesTheGaps() {
+        clean {
+            Appearance.paneGutter = 12
+            Appearance.windowPadding = 20
+            #expect(Appearance.canvasGutter == 12)
+            #expect(Appearance.canvasPadding == 20)
+
+            Appearance.gridMode = .compact
+            #expect(Appearance.canvasGutter == 0)
+            #expect(Appearance.canvasPadding == 0)
+            #expect(Appearance.canvasPaneRadius == 0)
+            #expect(Token.Space.gutter == 0)
+            #expect(Appearance.paneGutter == 12)
+            #expect(Appearance.windowPadding == 20)
+            #expect(Appearance.paneRadius == 15)
+
+            Appearance.gridMode = .relaxed
+            #expect(Appearance.canvasPaneRadius == 15)
+            #expect(Appearance.canvasGutter == 12)
+            #expect(Appearance.canvasPadding == 20)
+        }
+    }
+
     /// The tokens are the only thing the app draws with, so a setting the tokens do not read
     /// is a control that does nothing.
     @Test("the tokens read the settings")
@@ -147,6 +173,7 @@ struct AppearanceTests {
             Appearance.frostUnfocusedTintLight = 0.6
             Appearance.aurora = false
             Appearance.auroraStrength = 0.9
+            Appearance.gridMode = .compact
 
             // Every key this namespace owns now holds something.
             for name in Appearance.keys {
