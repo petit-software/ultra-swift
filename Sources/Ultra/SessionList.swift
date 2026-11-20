@@ -208,10 +208,25 @@ final class SessionList {
         let screen = NSScreen.screens.first { $0.frame.contains(point ?? frame.origin) }
             ?? window?.screen ?? NSScreen.main
         if let visible = screen?.visibleFrame {
-            frame.size.width = min(frame.width, visible.width)
-            frame.size.height = min(frame.height, visible.height)
-            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
-            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+            frame = Self.frame(frame, fitting: visible)
+            // A window that fills its screen has nowhere to step to: its twin landed
+            // exactly on top of it, and what was seen was the same window with every
+            // project but one gone from its sidebar. So a window that would cover the one
+            // it left is smaller than it, and is seen to be another window.
+            if let own = window?.frame, Self.covers(frame, own) {
+                let size = CGSize(width: (visible.width * 0.8).rounded(),
+                                  height: (visible.height * 0.8).rounded())
+                if let point {
+                    frame = CGRect(x: point.x - min(160, size.width / 2),
+                                   y: point.y + 18 - size.height,
+                                   width: size.width, height: size.height)
+                } else {
+                    frame = CGRect(x: visible.midX - size.width / 2 + 28,
+                                   y: visible.midY - size.height / 2 - 28,
+                                   width: size.width, height: size.height)
+                }
+                frame = Self.frame(frame, fitting: visible)
+            }
         }
 
         let store = sessions.remove(at: index)
@@ -235,8 +250,22 @@ final class SessionList {
         }
     }
 
-    /// Take sessions that are already running — handed over by another window. The first
-    /// one comes on screen.
+    /// A frame no larger than the screen's visible part, and inside it.
+    static func frame(_ frame: CGRect, fitting visible: CGRect) -> CGRect {
+        var frame = frame
+        frame.size.width = min(frame.width, visible.width)
+        frame.size.height = min(frame.height, visible.height)
+        frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+        frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+        return frame
+    }
+
+    /// Whether a window at `frame` would hide one at `other`: every edge of it within a
+    /// title bar's height of the other's, or past it.
+    static func covers(_ frame: CGRect, _ other: CGRect) -> Bool {
+        frame.insetBy(dx: -24, dy: -24).contains(other)
+    }
+
     func take(_ stores: [LayoutStore], selecting: Bool = true) {
         let fresh = stores.filter { store in !sessions.contains { $0 === store } }
         guard !fresh.isEmpty else { return }
@@ -249,7 +278,9 @@ final class SessionList {
     /// a pane in a window of its own.
     var canMergeWindows: Bool {
         othersAreShowingSessions
-            || Self.lists.allObjects.contains { $0.sessions.contains { !$0.paneWindows.isEmpty } }
+            || Self.lists.allObjects.contains { list in
+                list.sessions.contains { $0.paneWindows.contains { !$0.isFloating } }
+            }
     }
 
     /// Every window into this one. Panes in windows of their own go back to their
@@ -259,7 +290,10 @@ final class SessionList {
     func mergeAllWindows() {
         guard canMergeWindows else { NSSound.beep(); return }
         for store in Self.lists.allObjects.flatMap(\.sessions) {
-            for paneWindow in store.paneWindows { paneWindow.returnAllPanes() }
+            // Windows only: a pane floating over its canvas is in this window already.
+            for paneWindow in store.paneWindows where !paneWindow.isFloating {
+                paneWindow.returnAllPanes()
+            }
         }
         // Frontmost first, so the order they arrive in is the order they were stacked in.
         let order = NSApp.orderedWindows
@@ -472,6 +506,8 @@ final class SessionList {
     func reveal(_ paneID: PaneID, in id: UUID) {
         guard let store = sessions.first(where: { $0.workspaceID == id }) else { return }
         if let paneWindow = store.paneWindows.first(where: { $0.tree.contains(paneID) }) {
+            // A floating pane is on its session's canvas: the session comes on screen.
+            if paneWindow.isFloating { select(id) }
             paneWindow.focus(paneID)
             PaneWindows.window(for: paneWindow)?.makeKeyAndOrderFront(nil)
             return

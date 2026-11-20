@@ -25,6 +25,9 @@ public struct SplitCanvas: NSViewRepresentable {
         _ = store.metrics
         // Registers the dependency that makes a pane conversion redraw.
         _ = store.surfaceRevision
+        // The keyboard moving between the canvas and a pane floating over it: which pane
+        // reads as focused, and which canvas takes the first responder.
+        _ = store.session.floatRevision
         view.bottomInset = bottomInset
         view.sync()
         // Separate from `sync`, which re-asserts focus only as a side effect of the model
@@ -68,6 +71,8 @@ public struct CanvasSurface: View {
             // tree. Identity is the blunter tool and the safer one.
             SplitCanvas(store: store, bottomInset: bottomInset)
                 .id(store.workspaceID)
+            // The panes floating over the tiling, in the canvas's own coordinates.
+            FloatingPanes(store: store)
         }
         // The TOP edge only. Ignoring every edge is what put the canvas underneath the
         // session sidebar: this is a `NavigationSplitView` detail column now, not the whole

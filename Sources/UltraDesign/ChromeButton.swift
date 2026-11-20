@@ -120,6 +120,11 @@ public struct ChromeIconButton: View {
                             tint: tint)
         }
         .buttonStyle(.plain)
+        // Never the keyboard's: a pane handed the first responder gave it to the first
+        // control that would take it, and a footer's `+` wore a focus ring nobody had
+        // asked for — Space would have pressed it. Every chrome control is a menu command
+        // first, which is its key path.
+        .focusable(false)
         .disabled(!isEnabled)
         // A disabled control dims rather than disappearing: one that vanishes takes its own
         // affordance with it, and nobody learns a button that is not there.

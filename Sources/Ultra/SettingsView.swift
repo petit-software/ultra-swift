@@ -293,7 +293,8 @@ private struct TerminalSettings: View {
                 SettingNote("Moves glyph drawing to Metal, which mainly shows up in "
                             + "fast-scrolling output. Off by default because it can fail to "
                             + "start on some hardware — a pane that cannot use it says so and "
-                            + "keeps drawing.")
+                            + "keeps drawing. Dark terminal themes only: a light one is "
+                            + "drawn without it.")
             }
         }
         .formStyle(.grouped)

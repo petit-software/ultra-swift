@@ -170,8 +170,9 @@ struct WorkspaceWindow: View {
             }
             // The overview's store while the window shows it, so the Pane menu, the
             // palette and every key act on the grid rather than the session behind it.
+            // And a pane floating over the session's canvas, while the keyboard is in it.
             .focusedSceneValue(\.layoutStore, model.ui.showsAgents ? AgentsOverview.shared.store
-                                                                   : model.sessions.selected)
+                                                                   : model.sessions.selected?.activeCanvas)
             .focusedSceneValue(\.sessionList, model.sessions)
             .focusedSceneValue(\.uiState, model.ui)
     }
@@ -360,6 +361,16 @@ final class WorkspaceModel {
         if placement != nil {
             placement = nil
             sessions.selected?.noteWindowFrame(frame)
+            // In front, said outright, and said again once the event that sent it here
+            // is over. A window opened from a sidebar row's right-click menu came up
+            // BEHIND the one the menu was in: a menu that ends hands its own window the
+            // front again, after this one has taken it. The session left the list and
+            // nothing was seen to arrive — the new window hidden by the old one it was
+            // stepped 28 points from.
+            window?.makeKeyAndOrderFront(nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak window] in
+                window?.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
@@ -692,6 +703,14 @@ struct WorkspaceCommands: Commands {
             }
             .keyboardShortcut("0", modifiers: [.command, .option])
             .disabled(store.map { !PaneCommands.openWaiting.isEnabled($0) } ?? true)
+
+            Divider()
+
+            // The theme, from the registry so the palette has it too.
+            Button(PaneCommands.toggleAppearance.title) {
+                if let store { PaneCommands.toggleAppearance.run(store) }
+            }
+            .disabled(store == nil)
             if AgentsOverview.isDevBuild {
                 Button(PaneCommands.agentsDemo.title) {
                     if let store { PaneCommands.agentsDemo.run(store) }

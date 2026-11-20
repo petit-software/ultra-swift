@@ -80,6 +80,8 @@ public struct ChromeMenuTrigger<Label: View>: View {
     public var body: some View {
         Button(action: present) { label(isHovering) }
             .buttonStyle(.plain)
+            // Never the keyboard's: see `ChromeIconButton`.
+            .focusable(false)
             .background(MenuAnchorView(box: anchor))
             .onHover { isHovering = $0 }
             .help(help)

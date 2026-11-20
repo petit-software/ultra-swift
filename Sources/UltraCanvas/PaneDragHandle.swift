@@ -18,6 +18,11 @@ final class PaneDragHandleView: NSView {
     /// A snapshot of the pane, so what you drag looks like what you are moving.
     private let snapshot: () -> NSImage?
     private var mouseDownAt: NSPoint?
+    /// On a floating canvas: what moves it, by a translation from where the drag began
+    /// and whether the drag has ended. Nil anywhere else, where the pane is picked up.
+    var floatDrag: () -> ((CGSize, Bool) -> Void)? = { nil }
+    /// A floating canvas on its way: where the button went down, and what moves it.
+    private var moving: (start: NSPoint, move: (CGSize, Bool) -> Void)?
 
     init(paneID: PaneID, snapshot: @escaping () -> NSImage?) {
         self.paneID = paneID
@@ -39,11 +44,21 @@ final class PaneDragHandleView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         mouseDownAt = nil
+        if let moving {
+            // The float is put down where the pointer left it.
+            self.moving = nil
+            moving.move(translation(to: event, from: moving.start), true)
+            return
+        }
         // Not a drag: hand the click on as a focus request.
         (superview as? PaneContainerView)?.focusFromHandle()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let moving {
+            moving.move(translation(to: event, from: moving.start), false)
+            return
+        }
         guard let start = mouseDownAt else { return }
         let dx = event.locationInWindow.x - start.x
         let dy = event.locationInWindow.y - start.y
@@ -51,7 +66,22 @@ final class PaneDragHandleView: NSView {
         // drag would make the header impossible to click precisely.
         guard (dx * dx + dy * dy).squareRoot() > 4 else { return }
         mouseDownAt = nil
-        beginDrag(with: event)
+        if let move = floatDrag() {
+            // A floating canvas goes with the pointer until the button comes up: the
+            // view that took the press hears every move and the release, wherever the
+            // canvas it rides has got to.
+            moving = (start, move)
+            move(translation(to: event, from: start), false)
+        } else {
+            beginDrag(with: event)
+        }
+    }
+
+    /// How far the pointer is from where the button went down, in the canvas's terms.
+    /// Measured in the WINDOW: this view rides the canvas it is moving, so a point in its
+    /// own coordinates would chase itself. The window's y runs up, the canvas's down.
+    private func translation(to event: NSEvent, from start: NSPoint) -> CGSize {
+        CGSize(width: event.locationInWindow.x - start.x, height: start.y - event.locationInWindow.y)
     }
 
     private func beginDrag(with event: NSEvent) {

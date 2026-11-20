@@ -200,7 +200,8 @@ enum ShellWorkspace {
                 guard let window else { return }
                 convert(paneID, to: kind, in: window)
             }
-            PaneWindows.show(window)
+            // A floating pane is shown by the session's own canvas, over its panes.
+            if !window.isFloating { PaneWindows.show(window) }
         }
         // And the ones it had when it was saved, which open with the session.
         if let layouts = document?.paneWindows { store.restorePaneWindows(layouts) }
@@ -489,7 +490,7 @@ enum ShellWorkspace {
         if !store.split(edge: edge) { stageTile(nil, for: store) }
     }
 
-    /// Whether "New <kind> Pane" can do anything right now. Room on the canvas for every
+    /// Whether "Add <kind> Pane" can do anything right now. Room on the canvas for every
     /// kind; for an agent, also an agent to run — a project whose list has been emptied has
     /// nothing to open, and the command says so by dimming rather than by beeping.
     static func canOpen(_ kind: PaneRecord.Kind, in store: LayoutStore) -> Bool {
@@ -950,7 +951,7 @@ enum ShellWorkspace {
         agents(in: store).filter { isAvailable($0) }
     }
 
-    /// What "New Agent Pane" opens when it is not asked which: the first agent in the
+    /// What "Add Agent Pane" opens when it is not asked which: the first agent in the
     /// project's list that is installed, or — with none installed — the first in the list,
     /// so the pane at least says `command not found` where the agent would have been rather
     /// than the command silently doing nothing. Nil only for an empty list.

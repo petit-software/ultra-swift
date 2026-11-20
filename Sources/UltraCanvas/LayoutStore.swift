@@ -85,7 +85,29 @@ public final class LayoutStore {
     /// The canvases this session has in windows of their own, held by the session's own
     /// store so they live and die with the session.
     @ObservationIgnored public private(set) var paneWindows: [LayoutStore] = []
-    /// A pane window has been made: the app opens a window for it.
+    /// Whether this canvas floats over its session's canvas, in the same window, rather
+    /// than standing in a window of its own. See "Floating panes" below.
+    public fileprivate(set) var isFloating = false
+    /// Where a floating canvas is, in its session's canvas's coordinates.
+    public fileprivate(set) var floatFrame: CGRect = .zero
+    /// Whether a floating canvas is being dragged: held, it follows the pointer exactly
+    /// and may be pulled past an edge; let go, it springs to where it is kept.
+    public fileprivate(set) var isFloatHeld = false
+    /// Bumped on the SESSION's store when a pane starts or stops floating, and when the
+    /// keyboard moves between the canvas and a pane floating over it: what the views of
+    /// both observe.
+    public fileprivate(set) var floatRevision = 0
+    /// The floating canvas that has the keyboard, on the session's store; nil while the
+    /// session's own canvas has it.
+    @ObservationIgnored public fileprivate(set) weak var activeFloat: LayoutStore?
+    /// The order floats were made in, which is the order the keyboard goes round them:
+    /// their order front to back changes every time one is brought forward.
+    @ObservationIgnored fileprivate var floatOrdinal = 0
+    @ObservationIgnored fileprivate var nextFloatOrdinal = 0
+    /// Where a float was when its header was picked up.
+    @ObservationIgnored fileprivate var floatDragOrigin: CGRect?
+    /// A pane window has been made: the app opens a window for it — unless it floats,
+    /// which the canvas shows by itself.
     @ObservationIgnored public var onPaneWindowCreated: ((LayoutStore) -> Void)?
     /// This pane window is finished with — its panes went back, or its session closed —
     /// and its window should close.
@@ -168,6 +190,7 @@ public final class LayoutStore {
         surfaces.actions.focus = { [weak self] paneID in self?.focus(paneID) }
         surfaces.actions.zoom = { [weak self] paneID in self?.toggleZoom(paneID) }
         surfaces.actions.windowMove = { [weak self] paneID in self?.windowMove(for: paneID) }
+        surfaces.actions.floatMove = { [weak self] paneID in self?.floatMove(for: paneID) }
         // A pane lent to this store whose home has released it: off this canvas, no
         // release of this store's own.
         surfaces.onEvicted = { [weak self] paneID in
@@ -313,6 +336,8 @@ public final class LayoutStore {
     /// restored window came back focused on the wrong pane.
     public func focus(_ paneID: PaneID) {
         guard tree.contains(paneID) else { return }
+        // A pane focused on a floating canvas, or under one, takes the keyboard with it.
+        activateCanvas()
         // Focusing the pane that is ALREADY focused is not a no-op: it is what ⌘1 does when
         // the caret has been left in the sidebar, and answering "you are already there" is
         // how the one keyboard route back from a lost first responder does nothing.
@@ -503,7 +528,10 @@ extension LayoutStore {
                                          windowFrame: windowFrame,
                                          themeID: theme.id,
                                          paneWindows: paneWindows.map {
-                                             PaneWindowLayout(tree: $0.tree, frame: $0.windowFrame)
+                                             PaneWindowLayout(tree: $0.tree,
+                                                              frame: $0.isFloating ? $0.floatFrame
+                                                                                   : $0.windowFrame,
+                                                              floats: $0.isFloating)
                                          })
         // Ensure every pane in the tree has a record, even one never yet materialised.
         for paneID in tree.paneIDs {
@@ -644,6 +672,8 @@ extension LayoutStore {
     /// Back wears the arrows pointing IN, the same glyph as the pane window's own control
     /// and the menu item, so the three read as one verb.
     func windowMove(for paneID: PaneID) -> (title: String, symbol: String, run: () -> Void)? {
+        // A floating pane docks from the header's own menu: see `floatMove`.
+        if isFloating { return nil }
         if isPaneWindow {
             return ("Move Pane Back to Main Window", "arrow.up.right.and.arrow.down.left", { [weak self] in
                 self?.moveBackToMainWindow(paneID)
@@ -660,7 +690,9 @@ extension LayoutStore {
         var placed = Set(tree.paneIDs)
         for layout in layouts where placed.isDisjoint(with: layout.tree.paneIDs) {
             placed.formUnion(layout.tree.paneIDs)
-            onPaneWindowCreated?(makePaneWindow(tree: layout.tree, frame: layout.frame?.rect))
+            onPaneWindowCreated?(makePaneWindow(tree: layout.tree, frame: layout.frame?.rect,
+                                                floating: layout.floats == true))
+            floatRevision &+= 1
         }
     }
 
@@ -677,12 +709,25 @@ extension LayoutStore {
 
     /// A pane window of this session, on `tree`. Not announced: the caller does that once
     /// the panes are in it, or a canvas laid out at once would build them a second time.
-    private func makePaneWindow(tree: LayoutTree, frame: CGRect?) -> LayoutStore {
+    private func makePaneWindow(tree: LayoutTree, frame: CGRect?,
+                                floating: Bool = false) -> LayoutStore {
         let window = LayoutStore(tree: tree, metrics: metrics, theme: theme,
                                  workspaceID: workspaceID, storage: nil,
                                  makeSurface: makeSurface)
         window.owner = self
-        window.windowFrame = frame
+        if floating {
+            window.isFloating = true
+            window.surfaces.floats = true
+            window.floatOrdinal = nextFloatOrdinal
+            nextFloatOrdinal += 1
+            window.floatFrame = frame ?? nextFloatFrame()
+            // Its header moves it rather than picking the pane up.
+            window.surfaces.actions.floatDrag = { [weak window] _, translation, ended in
+                window?.dragFloat(by: translation, ended: ended)
+            }
+        } else {
+            window.windowFrame = frame
+        }
         window.workspaceTitle = workspaceTitle
         window.workspaceSubtitle = workspaceSubtitle
         window.workspaceDirectory = workspaceDirectory
@@ -697,7 +742,8 @@ extension LayoutStore {
 
     /// Panes of this canvas into one new pane window, side by side. No undo entry: the
     /// callers register their own.
-    private func sendToNewWindow(_ panes: [PaneID]) -> LayoutStore? {
+    fileprivate func sendToNewWindow(_ panes: [PaneID], floating: Bool = false,
+                                     frame: CGRect? = nil) -> LayoutStore? {
         let moving = panes.filter(tree.contains)
         guard let first = moving.first, moving.count < tree.paneCount else { return nil }
         var windowTree = LayoutTree(single: first)
@@ -709,12 +755,13 @@ extension LayoutStore {
             if paneID != first { windowTree.split(windowTree.focused, edge: .right, newPane: paneID) }
             candidate.close(paneID)
         }
-        let window = makePaneWindow(tree: windowTree, frame: nil)
+        let window = makePaneWindow(tree: windowTree, frame: frame, floating: floating)
         for paneID in moving { surfaces.handOver(paneID, to: window.surfaces) }
         // Named once its pane's record has come across with it.
         window.refreshWindowTitle()
         commitWithoutUndo(candidate)
         onPaneWindowCreated?(window)
+        if floating { floatRevision &+= 1 }
         return window
     }
 
@@ -727,6 +774,9 @@ extension LayoutStore {
         guard window.owner === self else { return }
         let moving = panes.filter(window.tree.contains)
         guard !moving.isEmpty else { return }
+        // What an undo of this sends them back out as: floating where they were, or a window.
+        let floated = window.isFloating
+        let floatedAt = window.floatFrame
         var candidate = restoring ?? tree
         for paneID in moving {
             // A pane the window never built has no surface to hand over; this canvas
@@ -748,16 +798,20 @@ extension LayoutStore {
         }
         commitWithoutUndo(candidate)
         if restoring == nil {
-            registerUndo("Move Pane Back to Main Window") { store in
-                guard let window = store.sendToNewWindow(moving) else { return }
+            registerUndo(floated ? "Dock Pane" : "Move Pane Back to Main Window") { store in
+                guard let window = store.sendToNewWindow(moving, floating: floated,
+                                                         frame: floated ? floatedAt : nil)
+                else { return }
                 store.registerUndo("Move Pane Back to Main Window") { store in
                     store.takeBack(moving, from: window)
                 }
             }
         } else {
-            registerUndo("Move Pane to New Window") { store in
-                guard let window = store.sendToNewWindow(moving) else { return }
-                store.registerUndo("Move Pane to New Window") { store in
+            registerUndo(floated ? "Float Pane" : "Move Pane to New Window") { store in
+                guard let window = store.sendToNewWindow(moving, floating: floated,
+                                                         frame: floated ? floatedAt : nil)
+                else { return }
+                store.registerUndo(floated ? "Float Pane" : "Move Pane to New Window") { store in
                     store.takeBack(moving, from: window, restoring: restoring)
                 }
             }
@@ -770,6 +824,11 @@ extension LayoutStore {
     private func dissolve(_ window: LayoutStore) {
         paneWindows.removeAll { $0 === window }
         window.owner = nil
+        if window.isFloating {
+            // The keyboard goes back to the canvas it floated over.
+            if activeFloat === window { activeFloat = nil }
+            floatRevision &+= 1
+        }
         window.onDismiss?()
     }
 
@@ -782,6 +841,186 @@ extension LayoutStore {
         persist()
         onGeometrySettled?()
         onChange?(candidate)
+    }
+}
+
+// MARK: - Floating panes
+
+/// A pane lifted off the tiling to float over it, in the same window, wherever it is put.
+///
+/// A floating pane is a pane window without the window: the same canvas of its own, held
+/// by the session's store, with the same hand-over of the live surface out and back — so
+/// the same view and the same process throughout, and the same place in the document. The
+/// only differences are who shows it (the session's canvas, over its panes, rather than a
+/// window the app opens) and what its frame means (a place on that canvas).
+///
+/// Two canvases in one window means the keyboard has two places to be, and the model has
+/// to say which: `activeFloat` on the session's store. A canvas takes the first responder
+/// only while it is the active one, and the Pane menu acts on `activeCanvas`.
+extension LayoutStore {
+    /// The canvases floating over this session's, back to front.
+    public var floats: [LayoutStore] { paneWindows.filter(\.isFloating) }
+
+    /// The canvas the keyboard is in: a floating one, or the session's own.
+    public var activeCanvas: LayoutStore { activeFloat ?? self }
+
+    /// Whether this canvas is the one that should hold the window's first responder. A
+    /// pane window in a window of its own always is; of a session's canvas and the panes
+    /// floating over it, exactly one is.
+    public var isActiveCanvas: Bool {
+        if let owner { return !isFloating || owner.activeFloat === self }
+        return activeFloat == nil
+    }
+
+    /// Give this canvas the keyboard — a floating one comes to the front as it does.
+    public func activateCanvas() {
+        if let owner {
+            guard isFloating, owner.activeFloat !== self else { return }
+            owner.activeFloat = self
+            owner.paneWindows.removeAll { $0 === self }
+            owner.paneWindows.append(self)
+            owner.floatRevision &+= 1
+        } else {
+            guard activeFloat != nil else { return }
+            activeFloat = nil
+            floatRevision &+= 1
+        }
+        reclaimKeyboardFocus()
+    }
+
+    /// Whether there is another canvas for the keyboard to go to: a pane floats here.
+    public var canCycleCanvas: Bool { !session.floats.isEmpty }
+
+    /// The keyboard to the next canvas of the session: from the tiling to each floating
+    /// pane in turn, back to front, and round to the tiling again. The way in and out of
+    /// a floating pane without a pointer — moving focus by direction stays on one canvas.
+    /// The order is the one they were floated in.
+    public func cycleCanvas() {
+        let session = session
+        // In the order they were floated, not front to back: activating one brings it to
+        // the front, and a round that reshuffled as it went would skip some.
+        let canvases = [session] + session.floats.sorted { $0.floatOrdinal < $1.floatOrdinal }
+        guard canvases.count > 1 else { NSSound.beep(); return }
+        let current = canvases.firstIndex { $0 === session.activeCanvas } ?? 0
+        if current + 1 < canvases.count {
+            canvases[current + 1].activateCanvas()
+        } else {
+            session.activateCanvas()
+        }
+    }
+
+    /// Whether this pane can float: the rule for a window of its own. It is on the
+    /// session's canvas, and not the last pane there.
+    public func canFloat(_ paneID: PaneID? = nil) -> Bool { canMoveToNewWindow(paneID) }
+
+    /// Lift a pane off the tiling to float over it. Undoable, like its move to a window.
+    @discardableResult
+    public func floatPane(_ paneID: PaneID? = nil) -> LayoutStore? {
+        let paneID = paneID ?? tree.focused
+        guard canFloat(paneID) else { NSSound.beep(); return nil }
+        let previous = tree
+        trace("FLOAT \(paneID.uuidString.prefix(8))")
+        guard let float = sendToNewWindow([paneID], floating: true) else { return nil }
+        registerUndo("Float Pane") { store in
+            guard let float = store.paneWindows.first(where: { $0.tree.contains(paneID) })
+            else { return }
+            store.takeBack([paneID], from: float, restoring: previous)
+        }
+        float.activateCanvas()
+        return float
+    }
+
+    /// Put a floating pane back in the tiling, beside the pane focused there.
+    public func dockPane(_ paneID: PaneID? = nil) {
+        guard isFloating else { NSSound.beep(); return }
+        moveBackToMainWindow(paneID)
+    }
+
+    /// The pane's entry for its header's menu: off the tiling, or back into it. Nil where
+    /// neither applies — a pane in a window of its own, or the last one on its canvas.
+    func floatMove(for paneID: PaneID) -> (title: String, symbol: String, run: () -> Void)? {
+        if isFloating {
+            return ("Dock Pane", "rectangle.split.2x1", { [weak self] in self?.dockPane(paneID) })
+        }
+        guard canFloat(paneID) else { return nil }
+        return ("Float Pane", "macwindow.on.rectangle", { [weak self] in self?.floatPane(paneID) })
+    }
+
+    /// Move or resize a floating canvas. `settled` once the drag is over: that is when it
+    /// is written down and its shell hears its final size.
+    public func setFloatFrame(_ frame: CGRect, settled: Bool = true) {
+        guard isFloating, let owner else { return }
+        // While it is held it can be pulled a little past an edge, against a pull back;
+        // let go, it is where the canvas keeps it, and the view springs it there.
+        let placed = settled ? Self.floatFrame(frame, fitting: owner.canvasBounds)
+                             : Self.floatFrame(frame, pulledPast: owner.canvasBounds)
+        if isFloatHeld == settled { isFloatHeld = !settled }
+        if floatFrame != placed { floatFrame = placed }
+        guard settled else { return }
+        persist()
+        onGeometrySettled?()
+    }
+
+    /// The header was dragged: the canvas goes with it.
+    fileprivate func dragFloat(by translation: CGSize, ended: Bool) {
+        let origin = floatDragOrigin ?? floatFrame
+        floatDragOrigin = ended ? nil : origin
+        setFloatFrame(origin.offsetBy(dx: translation.width, dy: translation.height),
+                      settled: ended)
+    }
+
+    /// The smallest a floating canvas gets: a header that can be read and a few lines.
+    public static let minFloatSize = CGSize(width: 260, height: 180)
+
+    /// The width of the frame round a floating pane: what it is picked up and moved by.
+    /// Part of its frame, so `floatMargin` is measured to the frame's outer edge.
+    public static let floatFrameWidth: CGFloat = 8
+
+    /// How far inside the canvas's edges a floating pane is kept.
+    public static let floatMargin: CGFloat = 16
+
+    /// A floating frame as the canvas can show it: wholly on the canvas, `floatMargin`
+    /// inside its edges. One dragged past an edge comes to rest against that margin —
+    /// nothing of it is ever off the canvas, under the sidebar or the window's bar. No
+    /// smaller than `minFloatSize` while the canvas has room for that, and never larger
+    /// than the canvas less its margins. A canvas that has not been laid out fits
+    /// everything.
+    public static func floatFrame(_ frame: CGRect, fitting canvas: CGRect) -> CGRect {
+        var frame = frame.standardized
+        frame.size.width = max(frame.width, minFloatSize.width)
+        frame.size.height = max(frame.height, minFloatSize.height)
+        let room = canvas.insetBy(dx: floatMargin, dy: floatMargin)
+        guard canvas.width > 0, canvas.height > 0, room.width > 0, room.height > 0 else { return frame }
+        frame.size.width = min(frame.width, room.width)
+        frame.size.height = min(frame.height, room.height)
+        frame.origin.x = min(max(frame.minX, room.minX), room.maxX - frame.width)
+        frame.origin.y = min(max(frame.minY, room.minY), room.maxY - frame.height)
+        return frame
+    }
+
+    /// A frame being dragged: where the canvas would keep it, and a quarter of however
+    /// far past that it has been pulled — the give of something on a spring.
+    public static func floatFrame(_ frame: CGRect, pulledPast canvas: CGRect) -> CGRect {
+        var fitted = floatFrame(frame, fitting: canvas)
+        fitted.origin.x += (frame.standardized.minX - fitted.minX) * 0.25
+        fitted.origin.y += (frame.standardized.minY - fitted.minY) * 0.25
+        return fitted
+    }
+
+    /// Where the next pane to float goes: the middle of the canvas, stepped down and
+    /// right of the ones already floating so none hides another exactly.
+    fileprivate func nextFloatFrame() -> CGRect {
+        let canvas = canvasBounds
+        let step = CGFloat(floats.count % 6) * 26
+        guard canvas.width > 0, canvas.height > 0 else {
+            return CGRect(x: 80 + step, y: 80 + step, width: 640, height: 420)
+        }
+        let size = CGSize(width: max(Self.minFloatSize.width, min(900, (canvas.width * 0.55).rounded())),
+                          height: max(Self.minFloatSize.height, min(640, (canvas.height * 0.6).rounded())))
+        return Self.floatFrame(CGRect(x: (canvas.midX - size.width / 2).rounded() + step,
+                                      y: (canvas.midY - size.height / 2).rounded() + step,
+                                      width: size.width, height: size.height),
+                               fitting: canvas)
     }
 }
 

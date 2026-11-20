@@ -89,7 +89,7 @@ The primary tile. A login shell, usually with an agent CLI running in it.
   a shell whose `command` is one of the registry's entries, launched with `exec` as above. Being
   a kind is what lets "Agent" sit beside "Todo" in every pane menu, name itself in the header,
   and be told apart from a plain shell in a layout. Pane ▸ New Pane lists the project's
-  agents; ⌥⌘A and the palette's "New Agent Pane" open the first installed one. A `shell`
+  agents; ⌥⌘A and the palette's "Add Agent Pane" open the first installed one. A `shell`
   record written before the kind existed, carrying a command, restores as an agent.
 - **Resize**: driven by the coalescing rules in `01-SPLIT-ENGINE.md` § 6.
 - **Scrollback**: kept in the live `Terminal` for the process lifetime. On quit, the last N lines

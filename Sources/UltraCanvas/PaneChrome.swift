@@ -37,6 +37,13 @@ public final class PaneActions {
     /// menu and what it does. Nil when there is nowhere to go — the last pane of a window.
     /// Supplied by the store, which is the one that knows which window the pane is in.
     public var windowMove: (PaneID) -> (title: String, symbol: String, run: () -> Void)? = { _ in nil }
+    /// The pane's way off the tiling to float over it, or back into it: Float Pane or Dock
+    /// Pane, for the header's `…` menu. Nil where neither applies. Supplied by the store.
+    public var floatMove: (PaneID) -> (title: String, symbol: String, run: () -> Void)? = { _ in nil }
+    /// Set on a floating canvas only: its header's band MOVES the canvas, by this much
+    /// from where the drag began, rather than picking the pane up to drop it elsewhere.
+    /// The flag is whether the drag has ended.
+    public var floatDrag: ((PaneID, CGSize, Bool) -> Void)?
 
     public init(split: @escaping (PaneID, UltraLayout.Edge) -> Void,
                 close: @escaping (PaneID) -> Void,
@@ -187,23 +194,6 @@ public struct PaneHeader: View {
             // are fixed-size, so the identity control is the only thing that gives, and it
             // gives by trimming its name.
             HStack(spacing: 1) {
-                // Zoom, on the focused pane only: one pane has it at a time, the one a
-                // keystroke would zoom, and the rest keep their headers to the split pair.
-                // It stays on a pane visiting the Agents overview, whose grid cannot be
-                // split but can be zoomed. Dimmed, not gone, on a canvas of one pane.
-                // While zoomed it wears the accent at full strength: every other pane is
-                // hidden, and this is the one mark on screen that says so and the one
-                // control that brings them back.
-                if isFocused || isZoomed {
-                    PaneHeaderButton(symbol: isZoomed ? "arrow.down.right.and.arrow.up.left"
-                                                      : "arrow.up.left.and.arrow.down.right",
-                                     help: isZoomed ? "Restore Panes (⇧⌘↩)" : "Zoom Pane (⇧⌘↩)",
-                                     isEnabled: canZoom,
-                                     tint: isZoomed ? Token.Colour.accent : nil) {
-                        actions.zoom(paneID)
-                    }
-                    .opacity(isZoomed ? 1 : controlOpacity)
-                }
                 if showsControls {
                     PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                         actions.split(paneID, .right)
@@ -214,6 +204,17 @@ public struct PaneHeader: View {
                     }
                     .opacity(controlOpacity)
                 }
+                // Last, at the far end, on every pane: how it sits on the canvas — filling
+                // it, floating over it, or in a window of its own. Each is a Pane menu
+                // command first; this is their pointer path. Zoom was a button of its own
+                // beside it, the same verb twice in the one strip with the least room.
+                // While zoomed the menu wears the ink at full strength: every other pane
+                // is hidden, and this is the mark that says so and the way back.
+                ChromeMenuButton(symbol: "ellipsis",
+                                 help: isZoomed ? "Pane Options — Zoomed (⇧⌘↩ restores)" : "Pane Options",
+                                 tint: isZoomed ? Token.Colour.accentInk : nil,
+                                 entries: placementEntries)
+                    .opacity(isZoomed ? 1 : controlOpacity)
             }
             .fixedSize()
         }
@@ -242,6 +243,25 @@ public struct PaneHeader: View {
         // did two unhelpful things: it repeated the pane's title one level in, and it added
         // a group between the pane and its buttons. The buttons carry their own labels and
         // are more use reached directly.
+    }
+}
+
+extension PaneHeader {
+    /// The `…` menu: zoom, float or dock, and the move to a window or back.
+    func placementEntries() -> [ChromeMenuEntry] {
+        var entries: [ChromeMenuEntry] = [
+            .item(title: isZoomed ? "Restore Panes" : "Zoom Pane",
+                  symbol: isZoomed ? "arrow.down.right.and.arrow.up.left"
+                                   : "arrow.up.left.and.arrow.down.right",
+                  isEnabled: canZoom) { actions.zoom(paneID) },
+        ]
+        if let float = actions.floatMove(paneID) {
+            entries.append(.item(title: float.title, symbol: float.symbol, action: float.run))
+        }
+        if let move = actions.windowMove(paneID) {
+            entries.append(.item(title: move.title, symbol: move.symbol, action: move.run))
+        }
+        return entries
     }
 }
 
@@ -490,7 +510,7 @@ public final class PaneContainerView: NSView {
             clip.layer?.backgroundColor = NSColor(white: 0.1, alpha: 1).cgColor
             return
         }
-        guard Appearance.paneGlass else {
+        guard wantsGlass else {
             let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             let shade = switch (isDark, showsFocus) {
             case (true, true): Appearance.frostFocusedTintDark
@@ -524,6 +544,16 @@ public final class PaneContainerView: NSView {
         applyBackdrop()
     }
 
+    /// Whether the pane is floating over the tiling (`LayoutStore.floatPane`). A floating
+    /// pane is Liquid Glass whatever Settings ▸ Appearance says for the tiled ones: frost
+    /// blurs the WINDOW's surface, which is right for a pane lying on it and wrong for
+    /// one lying on other panes — glass is the material for what floats above content.
+    public var floatsOnGlass = false {
+        didSet { guard floatsOnGlass != oldValue else { return }; applyAppearance() }
+    }
+
+    private var wantsGlass: Bool { Appearance.paneGlass || floatsOnGlass }
+
     /// The pane's surface: the clip inside the glass, or — glass off — the clip on `frost`,
     /// a behind-window blur in the glass's place. Re-mounted only when the setting has
     /// changed since the last look, since moving a view with a live terminal in it is not
@@ -535,7 +565,6 @@ public final class PaneContainerView: NSView {
     /// does: an inactive window goes flat all at once, panes included. All of it, and the
     /// material, are `Appearance.frost…` settings, applied in `applyAppearance`.
     private func mountSurface() {
-        let wantsGlass = Appearance.paneGlass
         guard wantsGlass != (glass.contentView === clip) else { return }
         if wantsGlass {
             clip.removeFromSuperview()
@@ -570,7 +599,9 @@ public final class PaneContainerView: NSView {
         frost.state = Appearance.frostAlwaysActive ? .active : .followsWindowActiveState
         applyBackdrop()
         glass.cornerRadius = radius
-        glass.style = Appearance.glassStyle.style
+        // A floating pane is the regular glass whatever the setting: the clear one is
+        // made to sit ON the window's surface, and over other panes it is hardly there.
+        glass.style = floatsOnGlass ? .regular : Appearance.glassStyle.style
         // Resolved inside the view's appearance: the accent can be System Accent, which is
         // dynamic, and `tintColor` is handed a resolved colour rather than a promise.
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
@@ -754,9 +785,16 @@ public final class PaneContainerView: NSView {
 
     /// The band of the header you can pick the pane up by. Between the identity control on
     /// the left and the split cluster on the right, so all three keep their own gestures.
-    private lazy var dragHandle = PaneDragHandleView(paneID: paneID) { [weak self] in
-        self?.paneSnapshot()
-    }
+    private lazy var dragHandle: PaneDragHandleView = {
+        let handle = PaneDragHandleView(paneID: paneID) { [weak self] in self?.paneSnapshot() }
+        // On a floating canvas the band moves the canvas instead.
+        handle.floatDrag = { [weak self] in
+            guard let self, let drag = actions.floatDrag else { return nil }
+            let id = paneID
+            return { drag(id, $0, $1) }
+        }
+        return handle
+    }()
 
     /// A click on the handle that never became a drag is still a click on the header.
     func focusFromHandle() { actions.focus(paneID) }
@@ -960,8 +998,7 @@ public final class PaneContainerView: NSView {
         // cluster. Both ends are controls, and a drag that starts on one of them is a
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
-        let trailingGutter = Self.trailingGutter(showsZoom: isFocused || isZoomed,
-                                                 showsSplit: visitStrip == nil)
+        let trailingGutter = Self.trailingGutter(showsSplit: visitStrip == nil)
         dragHandle.frame = isPlain ? .zero
             : CGRect(x: leadingGutter, y: stripHeight,
                      width: max(0, bounds.width - leadingGutter - trailingGutter),
@@ -972,12 +1009,11 @@ public final class PaneContainerView: NSView {
     public override func updateLayer() { applyLayerState() }
 
     /// The width the header's trailing controls take, which the drag handle stops short
-    /// of: zoom on the focused pane, and the split pair unless the pane is visiting. Each
-    /// is a 28-wide plate, 1 apart, with the header's 5 of trailing padding and 6 of air
+    /// of: the `…` menu, and the split pair unless the pane is visiting. Each is a
+    /// 28-wide plate, 1 apart, with the header's 5 of trailing padding and 6 of air
     /// before the first.
-    static func trailingGutter(showsZoom: Bool, showsSplit: Bool) -> CGFloat {
-        let controls: CGFloat = (showsZoom ? 1 : 0) + (showsSplit ? 2 : 0)
-        guard controls > 0 else { return 5 }
+    static func trailingGutter(showsSplit: Bool) -> CGFloat {
+        let controls: CGFloat = showsSplit ? 3 : 1
         return controls * ChromeIconLabel.width + (controls - 1) + 5 + 6
     }
 }

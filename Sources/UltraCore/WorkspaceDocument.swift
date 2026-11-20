@@ -75,10 +75,15 @@ public struct WindowFrame: Codable, Equatable, Sendable {
 public struct PaneWindowLayout: Codable, Equatable, Sendable {
     public var tree: LayoutTree
     public var frame: WindowFrame?
+    /// True for panes floating over their session's canvas rather than in a window of
+    /// their own: `frame` is then a place on that canvas, not on a screen. Absent in
+    /// every document written before panes could float.
+    public var floats: Bool?
 
-    public init(tree: LayoutTree, frame: CGRect? = nil) {
+    public init(tree: LayoutTree, frame: CGRect? = nil, floats: Bool = false) {
         self.tree = tree
         self.frame = frame.map(WindowFrame.init)
+        self.floats = floats ? true : nil
     }
 }
 

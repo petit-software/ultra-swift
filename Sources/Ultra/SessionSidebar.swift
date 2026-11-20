@@ -328,12 +328,15 @@ struct SessionSidebar: View {
             ui.customizingSessionID = id
         }]
         // Whether this project's agents and shells are listed under its row. File ▸
-        // Session has the same item, and the palette.
-        items.append(SidebarMenuItem(SessionTerminalVisibility.shared.title(for: store)) {
-            withAnimation(Token.Motion.structuralRespectingPreferences) {
-                SessionTerminalVisibility.shared.toggle(for: store)
-            }
-        })
+        // Session has the same item, and the palette. Only on a project with some to
+        // list: an item that shows or hides nothing is not an item.
+        if sessionsToList(for: store) != nil {
+            items.append(SidebarMenuItem(SessionTerminalVisibility.shared.title(for: store)) {
+                withAnimation(Token.Motion.structuralRespectingPreferences) {
+                    SessionTerminalVisibility.shared.toggle(for: store)
+                }
+            })
+        }
         // What dragging the row out of the sidebar does.
         if sessions.canMoveToNewWindow(id) {
             items.append(SidebarMenuItem("Move to New Window") { sessions.moveToNewWindow(id) })

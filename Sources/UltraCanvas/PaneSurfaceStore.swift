@@ -104,6 +104,7 @@ public final class PaneSurfaceStore {
                                           content: content.view, actions: actions,
                                           theme: theme)
         container.paneAppearance = content.record.appearance
+        container.floatsOnGlass = floats
         containers[paneID] = container
         onBuild?(paneID)
         return container
@@ -246,6 +247,10 @@ public final class PaneSurfaceStore {
         return container
     }
 
+    /// Whether this is a floating canvas's store: its panes are on glass. Set before any
+    /// pane is built in it or handed to it.
+    public var floats = false
+
     /// Give a live pane to another store, as it is: the same view, the same process, its
     /// record with it. The one way a surface leaves a store WITHOUT being released — a pane
     /// moving to a canvas in another window of the same session. Taken out of the view
@@ -257,6 +262,7 @@ public final class PaneSurfaceStore {
         let record = records.removeValue(forKey: paneID)
         container.removeFromSuperview()
         container.rewire(to: other.actions)
+        container.floatsOnGlass = other.floats
         container.theme = other.theme
         container.isFocused = false
         // Zoom is the canvas's, not the pane's: the next layout there says what it is.
@@ -277,7 +283,8 @@ public final class PaneSurfaceStore {
     }
 
     /// Exactly one pane wears the focus border at a time.
-    public func setFocused(_ focused: PaneID) {
+    /// Nil marks none: the canvas the keyboard is not in.
+    public func setFocused(_ focused: PaneID?) {
         for (paneID, container) in containers {
             container.isFocused = paneID == focused
         }

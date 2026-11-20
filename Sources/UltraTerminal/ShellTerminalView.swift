@@ -293,6 +293,8 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     public func apply(theme: TerminalTheme) {
         spec.theme = theme
         TerminalPalette.apply(theme, to: self)
+        // A light theme draws through CoreGraphics: see `drawsOnGPU`.
+        applyRenderer()
         needsDisplay = true
     }
 
@@ -317,6 +319,20 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         applyRenderer()
     }
 
+    /// Whether the GPU renderer is the one to use right now: asked for, and on a dark theme.
+    ///
+    /// SwiftTerm's Metal renderer clears its drawable to the background's RGB at the
+    /// background's alpha, unpremultiplied, into a layer that composites premultiplied.
+    /// The cells here paint no background (`TerminalPalette.apply`), so the alpha is zero
+    /// and the RGB is ADDED to whatever is behind the pane. On a dark theme that is a few
+    /// percent of grey and nobody sees it. On a light one it is white: every glyph's
+    /// antialiased edge blends towards white-plus-the-pane instead of the pane, so the
+    /// edge is burnt away — black text comes out thin, and dim or coloured text, which
+    /// has little but edge at this size, is eaten down to an outline. CoreGraphics draws
+    /// onto a truly clear layer, so a light theme is drawn there until the clear colour
+    /// is premultiplied upstream.
+    private var drawsOnGPU: Bool { wantsMetalRenderer && spec.theme.isDark }
+
     /// Bring the renderer in line with `wantsMetalRenderer`.
     ///
     /// A refusal is REPORTED, not swallowed. `setUseMetal` throws when there is no Metal
@@ -325,9 +341,9 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// they would have no way to tell that from Metal simply not being faster.
     public func applyRenderer() {
         guard window != nil else { return }
-        guard wantsMetalRenderer != isUsingMetalRenderer else { return }
+        guard drawsOnGPU != isUsingMetalRenderer else { return }
         do {
-            try setUseMetal(wantsMetalRenderer)
+            try setUseMetal(drawsOnGPU)
         } catch {
             guard wantsMetalRenderer, !hasReportedMetalFailure else { return }
             hasReportedMetalFailure = true

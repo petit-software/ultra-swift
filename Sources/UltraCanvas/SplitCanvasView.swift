@@ -192,6 +192,9 @@ public final class SplitCanvasView: NSView {
     /// pending reclaim whether it has been satisfied or has to be tried again.
     @discardableResult
     func focusFirstResponder() -> Bool {
+        // Of a canvas and the panes floating over it, one has the keyboard, and the
+        // model says which. Every canvas in the window hears it become key.
+        guard store.isActiveCanvas else { return false }
         guard let window, window.isKeyWindow,
               let content = store.surfaces.content(for: displayTree.focused) else { return false }
         // Already somewhere in the focused pane: that IS the pane having the keyboard. A pane
@@ -245,7 +248,9 @@ public final class SplitCanvasView: NSView {
     }
 
     private var windowLayoutBounds: CGRect {
-        guard let window else { return bounds }
+        // A floating canvas is laid out in the place it was given, wherever in the
+        // window that is.
+        guard let window, !store.isFloating else { return bounds }
         // An untitled window has no `contentLayoutRect` to subtract — it reports the whole
         // frame — so the window bar's height is reserved explicitly. Without this the panes
         // slide up under the bar and the traffic lights.
@@ -380,6 +385,13 @@ public final class SplitCanvasView: NSView {
         noteCanvasBounds(canvas)
         var metrics = store.metrics
         metrics.scale = window?.backingScaleFactor ?? 2
+        // A floating canvas is its pane inside its frame: the same width of it on every
+        // side, the top included, since no toolbar holds the pane off that edge here.
+        if store.isFloating {
+            metrics.padding = LayoutStore.floatFrameWidth
+            metrics.edgeInset = 0
+            metrics.topPadding = LayoutStore.floatFrameWidth
+        }
 
         let result = UltraLayout.layout(displayTree, in: canvas, metrics: metrics)
         currentResult = result
@@ -407,7 +419,8 @@ public final class SplitCanvasView: NSView {
         glassHost.frame = bounds
         CATransaction.commit()
 
-        store.surfaces.setFocused(displayTree.focused)
+        // None, on the canvas the keyboard is not in: one pane in the window reads focused.
+        store.surfaces.setFocused(store.isActiveCanvas ? displayTree.focused : nil)
         store.surfaces.setCanClose(displayTree.paneCount > 1)
         store.surfaces.setZoom(displayTree.zoomed, canZoom: displayTree.paneCount > 1)
         overlay.update(result: result)

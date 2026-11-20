@@ -206,7 +206,7 @@ public struct TodoTile: View {
             // Pane ▸ Todo ▸ Toggle Progress Bar, which is how the bar comes back by key.
             TileFooterButton(symbol: "percent",
                              help: store.showsProgress ? "Hide progress" : "Show progress",
-                             tint: store.showsProgress ? Token.Colour.accent : nil) {
+                             tint: store.showsProgress ? Token.Colour.accentInk : nil) {
                 store.toggleProgress()
             }
             TileFooterButton(symbol: "xmark.circle.fill",

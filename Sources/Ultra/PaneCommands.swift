@@ -20,7 +20,7 @@ enum PaneCommands {
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
-                                 + [showAgents, openAgentProject, openWaiting]
+                                 + [showAgents, openAgentProject, openWaiting, toggleAppearance]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
@@ -61,6 +61,24 @@ enum PaneCommands {
         isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
             guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
             AgentsOverview.shared.toggle(in: list)
+        }
+
+    /// Light to dark and back: Settings ▸ Appearance's theme, from the keys. From Follow
+    /// System it goes to the opposite of what the Mac is showing, and stays there — a
+    /// toggle that left the app following the system would do nothing until the Mac
+    /// changed. View ▸ Toggle Light and Dark Mode, and the palette.
+    static let toggleAppearance = AppCommand(
+        id: "view.toggleAppearance", title: "Toggle Light and Dark Mode",
+        symbol: "circle.lefthalf.filled", menuPath: ["View"],
+        keywords: ["Light Mode", "Dark Mode", "Switch Theme", "Appearance", "Switch to Light",
+                   "Switch to Dark"],
+        isEnabled: { _ in true }) { _ in
+            let isDark: Bool = switch Preferences.themeMode {
+            case .dark: true
+            case .light: false
+            case .system: Preferences.systemPrefersDark
+            }
+            Preferences.themeMode = isDark ? .light : .dark
         }
 
     /// The pane that has waited longest for an answer, wherever it is: on the overview
@@ -749,10 +767,12 @@ enum PaneCommands {
     static let paneKinds: [AppCommand] =
         PaneKind.offered.filter { $0.kind != .shell }.map { entry in
             AppCommand(id: "pane.new.\(entry.kind.rawValue)",
-                       title: "New \(entry.title) Pane",
+                       title: "Add \(entry.title) Pane",
                        symbol: entry.symbol,
                        menuPath: ["Pane", "New Pane"],
                        binding: nil,
+                       // What it was called, so the old words still find it.
+                       keywords: ["New \(entry.title) Pane", "Open \(entry.title) Pane"],
                        isEnabled: { ShellWorkspace.canOpen(entry.kind, in: $0) }) { store in
                 ShellWorkspace.openTile(entry.kind, in: store)
             }
@@ -965,7 +985,23 @@ enum PaneCommands {
                    symbol: "arrow.up.right.and.arrow.down.left", menuPath: ["Pane"],
                    binding: KeyBinding("m", [.command, .shift]),
                    keywords: ["Attach Pane", "Return Pane"],
-                   isEnabled: { $0.isPaneWindow }) { $0.moveBackToMainWindow() },
+                   isEnabled: { $0.isPaneWindow && !$0.isFloating }) { $0.moveBackToMainWindow() },
+        // A pane lifted off the tiling to float over it, where it is put, and back. The
+        // key path of the pane header's `…` menu. No chord: the palette is one ⌘K away.
+        AppCommand(id: "pane.float", title: "Float Pane",
+                   symbol: "macwindow.on.rectangle", menuPath: ["Pane"],
+                   keywords: ["Floating Pane", "Floating Window", "Pop Pane Over", "Picture in Picture"],
+                   isEnabled: { $0.canFloat() }) { $0.floatPane() },
+        AppCommand(id: "pane.dock", title: "Dock Pane",
+                   symbol: "rectangle.split.2x1", menuPath: ["Pane"],
+                   keywords: ["Unfloat Pane", "Tile Pane", "Stop Floating"],
+                   isEnabled: { $0.isFloating }) { $0.dockPane() },
+        // In and out of a floating pane from the keys: focus by direction stays on the
+        // canvas it is on, and a floating pane is a canvas of its own.
+        AppCommand(id: "pane.focusFloating", title: "Focus Next Floating Pane",
+                   symbol: "rectangle.on.rectangle", menuPath: ["Pane"],
+                   keywords: ["Focus Tiled Panes", "Leave Floating Pane", "Cycle Floating Panes"],
+                   isEnabled: { $0.canCycleCanvas }) { $0.cycleCanvas() },
         AppCommand(id: "pane.zoom", title: "Toggle Zoom",
                    symbol: "arrow.up.left.and.arrow.down.right", menuPath: ["Pane"],
                    binding: KeyBinding(.return, [.command, .shift]),
@@ -1047,7 +1083,7 @@ struct PaneMenuCommands: Commands {
                 .keyboardShortcut("t", modifiers: [.command, .option])
 
                 // Each agent by name. The FIRST installed one is the default — what ⌥⌘A
-                // and "New Agent Pane" in the palette open — and it carries the key so the
+                // and "Add Agent Pane" in the palette open — and it carries the key so the
                 // menu teaches it. An agent that is not installed stays in the list,
                 // dimmed, with the binary it was looking for: hidden, it would look like
                 // the project had forgotten it.
