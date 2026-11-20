@@ -19,6 +19,8 @@ The whole window is one material. There is no opaque layer anywhere in it.
 | Tile headers | **No fill.** A label floating on the pane's own glass |
 | Gutters between panes | Clear — you see through the window between the tiles |
 | Window bar, palette, drop indicator | Glass |
+| Session sidebar | A floating panel in the colour of the panes, at a pane's corners, inset from the window's edges by the window padding. It is the split view's own column glass, drawn in and covered with a pane's surface (`SidebarColumnChrome`, `PaneSurface`); no divider, no shadow. The selected row is `selectionWash`, not glass |
+| Session sidebar | The system's floating glass panel, inset from the window's edges. Nothing laid inside it; the selected row is `selectionWash`, not glass |
 | Window bar buttons | **No capsule.** macOS 26 wraps each toolbar item in glass; every item here hides it (`sharedBackgroundVisibility(.hidden)`), so the glyph sits on the bar's own glass — a capsule on it was glass on glass |
 
 **The one switch.** Settings ▸ General ▸ Appearance ▸ Glass panes (`Appearance.paneGlass`)

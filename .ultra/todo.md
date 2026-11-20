@@ -27,3 +27,11 @@
 - [x] A floating pane is opaque again: glass, and no translucency over it
 - [x] Dragged past an edge a floating pane gives a quarter of the way, and springs back inside when let go (`floatFrame(_:pulledPast:)`, `isFloatHeld`)
 - [x] A floating pane's frame shows only under the pointer, and while it is being dragged
+
+## Floating sidebar
+
+- [x] The sidebar floats: the split view's own column glass, drawn in from the window's edges by the window padding and given a pane's corners, with the traffic lights on it (`SidebarColumnChrome`, `SessionSidebar.panelInset`)
+- [x] No divider, no shadow and no surface of its own under the sidebar: the window's surface runs unbroken round the panel and the panes
+- [x] The sidebar's panel is the colour of the panes: a pane's frost and unfocused wash, or the panes' glass with Glass panes on (`PaneSurface`)
+- [x] The selected row is the neutral wash on the sidebar's glass, not a glass capsule of its own (`SelectedProjectWash`)
+- [ ] Try in Ultra Dev by hand: the floating sidebar in dark mode, collapsed and reopened, a row dragged, and in full screen
