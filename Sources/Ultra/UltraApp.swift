@@ -714,6 +714,19 @@ struct WorkspaceCommands: Commands {
             // And by name: the three the toggle moves between, the current one ticked.
             ColourModeMenu()
             GridModeMenu()
+            AuroraToggle()
+
+            Divider()
+
+            // The sidebar's filter, from the keys.
+            Button(PaneCommands.filterProjects.title) {
+                if let store { PaneCommands.filterProjects.run(store) }
+            }
+            .disabled(store.map { !PaneCommands.filterProjects.isEnabled($0) } ?? true)
+            Button(PaneCommands.clearProjectFilter.title) {
+                if let store { PaneCommands.clearProjectFilter.run(store) }
+            }
+            .disabled(store.map { !PaneCommands.clearProjectFilter.isEnabled($0) } ?? true)
             if AgentsOverview.isDevBuild {
                 Button(PaneCommands.agentsDemo.title) {
                     if let store { PaneCommands.agentsDemo.run(store) }
@@ -932,6 +945,17 @@ struct RootView: View {
             ? WindowBarControls.leading + WindowBarControls.box + WindowBarControls.spacing : 0
     }
 
+    /// How much of the canvas's leading padding is taken back beside the sidebar. All of
+    /// it: the sidebar's rows already stand a margin in from the column's edge, and the
+    /// window padding on top of that made the gap between the sidebar and the panes 18pt
+    /// where every other gap in the window is 8 or 10. With it gone the gap is the
+    /// sidebar's own 10. Nothing to take back with the sidebar hidden, where the padding
+    /// is the window's edge.
+    private var canvasLeadingTrim: CGFloat {
+        _ = lookRevision
+        return columnVisibility == .detailOnly ? 0 : Appearance.canvasPadding
+    }
+
     /// The canvas on screen: the Agents overview's while the window shows it, else the
     /// selected session's. Nil only for the instant before the first session exists.
     private var store: LayoutStore? {
@@ -987,10 +1011,11 @@ struct RootView: View {
                 if ui.showsAgents {
                     // Every working agent's pane, lent to one canvas — see `AgentsOverview`.
                     CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset,
-                                  topInset: canvasTopInset, cornerReserve: canvasCornerReserve)
+                                  topInset: canvasTopInset, cornerReserve: canvasCornerReserve,
+                                  leadingTrim: canvasLeadingTrim)
                 } else if let store {
                     CanvasSurface(store: store, bottomInset: beltInset, topInset: canvasTopInset,
-                                  cornerReserve: canvasCornerReserve)
+                                  cornerReserve: canvasCornerReserve, leadingTrim: canvasLeadingTrim)
                         // Over the canvas, above the belt when it is up: the question is the
                         // session's, not any one pane's.
                         .tileToast(setupNotice(for: store),
@@ -1241,6 +1266,7 @@ struct RootView: View {
                 Divider()
                 ColourModeMenu()
                 GridModeMenu()
+                AuroraToggle()
             } label: {
                 WindowBarGlyph("More", symbol: "ellipsis")
             }
@@ -1295,6 +1321,22 @@ struct GridModeMenu: View {
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
             revision &+= 1
         }
+    }
+}
+
+/// Aurora, ticked while it is on: the glow in the project's colour at the foot of the
+/// window (`Appearance.aurora`). One definition for the View menu and the window's `…`
+/// menu; `PaneCommands.toggleAurora` is the same switch in the palette, and Settings ▸
+/// Appearance has it beside its strength.
+struct AuroraToggle: View {
+    @State private var revision = 0
+
+    var body: some View {
+        Toggle("Aurora", isOn: Binding(get: { _ = revision; return Appearance.aurora },
+                                       set: { Appearance.aurora = $0 }))
+            .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
+                revision &+= 1
+            }
     }
 }
 

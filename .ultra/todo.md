@@ -55,3 +55,15 @@
 - [x] A pane's header keeps 44pt between its name and its controls to be picked up by: a long name — an agent at work — took the whole band, and a floating pane could not be moved by its header (`PaneHeader.minDragBand`)
 - [x] Back in the Relaxed grid the title band's controls return to the traffic lights' line: their height was read inside a modifier that was never run again (`WindowBarControlStyle.line`)
 - [ ] Try in Ultra Dev by hand: full screen, where the traffic lights are gone and the titlebar is a window of AppKit's own — the controls, and the corner pane's header; the sidebar's edge against the canvas in light mode; a pane's header at the top of the window — its buttons, dragging it, and a browser or editor pane there; dragging the window, by the sidebar's head and with the sidebar hidden; the Agents overview with the sidebar hidden
+
+## Sidebar footer: filter and empty project
+
+- [x] The sidebar's footer has the filter in its bottom left corner and one button in its bottom right, the stack, which opens a menu of every way in (`SessionSidebarBar`)
+- [x] Filter projects by name: the button puts up a small field, and only the projects whose name has what is typed are listed; the button wears the ink while a filter is set. View ▸ Filter Projects… and Clear Project Filter, and the palette (`UIState.projectFilter`, `ProjectFilterButton`, `PaneCommands.filterProjects`)
+- [x] The stack opens a menu: New Empty Project — a session on no folder, File ▸ New Shell Session — New Project…, Open Project… and Open Recent; `+` and the folder are off the sidebar's footer and still on the belt (`AddProjectButton`)
+- [x] A filtered list is not reordered by dragging, and a click, a right-click and the chevron act on the row's own project (`SessionSidebar.sessionIndex(row:)`)
+- [x] The sidebar's footer stands off the window's bottom edge by the canvas's padding, so its icons are on a pane footer's line in the Relaxed grid (`SessionSidebar.footerLift`)
+- [x] The gap between the sidebar and the panes is the sidebar's own 10pt margin, not that and the window padding: 18pt came down to 10 (`SplitCanvasView.leadingTrim`, `RootView.canvasLeadingTrim`)
+- [x] A zoomed pane has a zoom-out button in its header, leading the trailing controls, in the ink; the `…` menu no longer wears it (`PaneHeader`)
+- [x] Aurora, ticked while on, in the window's `…` menu and under View; Toggle Aurora in the palette (`AuroraToggle`, `PaneCommands.toggleAurora`)
+- [ ] Try in Ultra Dev by hand: the filter's field — typing, Return, Escape, the clear button — and the keyboard going back to the shell; View ▸ Filter Projects… with the sidebar hidden

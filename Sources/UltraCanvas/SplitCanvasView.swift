@@ -52,6 +52,17 @@ public final class SplitCanvasView: NSView {
         }
     }
 
+    /// How much of the layout's leading padding is taken back: the panes start that much
+    /// nearer this view's leading edge. Beside the sidebar, which keeps a margin of its
+    /// own on that side, the window padding as well made the gap between the two twice
+    /// the one between any two other things in the window.
+    var leadingTrim: CGFloat = 0 {
+        didSet {
+            guard leadingTrim != oldValue else { return }
+            needsLayout = true
+        }
+    }
+
     /// How much of this view's top-left corner the window draws over — the traffic lights
     /// and the sidebar's button, while the sidebar is hidden and the canvas reaches the
     /// window's corner. The pane lying under it moves its header's contents clear
@@ -279,6 +290,8 @@ public final class SplitCanvasView: NSView {
             var inset = bounds
             inset.origin.y += topInset
             inset.size.height = max(0, inset.height - topInset)
+            inset.origin.x -= leadingTrim
+            inset.size.width += leadingTrim
             return inset
         }
         // An untitled window has no `contentLayoutRect` to subtract — it reports the whole

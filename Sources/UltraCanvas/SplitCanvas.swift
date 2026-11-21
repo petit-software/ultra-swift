@@ -10,13 +10,15 @@ public struct SplitCanvas: NSViewRepresentable {
     private let bottomInset: CGFloat
     private let topInset: CGFloat?
     private let cornerReserve: CGFloat
+    private let leadingTrim: CGFloat
 
     public init(store: LayoutStore, bottomInset: CGFloat = 0, topInset: CGFloat? = nil,
-                cornerReserve: CGFloat = 0) {
+                cornerReserve: CGFloat = 0, leadingTrim: CGFloat = 0) {
         self.store = store
         self.bottomInset = bottomInset
         self.topInset = topInset
         self.cornerReserve = cornerReserve
+        self.leadingTrim = leadingTrim
     }
 
     public func makeNSView(context: Context) -> SplitCanvasView {
@@ -36,6 +38,7 @@ public struct SplitCanvas: NSViewRepresentable {
         view.bottomInset = bottomInset
         view.topInset = topInset
         view.cornerReserve = cornerReserve
+        view.leadingTrim = leadingTrim
         view.sync()
         // Separate from `sync`, which re-asserts focus only as a side effect of the model
         // having changed. This is the model asking for it directly — see
@@ -59,6 +62,7 @@ public struct CanvasSurface: View {
     private let bottomInset: CGFloat
     private let topInset: CGFloat?
     private let cornerReserve: CGFloat
+    private let leadingTrim: CGFloat
 
     /// - `bottomInset`: room to leave under the panes for something the window floats over
     ///   the canvas's bottom edge — the session tab belt. See `SplitCanvasView.bottomInset`.
@@ -66,12 +70,15 @@ public struct CanvasSurface: View {
     ///   the titlebar. See `SplitCanvasView.topInset`.
     /// - `cornerReserve`: how much of the canvas's top-left corner the window draws over.
     ///   See `SplitCanvasView.cornerReserve`.
+    /// - `leadingTrim`: how much of the leading window padding is taken back. See
+    ///   `SplitCanvasView.leadingTrim`.
     public init(store: LayoutStore, bottomInset: CGFloat = 0, topInset: CGFloat? = nil,
-                cornerReserve: CGFloat = 0) {
+                cornerReserve: CGFloat = 0, leadingTrim: CGFloat = 0) {
         self.store = store
         self.bottomInset = bottomInset
         self.topInset = topInset
         self.cornerReserve = cornerReserve
+        self.leadingTrim = leadingTrim
     }
 
     public var body: some View {
@@ -86,7 +93,7 @@ public struct CanvasSurface: View {
             // every cached frame, focus target and drag in flight belongs to the old
             // tree. Identity is the blunter tool and the safer one.
             SplitCanvas(store: store, bottomInset: bottomInset, topInset: topInset,
-                        cornerReserve: cornerReserve)
+                        cornerReserve: cornerReserve, leadingTrim: leadingTrim)
                 .id(store.workspaceID)
             // The panes floating over the tiling, in the canvas's own coordinates.
             FloatingPanes(store: store)

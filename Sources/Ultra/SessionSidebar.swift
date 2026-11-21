@@ -83,7 +83,8 @@ struct SessionSidebar: View {
                 // toolbar item, up in the strip the traffic lights own and a long way from
                 // the list it adds to.
                 .overlay(alignment: .bottom) {
-                    SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder)
+                    SessionSidebarBar(sessions: sessions, ui: ui, openFolder: openFolder,
+                                      lift: footerLift)
                 }
         }
         .onReceive(NotificationCenter.default.publisher(for: SessionAppearanceStore.didChange)) { _ in
@@ -103,6 +104,31 @@ struct SessionSidebar: View {
         }
         // In an overlay because a `background` on the column's root is never built.
         .overlay { SidebarColumnChrome().accessibilityHidden(true) }
+    }
+
+    /// The projects listed: all of them, or — with a filter typed (`UIState.projectFilter`)
+    /// — only those whose name has it in it, in the order they are in.
+    private var shown: [LayoutStore] {
+        let filter = ui.projectFilter.trimmingCharacters(in: .whitespaces)
+        guard !filter.isEmpty else { return sessions.sessions }
+        return sessions.sessions.filter { $0.workspaceTitle.localizedCaseInsensitiveContains(filter) }
+    }
+
+    /// Which session a row of the list is. The rows are `shown`; everything that acts on
+    /// a session — a click, its menu, picking it up — wants its place among all of them.
+    private func sessionIndex(row: Int) -> Int? {
+        let shown = shown
+        guard shown.indices.contains(row) else { return nil }
+        return sessions.sessions.firstIndex { $0 === shown[row] }
+    }
+
+    /// How far the footer stands off the window's bottom edge: the canvas's padding, which
+    /// is how far a pane's own footer does. The two rows of icons along the bottom of the
+    /// window are then one row. Read here, where a changed setting is heard, and handed
+    /// down.
+    private var footerLift: CGFloat {
+        _ = lookRevision
+        return Appearance.canvasPadding
     }
 
     /// The space between the Agents row and the first project.
@@ -193,6 +219,9 @@ struct SessionSidebar: View {
     /// A row has been picked up: `SidebarRowPress` saw the press travel. False when
     /// there is nothing to drag it among — the rows are not measured, or there is one.
     private func beginDrag(_ index: Int, at point: CGPoint) -> Bool {
+        // Not while filtered: a row dragged among the few that are listed would land
+        // somewhere among the many that are not.
+        guard ui.projectFilter.isEmpty else { return false }
         guard drag == nil, sessions.sessions.indices.contains(index), var strip else { return false }
         // Picked up, a project is its own row and nothing more: what is listed under it
         // folds away until it is put down, so the place it leaves, the place it will land
@@ -371,7 +400,7 @@ struct SessionSidebar: View {
                 .listRowBackground(
                     SelectedProjectWash(isSelected: ui.showsAgents)
                         .padding(.bottom, Self.agentsGap))
-            ForEach(sessions.sessions, id: \.workspaceID) { store in
+            ForEach(shown, id: \.workspaceID) { store in
                 let isDragged = drag?.id == store.workspaceID
                 // The row, and under it the project's terminals when an agent is in one
                 // of them. One list row for both, so a project is dragged, slid aside and
@@ -438,9 +467,9 @@ struct SessionSidebar: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { listFrame = $0 }
         .background {
             SidebarRowPress(origin: listFrame.origin, rowHeight: rowHeight,
-                            count: sessions.sessions.count,
-                            clicked: { index, point in
-                                guard sessions.sessions.indices.contains(index) else { return }
+                            count: shown.count,
+                            clicked: { row, point in
+                                guard let index = sessionIndex(row: row) else { return }
                                 let store = sessions.sessions[index]
                                 // On the icon of a project with sessions to list, the
                                 // click is the chevron's: it folds them away or back.
@@ -459,13 +488,16 @@ struct SessionSidebar: View {
                                     sessions.select(store.workspaceID)
                                 }
                             },
-                            menu: menuItems,
-                            menuShown: { index in
-                                menuRowID = index.flatMap {
-                                    sessions.sessions.indices.contains($0) ? sessions.sessions[$0].workspaceID : nil
+                            menu: { row in sessionIndex(row: row).map(menuItems) ?? [] },
+                            menuShown: { row in
+                                menuRowID = row.flatMap(sessionIndex(row:)).map {
+                                    sessions.sessions[$0].workspaceID
                                 }
                             },
-                            began: beginDrag, moved: pointerMoved, released: pointerReleased)
+                            began: { row, point in
+                                sessionIndex(row: row).map { beginDrag($0, at: point) } ?? false
+                            },
+                            moved: pointerMoved, released: pointerReleased)
         }
         .overlay(alignment: .topLeading) { dragOverlay }
         .onDisappear {
@@ -485,7 +517,7 @@ struct SessionSidebar: View {
         // rows stop dead at the footer's top edge, nothing ever passes underneath, and the
         // ramp has nothing to fade against. Which made the footer read as a bar bolted on —
         // which is what the divider was there to justify.
-        .contentMargins(.bottom, Token.Space.tileHeaderHeight, for: .scrollContent)
+        .contentMargins(.bottom, Token.Space.tileHeaderHeight + footerLift, for: .scrollContent)
         // The list draws nothing of its own behind the rows: the surface is the ZStack's.
         .scrollContentBackground(.hidden)
         .accessibilityLabel("Sessions")
@@ -996,35 +1028,36 @@ private struct SidebarColumnChrome: NSViewRepresentable {
     }
 }
 
-/// The bar under the list: the two ways a project gets into this window.
+/// The bar under the list: the filter at one end, and at the other the ways a project
+/// gets into this window.
 ///
-/// TWO controls, and only two. `+` makes a project that does not exist yet — an empty
-/// folder, or a clone — and the folder opens one that does. They were one button for a
-/// while, and the one button could only do the second thing: a `+` that opens a file picker
-/// is not "new", it is "open" wearing the wrong icon, and there was nowhere at all to start
-/// a project from scratch.
+/// One control at each end. The filter acts on the list above it; the stack adds to it,
+/// and opens a menu of every way in — an empty project, a new one, an existing folder,
+/// a recent one. There were three buttons at that end, one per way in: a bottom bar is
+/// the easiest place in an app to accumulate buttons nobody presses, and a menu names
+/// each of them where three glyphs side by side had to be learnt. The session tab belt
+/// still carries `+` and the folder on their own.
 ///
-/// A bottom bar is the easiest place in an app to accumulate buttons nobody presses.
 /// Everything else a session can do is on the row itself.
 private struct SessionSidebarBar: View {
     @Bindable var sessions: SessionList
     @Bindable var ui: UIState
     let openFolder: () -> Void
+    /// How far the icons stand off the window's bottom edge — see `SessionSidebar.footerLift`.
+    var lift: CGFloat = 0
 
     var body: some View {
-        // One in each corner. Side by side they read as a pair of related verbs — "add" and
-        // "add, but differently" — and the eye has to stop at both to work out which is
-        // which. Pushed apart, each is the only thing at its end of the bar: new on the
-        // leading edge where a source list puts "add", open on the trailing edge.
         HStack(spacing: 0) {
-            NewProjectButton(ui: ui)
+            ProjectFilterButton(sessions: sessions, ui: ui)
             Spacer(minLength: 0)
-            OpenProjectButton(sessions: sessions, openFolder: openFolder)
+            AddProjectButton(sessions: sessions, ui: ui, openFolder: openFolder)
         }
         .padding(.horizontal, 6)
         // The same height as a tile's footer and a pane's header, so every horizontal strip
         // in the window sits on one rhythm.
         .frame(height: Token.Space.tileHeaderHeight)
+        // Inside the ramp, which still runs to the window's edge under the icons.
+        .padding(.bottom, lift)
         // The SAME ramp a tile footer wears (`TileFooter`): solid at the bottom edge, gone
         // by the top, with rows passing under it and fading out.
         //
@@ -1032,6 +1065,92 @@ private struct SessionSidebarBar: View {
         // bottom of the sidebar — a second surface inside the first — and the line was only
         // needed because the fill ended abruptly. A ramp has no edge to justify.
         .background { EdgeBlur(edge: .bottom) }
+    }
+}
+
+/// The sidebar's filter: a button that puts up a small field, and the list is narrowed to
+/// the projects whose name has what is typed in it (`UIState.projectFilter`). The button
+/// wears the ink while a filter is set — the list is not all there, and this is the mark
+/// that says so and the way back. View ▸ Filter Projects… is the same field from the keys.
+private struct ProjectFilterButton: View {
+    @Bindable var sessions: SessionList
+    @Bindable var ui: UIState
+    @FocusState private var isFieldFocused: Bool
+
+    private var isActive: Bool { !ui.projectFilter.isEmpty }
+
+    var body: some View {
+        Button { ui.isFilteringProjects.toggle() } label: {
+            ProjectBarLabel(symbol: "line.3.horizontal.decrease.circle.fill",
+                            tint: isActive ? Token.Colour.accentInk : nil)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(isActive ? "Filtered by “\(ui.projectFilter)” — click to change" : "Filter projects by name")
+        .accessibilityLabel("Filter projects")
+        .popover(isPresented: $ui.isFilteringProjects, arrowEdge: .top) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(Token.Colour.secondaryLabel)
+                TextField("Filter projects", text: $ui.projectFilter)
+                    .textFieldStyle(.plain)
+                    .focused($isFieldFocused)
+                    // Return keeps the filter and puts the field away.
+                    .onSubmit { ui.isFilteringProjects = false }
+                    .frame(width: 180)
+                if isActive {
+                    Button { ui.projectFilter = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Token.Colour.secondaryLabel)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show every project")
+                    .accessibilityLabel("Clear filter")
+                }
+            }
+            .padding(10)
+            .onAppear { isFieldFocused = true }
+        }
+        // The field took the keyboard; put away, the shell has it back.
+        .onChange(of: ui.isFilteringProjects) { _, shown in
+            if !shown { sessions.selected?.reclaimKeyboardFocus() }
+        }
+    }
+}
+
+/// Every way a project gets into this window, behind one button: an empty project — a
+/// session on no folder, its shell in the home directory (`SessionList.openShell`) — a
+/// new one, an empty folder or a clone, an existing folder, and the recent ones. Each is
+/// a File menu command first: New Shell Session, New Project…, Open Folder….
+private struct AddProjectButton: View {
+    @Bindable var sessions: SessionList
+    @Bindable var ui: UIState
+    let openFolder: () -> Void
+
+    var body: some View {
+        Menu {
+            Button("New Empty Project") { sessions.openShell() }
+            Button("New Project…") { ui.isCreatingProject = true }
+            Divider()
+            Button("Open Project…") { openFolder() }
+            if !RecentProjects.list.isEmpty {
+                Menu("Open Recent") {
+                    ForEach(RecentProjects.list, id: \.self) { path in
+                        Button(ShellPaneFactory.abbreviate(path)) { sessions.open(directory: path) }
+                    }
+                }
+            }
+        } label: {
+            ProjectBarLabel(symbol: "rectangle.stack.fill.badge.plus")
+        }
+        // As `OpenProjectButton` has it, and for its reasons.
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .tint(Token.Colour.secondaryLabel)
+        .help("Add a project")
+        .accessibilityLabel("Add project")
     }
 }
 
@@ -1138,6 +1257,8 @@ struct OpenProjectButton: View {
 struct ProjectBarLabel: View {
     let symbol: String
     var size: ProjectControlSize = .bar
+    /// In place of the resting colour: the filter's button while a filter is set.
+    var tint: Color?
 
     var body: some View {
         Image(systemName: symbol)
@@ -1149,7 +1270,7 @@ struct ProjectBarLabel: View {
             // and a borderless menu draws its label in the CONTROL tint while a plain button
             // takes the foreground it is given — so the pair rendered in two different
             // colours despite sharing this label.
-            .foregroundStyle(Token.Colour.secondaryLabel)
+            .foregroundStyle(tint ?? Token.Colour.secondaryLabel)
             .frame(width: size.width, height: size.height)
             .contentShape(.rect)
     }

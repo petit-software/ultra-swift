@@ -21,7 +21,8 @@ enum PaneCommands {
                                  + [nextSession, previousSession] + prompt
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
                                  + [showAgents, openAgentProject, openWaiting, toggleAppearance]
-                                 + colourModes + gridModes
+                                 + colourModes + gridModes + [toggleAurora]
+                                 + [filterProjects, clearProjectFilter]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
@@ -103,6 +104,35 @@ enum PaneCommands {
             Preferences.themeMode = .system
         },
     ]
+
+    /// The aurora on and off: the glow in the project's colour at the foot of the window
+    /// (`Appearance.aurora`, Settings ▸ Appearance). View ▸ Aurora, the window's `…`
+    /// menu, and the palette.
+    static let toggleAurora = AppCommand(
+        id: "view.toggleAurora", title: "Toggle Aurora",
+        symbol: "sparkles", menuPath: ["View"],
+        keywords: ["Aurora Mode", "Project Glow", "Window Glow", "Show Aurora", "Hide Aurora"]) { _ in
+            Appearance.aurora.toggle()
+        }
+
+    /// Narrow the sidebar to the projects whose name has what is typed in it: the field
+    /// over the sidebar's filter button. View ▸ Filter Projects…, and the palette.
+    static let filterProjects = AppCommand(
+        id: "sidebar.filter", title: "Filter Projects…",
+        symbol: "line.3.horizontal.decrease.circle", menuPath: ["View"],
+        keywords: ["Filter Sidebar", "Find Project", "Search Projects", "Filter Sessions"],
+        isEnabled: { SessionList.holding($0)?.ui != nil }) { store in
+            SessionList.holding(store)?.ui?.isFilteringProjects = true
+        }
+
+    /// Every project listed again. Dimmed with no filter set.
+    static let clearProjectFilter = AppCommand(
+        id: "sidebar.clearFilter", title: "Clear Project Filter",
+        symbol: "line.3.horizontal.decrease.circle", menuPath: ["View"],
+        keywords: ["Show All Projects", "Remove Filter"],
+        isEnabled: { !(SessionList.holding($0)?.ui?.projectFilter.isEmpty ?? true) }) { store in
+            SessionList.holding(store)?.ui?.projectFilter = ""
+        }
 
     /// Grid Mode: relaxed — rounded panes with the window showing between and round them
     /// — or compact, the panes edge to edge as cells ruled off by hairlines
@@ -269,7 +299,8 @@ enum PaneCommands {
         id: "session.newShell", title: "New Shell Session", symbol: "plus",
         menuPath: ["File"],
         binding: KeyBinding("t", [.command, .shift]),
-        keywords: ["New Shell", "Open Shell", "Scratch Shell", "Add Shell"],
+        keywords: ["New Shell", "Open Shell", "Scratch Shell", "Add Shell", "New Empty Project",
+                   "Empty Project", "Project Without a Folder"],
         isEnabled: { SessionList.holding($0) != nil }) { store in
             SessionList.holding(store)?.openShell()
         }

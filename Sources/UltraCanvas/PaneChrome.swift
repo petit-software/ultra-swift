@@ -206,6 +206,19 @@ public struct PaneHeader: View {
             // are fixed-size, so the identity control is the only thing that gives, and it
             // gives by trimming its name.
             HStack(spacing: 1) {
+                // Zoomed, the way back is a button of its own, leading the cluster and in
+                // the ink at full strength: every other pane is hidden, and this is the
+                // mark that says so. Only then — at rest zoom is in the `…` menu, where a
+                // second control for it was the same verb twice in the strip with the
+                // least room. Pane ▸ Zoom Pane (⇧⌘↩) is the same switch.
+                if isZoomed {
+                    PaneHeaderButton(symbol: "arrow.down.right.and.arrow.up.left",
+                                     help: "Zoom Out — Restore Panes (⇧⌘↩)",
+                                     tint: Token.Colour.accentInk) {
+                        actions.zoom(paneID)
+                    }
+                    .accessibilityLabel("Zoom out")
+                }
                 if showsControls {
                     PaneHeaderButton(symbol: "square.split.2x1", help: "Split Right (⌘D)") {
                         actions.split(paneID, .right)
@@ -218,15 +231,10 @@ public struct PaneHeader: View {
                 }
                 // Last, at the far end, on every pane: how it sits on the canvas — filling
                 // it, floating over it, or in a window of its own. Each is a Pane menu
-                // command first; this is their pointer path. Zoom was a button of its own
-                // beside it, the same verb twice in the one strip with the least room.
-                // While zoomed the menu wears the ink at full strength: every other pane
-                // is hidden, and this is the mark that says so and the way back.
-                ChromeMenuButton(symbol: "ellipsis",
-                                 help: isZoomed ? "Pane Options — Zoomed (⇧⌘↩ restores)" : "Pane Options",
-                                 tint: isZoomed ? Token.Colour.accentInk : nil,
+                // command first; this is their pointer path.
+                ChromeMenuButton(symbol: "ellipsis", help: "Pane Options",
                                  entries: placementEntries)
-                    .opacity(isZoomed ? 1 : controlOpacity)
+                    .opacity(controlOpacity)
             }
             .fixedSize()
         }
@@ -1056,7 +1064,7 @@ public final class PaneContainerView: NSView {
         // cluster. Both ends are controls, and a drag that starts on one of them is a
         // misfire — and the name is a control now, so its edge is measured, not assumed.
         let leadingGutter: CGFloat = identityTrailing + 2
-        let trailingGutter = Self.trailingGutter(showsSplit: visitStrip == nil)
+        let trailingGutter = Self.trailingGutter(showsSplit: visitStrip == nil, zoomed: isZoomed)
         dragHandle.frame = isPlain ? .zero
             : CGRect(x: leadingGutter, y: stripHeight,
                      width: max(0, bounds.width - leadingGutter - trailingGutter),
@@ -1067,11 +1075,11 @@ public final class PaneContainerView: NSView {
     public override func updateLayer() { applyLayerState() }
 
     /// The width the header's trailing controls take, which the drag handle stops short
-    /// of: the `…` menu, and the split pair unless the pane is visiting. Each is a
-    /// 28-wide plate, 1 apart, with the header's 5 of trailing padding and 6 of air
-    /// before the first.
-    static func trailingGutter(showsSplit: Bool) -> CGFloat {
-        let controls: CGFloat = showsSplit ? 3 : 1
+    /// of: the `…` menu, the split pair unless the pane is visiting, and the zoom-out
+    /// button while the pane is zoomed. Each is a 28-wide plate, 1 apart, with the
+    /// header's 5 of trailing padding and 6 of air before the first.
+    static func trailingGutter(showsSplit: Bool, zoomed: Bool = false) -> CGFloat {
+        let controls: CGFloat = (showsSplit ? 3 : 1) + (zoomed ? 1 : 0)
         return controls * ChromeIconLabel.width + (controls - 1) + 5 + 6
     }
 }

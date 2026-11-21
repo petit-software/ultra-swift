@@ -20,6 +20,12 @@ final class UIState {
     /// the same update that set it — the sheet never opened, only the tab changed. Naming
     /// the session means nothing about the selection can take the sheet away from it.
     var customizingSessionID: UUID?
+    /// What the sidebar's list is narrowed to: only projects whose name has this in it
+    /// are listed. Empty for all of them. Window state, like the flags round it: the
+    /// sidebar's filter button and View ▸ Filter Projects… both write it.
+    var projectFilter = ""
+    /// Whether the filter's field is up, over the sidebar's filter button.
+    var isFilteringProjects = false
     /// Whether the new-project sheet is up.
     ///
     /// Window state rather than sidebar state, for the same reason as the flag above: there
