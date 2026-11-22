@@ -19,7 +19,7 @@ enum PaneCommands {
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + git + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
-                                 + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions, markSessionInactive]
+                                 + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions, markSessionInactive, markSessionActive]
                                  + [showAgents, openAgentProject, openWaiting, toggleAppearance]
                                  + colourModes + gridModes + [toggleAurora]
                                  + [filterProjects, clearProjectFilter]
@@ -359,16 +359,26 @@ enum PaneCommands {
             SessionTerminalVisibility.shared.toggle(for: store)
         }
 
-    /// The project put away before its half hour is up: its finished turns are inactive
-    /// at once — the row grey, its sessions no longer listed — until an agent's next
-    /// turn. The sidebar row's right-click has it too. Dims unless the project is done.
+    /// The project put away now, whatever it is doing: inactive at once — the row grey,
+    /// its sessions no longer listed — until a new turn begins in it. The sidebar row's
+    /// right-click has it too. Dims only on a project that is inactive already.
     static let markSessionInactive = AppCommand(
         id: "session.markInactive", title: "Mark as Inactive",
         symbol: "moon.zzz", menuPath: ["File", "Session"],
         keywords: ["Mark Project as Inactive", "Mark Session as Inactive", "Dismiss Done",
-                   "Clear Activity", "Mark as Read"],
+                   "Clear Activity", "Mark as Read", "Put Away"],
         isEnabled: { AgentMonitor.shared.canMarkInactive($0.workspaceID) }) { store in
             AgentMonitor.shared.markInactive(store.workspaceID)
+        }
+
+    /// The undo of Mark as Inactive: a project put away by hand is as its agents say
+    /// again. Dims on one that was not — the clock's inactive ends with the next turn.
+    static let markSessionActive = AppCommand(
+        id: "session.markActive", title: "Mark as Active",
+        symbol: "sun.max", menuPath: ["File", "Session"],
+        keywords: ["Mark Project as Active", "Mark Session as Active", "Bring Back"],
+        isEnabled: { AgentMonitor.shared.canMarkActive($0.workspaceID) }) { store in
+            AgentMonitor.shared.markActive(store.workspaceID)
         }
 
     /// Every other window's sessions into this one, and every pane window's panes back

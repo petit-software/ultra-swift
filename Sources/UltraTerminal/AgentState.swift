@@ -139,13 +139,25 @@ public struct AgentStateTracker: Equatable, Sendable {
     public private(set) var stateByPane: [PaneID: AgentState] = [:]
     public private(set) var stateBySession: [UUID: AgentState] = [:]
 
+    /// A session put away by hand (`markInactive`): since when its row counts, and the
+    /// finished turns that went with it, as they were, for `markActive` to put back.
+    public struct PutAway: Equatable, Sendable {
+        public var since: Date
+        public var restoring: [PaneID: AgentState]
+    }
+
+    /// The sessions put away by hand. Each is inactive whatever its panes say, until a
+    /// new turn begins in it or it is marked active.
+    public private(set) var putAway: [UUID: PutAway] = [:]
+
     public init() {}
 
     /// Fold one tick in. `viewed` is the sessions on screen in a window with the keyboard:
     /// looking at a finished turn is what reads it.
     ///
     /// A pane with no agent and no history has no state, and a session whose panes have
-    /// none has none. Panes not in `readings` are dropped — a closed pane cannot have news.
+    /// none has none, unless it was put away by hand. Panes not in `readings` are
+    /// dropped — a closed pane cannot have news.
     @discardableResult
     public mutating func observe(_ readings: [UUID: [PaneID: AgentPaneReading]],
                                  viewed: Set<UUID>, at now: Date) -> [UUID: AgentState] {
@@ -154,35 +166,71 @@ public struct AgentStateTracker: Equatable, Sendable {
         for (session, panes) in readings {
             let isViewed = viewed.contains(session)
             var states: [AgentState] = []
+            var turnBegan = false
             for (paneID, pane) in panes {
-                guard let state = Self.state(of: pane, previous: stateByPane[paneID],
+                let previous = stateByPane[paneID]
+                guard let state = Self.state(of: pane, previous: previous,
                                              viewed: isViewed, at: now) else { continue }
+                if case .working = state {
+                    if case .working = previous {} else { turnBegan = true }
+                }
                 nextPanes[paneID] = state
                 states.append(state)
             }
+            // A new turn is what brings a session back from being put away.
+            if turnBegan { putAway[session] = nil }
             if let rolled = AgentState.rollup(states) { nextSessions[session] = rolled }
         }
+        // Put away by hand, a session is inactive whatever its panes say — and one with
+        // no agent, or no terminal, has a state only because of it.
+        for (session, mark) in putAway { nextSessions[session] = .inactive(since: mark.since) }
         stateByPane = nextPanes
         stateBySession = nextSessions
         return nextSessions
     }
 
-    /// Put a session's finished turns away now rather than half an hour after they were
-    /// read: each of `panes` that is done becomes inactive, since when it finished, and
-    /// the session is rolled up again. A pane still working or asking is left as it is —
-    /// the next tick would say so anyway — and so the session stays live while one is.
-    /// The next turn in a pane makes it active again, as it does after the half hour.
-    public mutating func markInactive(_ session: UUID, panes: some Sequence<PaneID>) {
+    /// Put a session away now, whatever it is doing, rather than half an hour after its
+    /// last turn was read: the session is inactive, and each of `panes` that is done is
+    /// inactive since when it finished. A pane still working or asking keeps its own
+    /// state — the Agents overview goes on saying what it is doing — but the session's
+    /// row does not: it is put away until a new turn BEGINS in it (`observe`), so a
+    /// turn that was running when it was marked finishes without bringing it back.
+    /// A session with no agent at all is put away the same way.
+    public mutating func markInactive(_ session: UUID, panes: some Sequence<PaneID>, at now: Date = Date()) {
         var states: [AgentState] = []
+        var restoring: [PaneID: AgentState] = putAway[session]?.restoring ?? [:]
         for paneID in panes {
             guard var state = stateByPane[paneID] else { continue }
             if case .done(let at, _) = state {
+                restoring[paneID] = state
                 state = .inactive(since: at)
                 stateByPane[paneID] = state
             }
             states.append(state)
         }
-        if let rolled = AgentState.rollup(states) { stateBySession[session] = rolled }
+        // Since its last finish when all of it had finished; since now when it was
+        // put away in the middle of something, or had nothing to finish.
+        var since = putAway[session]?.since ?? now
+        if case .inactive(let finished) = AgentState.rollup(states) { since = finished }
+        putAway[session] = PutAway(since: since, restoring: restoring)
+        stateBySession[session] = .inactive(since: since)
+    }
+
+    /// Undo `markInactive`: the session is as its panes say again, and the finished turns
+    /// that were put away with it are done as they were. Nothing for a session that went
+    /// inactive by the clock — that one was not put away by hand.
+    public mutating func markActive(_ session: UUID, panes: some Sequence<PaneID>) {
+        guard let mark = putAway.removeValue(forKey: session) else { return }
+        var states: [AgentState] = []
+        for paneID in panes {
+            guard var state = stateByPane[paneID] else { continue }
+            if case .inactive = state, let was = mark.restoring[paneID] {
+                state = was
+                stateByPane[paneID] = state
+            }
+            states.append(state)
+        }
+        stateBySession[session] = AgentState.rollup(states)
     }
 
     /// One pane's state from its reading and what it was a tick ago.

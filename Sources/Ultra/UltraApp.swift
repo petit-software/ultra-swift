@@ -618,11 +618,14 @@ struct WorkspaceCommands: Commands {
                 }
                 .disabled(store.map { !PaneCommands.toggleActiveSessions.isEnabled($0) } ?? true)
 
-                // The sidebar row's right-click item: a finished project put away now.
-                Button(PaneCommands.markSessionInactive.title) {
-                    if let store { PaneCommands.markSessionInactive.run(store) }
+                // The sidebar row's right-click item, saying which way it will go: a
+                // project put away now, or one put away by hand brought back.
+                let marking = store.map { PaneCommands.markSessionActive.isEnabled($0) } == true
+                    ? PaneCommands.markSessionActive : PaneCommands.markSessionInactive
+                Button(marking.title) {
+                    if let store { marking.run(store) }
                 }
-                .disabled(store.map { !PaneCommands.markSessionInactive.isEnabled($0) } ?? true)
+                .disabled(store.map { !marking.isEnabled($0) } ?? true)
 
                 // The key path of dragging a tab off the belt or a row out of the sidebar.
                 Button(PaneCommands.moveSessionToNewWindow.title) {

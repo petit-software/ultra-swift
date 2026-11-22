@@ -13,6 +13,7 @@ Read in order:
 | [`03-TILES.md`](03-TILES.md) | Shell, Todo, Resources, Git worktree, Context, Ports |
 | [`04-ROADMAP.md`](04-ROADMAP.md) | Milestones with acceptance criteria, and risks |
 | [`05-PREVIEWS.md`](05-PREVIEWS.md) | Xcode preview requirements for every pane and tile |
+| [`06-REMOTE.md`](06-REMOTE.md) | **Planned, not built.** Ultra Remote: an agent pane on an iPhone over Tailscale — transport, pairing, protocol, the iOS app, milestones |
 
 ## The five ideas the plan rests on
 

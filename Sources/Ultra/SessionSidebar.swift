@@ -366,9 +366,13 @@ struct SessionSidebar: View {
                 SessionTerminalVisibility.shared.toggle(for: store)
             })
         }
-        // Done with it before the half hour is up: grey, its sessions folded away, until
-        // an agent's next turn. Only on a project with agent work to put away.
-        if AgentMonitor.shared.stateBySession[id] != nil {
+        // Done with it, whatever it is doing: grey, its sessions folded away, until a new
+        // turn begins in it. On every project; one put away by hand has the way back.
+        if AgentMonitor.shared.canMarkActive(id) {
+            items.append(SidebarMenuItem(PaneCommands.markSessionActive.title) {
+                AgentMonitor.shared.markActive(id)
+            })
+        } else {
             items.append(SidebarMenuItem(PaneCommands.markSessionInactive.title,
                                          isEnabled: AgentMonitor.shared.canMarkInactive(id)) {
                 AgentMonitor.shared.markInactive(id)

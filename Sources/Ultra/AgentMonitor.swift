@@ -217,21 +217,45 @@ final class AgentMonitor {
         if turned != Calendar.current.dateInterval(of: .minute, for: minute)?.start { minute = turned }
     }
 
-    /// Whether a session has finished turns to put away: it is done, read or not. A
-    /// working or asking one is not for marking, and an inactive one already is.
+    /// Whether a session can be put away: any that is not inactive already — working,
+    /// asking, done, or with no agent in it at all.
     func canMarkInactive(_ session: UUID) -> Bool {
-        if case .done = stateBySession[session] { return true }
-        return false
+        if case .inactive = stateBySession[session] { return false }
+        return true
+    }
+
+    /// Whether a session was put away by hand, which is what Mark as Active undoes. One
+    /// that went inactive by the clock was not.
+    func canMarkActive(_ session: UUID) -> Bool {
+        states.putAway[session] != nil
     }
 
     /// File ▸ Session ▸ Mark as Inactive, and the sidebar row's right-click: the session
     /// is as it would be half an hour after its last turn was read — grey, its terminals
-    /// no longer listed — until an agent in it works again.
+    /// no longer listed — whatever it is doing, until a new turn begins in it.
     func markInactive(_ session: UUID) {
         guard canMarkInactive(session) else { return }
-        if case .done(let at, _) = standIns[session] { standIns[session] = .inactive(since: at) }
-        let panes = ShellWorkspace.Registry.factories[session].map { Array($0.agentSamples.keys) } ?? []
-        states.markInactive(session, panes: panes)
+        if let standIn = standIns[session] {
+            if case .done(let at, _) = standIn { standIns[session] = .inactive(since: at) }
+            else { standIns[session] = .inactive(since: Date()) }
+        }
+        states.markInactive(session, panes: agentPanes(of: session))
+        publishStates()
+    }
+
+    /// File ▸ Session ▸ Mark as Active, and the sidebar row's right-click on a project
+    /// put away by hand: it is as its agents say again.
+    func markActive(_ session: UUID) {
+        guard canMarkActive(session) else { return }
+        states.markActive(session, panes: agentPanes(of: session))
+        publishStates()
+    }
+
+    private func agentPanes(of session: UUID) -> [PaneID] {
+        ShellWorkspace.Registry.factories[session].map { Array($0.agentSamples.keys) } ?? []
+    }
+
+    private func publishStates() {
         let next = states.stateBySession.merging(standIns) { _, standIn in standIn }
         if next != stateBySession { stateBySession = next }
         if states.stateByPane != stateByPane { stateByPane = states.stateByPane }

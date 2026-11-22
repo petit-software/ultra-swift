@@ -160,13 +160,58 @@ struct AgentStateTests {
         #expect(tracker.stateBySession[session] == .working(since: t2))
     }
 
-    @Test("marking inactive leaves a working pane working")
+    @Test("a working session is put away too, through its finish, until a new turn begins")
     func markedInactiveWhileWorking() {
         var tracker = AgentStateTracker()
         let working = reading(.working, lastOutput: t0)
+        let panes = Array(working[session]!.keys)
         tracker.observe(working, viewed: [], at: t0)
-        tracker.markInactive(session, panes: Array(working[session]!.keys))
-        #expect(tracker.stateBySession[session] == .working(since: t0))
+        let t1 = t0.addingTimeInterval(10)
+        tracker.markInactive(session, panes: panes, at: t1)
+        #expect(tracker.stateBySession[session] == .inactive(since: t1))
+        // The pane goes on saying what it is doing.
+        #expect(tracker.stateByPane[panes[0]] == .working(since: t0))
+        // Still working a tick later, and then finished: neither is a new turn.
+        tracker.observe(working, viewed: [], at: t1.addingTimeInterval(5))
+        #expect(tracker.stateBySession[session] == .inactive(since: t1))
+        let t2 = t1.addingTimeInterval(60)
+        tracker.observe(reading(.idle, lastOutput: t1), viewed: [], at: t2)
+        #expect(tracker.stateBySession[session] == .inactive(since: t1))
+        // The next turn is.
+        let t3 = t2.addingTimeInterval(60)
+        tracker.observe(reading(.working, lastOutput: t3), viewed: [], at: t3)
+        #expect(tracker.stateBySession[session] == .working(since: t3))
+        #expect(tracker.putAway[session] == nil)
+    }
+
+    @Test("a session with no agent is put away, and marking it active gives it no state again")
+    func markedInactiveWithNoAgent() {
+        var tracker = AgentStateTracker()
+        let other = UUID()
+        tracker.markInactive(other, panes: [], at: t0)
+        #expect(tracker.stateBySession[other] == .inactive(since: t0))
+        tracker.observe([:], viewed: [], at: t0.addingTimeInterval(5))
+        #expect(tracker.stateBySession[other] == .inactive(since: t0))
+        tracker.markActive(other, panes: [])
+        #expect(tracker.stateBySession[other] == nil)
+        tracker.observe([:], viewed: [], at: t0.addingTimeInterval(10))
+        #expect(tracker.stateBySession[other] == nil)
+    }
+
+    @Test("marked active, a finished turn put away by hand is done as it was")
+    func markedActive() {
+        var tracker = AgentStateTracker()
+        tracker.observe(reading(.working, lastOutput: t0), viewed: [], at: t0)
+        let t1 = t0.addingTimeInterval(30)
+        let quiet = reading(.idle, lastOutput: t0)
+        tracker.observe(quiet, viewed: [], at: t1)
+        let panes = Array(quiet[session]!.keys)
+        tracker.markInactive(session, panes: panes)
+        #expect(tracker.stateBySession[session] == .inactive(since: t1))
+        tracker.markActive(session, panes: panes)
+        #expect(tracker.stateBySession[session] == .done(at: t1, read: false))
+        tracker.observe(quiet, viewed: [], at: t1.addingTimeInterval(5))
+        #expect(tracker.stateBySession[session] == .done(at: t1, read: false))
     }
 
     @Test("an unread finish never goes inactive by itself")

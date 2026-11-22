@@ -16,3 +16,39 @@
 
 - [x] In the compact grid a cell against the window's top edge has no top hairline and one against its bottom edge no bottom hairline; with the session belt under the panes the bottom row keeps its line. The hairline is a path now, not the layer's border, which is four sides or none (`PaneContainerView.openEdges`, `SplitCanvasView.openEdges(of:in:)`)
 - [ ] Try in Ultra Dev by hand: the compact grid's top and bottom rows with the sidebar open and hidden, a zoomed pane, and a pane in a window of its own
+
+## Mark as Inactive: any project
+
+- [x] Any project can be marked inactive — working, asking, or with no agent at all — not only one whose turns have finished; it stays put away until a new turn begins in it (`AgentStateTracker.putAway`, `AgentMonitor.markInactive`)
+- [x] Mark as Active undoes a mark made by hand: File ▸ Session, the palette and the sidebar row's right-click, where the item says which way it will go (`PaneCommands.markSessionActive`)
+- [ ] Try in Ultra Dev by hand: Mark as Inactive on a working project, an asking one and one with no agent; Mark as Active after each; a new turn bringing a marked project back
+
+## Ultra Remote: an agent pane on the phone, over Tailscale
+
+Planned, not started. The design is `docs/06-REMOTE.md`.
+
+- [ ] R0 — `Packages/UltraRemoteProtocol`: message types, JSON codec, version negotiation, pairing and challenge signing; iOS and macOS, importing nothing of ours
+  - [ ] Round-trip and signature tests, headless
+- [ ] R1 — The server, read-only (`Sources/Ultra/Remote/`)
+  - [ ] Remote Access on and off: a menu item, a palette command, a Remote pane in Settings; off by default
+  - [ ] `RemoteServer`: an `NWListener` WebSocket bound to the Mac's Tailscale address only, rebinding as Tailscale comes and goes
+  - [ ] Pairing: the approval sheet with its six-digit code, the paired devices in the keychain, Tailscale's `whois` shown when it answers
+  - [ ] The live `panes` list — agent panes only — from `AgentMonitor`
+  - [ ] `attach`: the output observer on `ShellTerminalView.dataReceived`, the 256 KB ring buffer, snapshot then live bytes
+  - [ ] A command-line test client, and a headless loopback test
+- [ ] R2 — Input
+  - [ ] Binary frames from the client into the pane's process (`sendRemoteInput`)
+  - [ ] The pane's header shows a phone is attached
+  - [ ] A property test: no remote message resizes or closes a pane
+- [ ] R3 — The iOS app (`Apps/UltraRemote/`)
+  - [ ] Connect and pair
+  - [ ] The agent list, grouped by project, "needs you" first, live
+  - [ ] The terminal: SwiftTerm at the Mac pane's size, fit to width, pinch and pan
+  - [ ] The keyboard and its key bar: Esc, Tab, Ctrl, arrows, Return
+  - [ ] Gone and disconnected banners, reconnect
+  - [ ] Previews for all three screens
+- [ ] R4 — Hardening
+  - [ ] Revoke a device
+  - [ ] Keep the Mac awake while agents work and Remote Access is on — a setting
+  - [ ] TestFlight build
+  - [ ] Try by hand: Ultra Dev on the Mac, the app on a phone, the Mac out of reach
