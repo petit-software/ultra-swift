@@ -433,6 +433,26 @@ public final class SplitCanvasView: NSView {
         if abs(wanted - own) > 0.5 { additionalSafeAreaInsets.top = wanted }
     }
 
+    /// The sides of a pane that lie along the window's top or bottom edge, where a
+    /// compact cell draws no hairline: against the top of the canvas when the canvas
+    /// starts at the window's top — the compact grid's 2pt aside —, and against its
+    /// bottom when nothing, the session belt for one, is under the panes. Never a
+    /// floating pane's, which is nowhere near either.
+    private func openEdges(of frame: CGRect, in canvas: CGRect) -> PaneContainerView.Edges {
+        guard !store.isFloating else { return [] }
+        var edges: PaneContainerView.Edges = []
+        if frame.minY <= canvas.minY + 0.5, canvas.minY <= bounds.minY + Self.edgeSlack {
+            edges.insert(.top)
+        }
+        if frame.maxY >= canvas.maxY - 0.5, canvas.maxY >= bounds.maxY - Self.edgeSlack {
+            edges.insert(.bottom)
+        }
+        return edges
+    }
+
+    /// How far inside the window's edge a pane still counts as on it.
+    private static let edgeSlack: CGFloat = 4
+
     public override func layout() {
         super.layout()
         cancelTitlebarSafeArea()
@@ -468,6 +488,7 @@ public final class SplitCanvasView: NSView {
             let underCorner = cornerReserve > 0 && !store.isFloating
                 && frame.minY < Self.cornerReserveDepth && frame.minX < cornerReserve
             surface.headerLeadingInset = underCorner ? cornerReserve - frame.minX : 0
+            surface.openEdges = openEdges(of: frame, in: canvas)
         }
         for paneID in result.hidden {
             store.surfaces.existingSurface(for: paneID)?.isHidden = true

@@ -434,6 +434,10 @@ public final class PaneContainerView: NSView {
     /// longer needed, and what it cost.
     private let ring = PaneRingView()
     private let clip = FlippedView()
+    /// The compact grid's hairline round the pane, as a path rather than the layer's
+    /// border: a border is four sides or none, and a cell against the window's top or
+    /// bottom edge leaves that side off (`openEdges`).
+    private let hairline = CAShapeLayer()
     private let header: NSHostingView<PaneHeader>
     /// The strip a visiting pane wears above its header, saying where it is from. Built
     /// when a strip is first set, dropped when it is cleared.
@@ -639,7 +643,8 @@ public final class PaneContainerView: NSView {
     private func applyAppearance() {
         mountSurface()
         let radius = cornerRadius
-        clip.layer?.borderWidth = isBare ? Appearance.compactHairline : 0
+        hairline.isHidden = !isBare
+        hairline.lineWidth = Appearance.compactHairline
         clip.layer?.cornerRadius = radius
         frost.layer?.cornerRadius = radius
         frost.material = Appearance.frostMaterial.material
@@ -676,6 +681,52 @@ public final class PaneContainerView: NSView {
     public var isZoomed = false {
         didSet { guard isZoomed != oldValue else { return }; rebuildHeader(); needsLayout = true }
     }
+
+    /// A side of the pane that lies along the window's own edge.
+    public struct Edges: OptionSet, Sendable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+        public static let top = Edges(rawValue: 1)
+        public static let bottom = Edges(rawValue: 2)
+    }
+
+    /// The sides of a compact cell that get no hairline: the window's edge is already
+    /// the line there, and a second one a hair inside it reads as a frame round the
+    /// canvas. The canvas sets it as it lays the panes out.
+    public var openEdges: Edges = [] {
+        didSet { guard openEdges != oldValue else { return }; updateHairline() }
+    }
+
+    /// The hairline's sides, as they stand: the left and right always, the top and the
+    /// bottom unless open. Each line lies half its width inside the pane's bounds.
+    private func updateHairline() {
+        let width = Appearance.compactHairline
+        let box = clip.bounds.insetBy(dx: width / 2, dy: width / 2)
+        let path = CGMutablePath()
+        // `clip` is flipped: its top is `minY`.
+        path.move(to: CGPoint(x: clip.bounds.minX, y: box.minY))
+        if openEdges.contains(.top) {
+            path.move(to: CGPoint(x: clip.bounds.maxX, y: box.minY))
+        } else {
+            path.addLine(to: CGPoint(x: clip.bounds.maxX, y: box.minY))
+        }
+        path.move(to: CGPoint(x: clip.bounds.minX, y: box.maxY))
+        if !openEdges.contains(.bottom) {
+            path.addLine(to: CGPoint(x: clip.bounds.maxX, y: box.maxY))
+        }
+        path.move(to: CGPoint(x: box.minX, y: clip.bounds.minY))
+        path.addLine(to: CGPoint(x: box.minX, y: clip.bounds.maxY))
+        path.move(to: CGPoint(x: box.maxX, y: clip.bounds.minY))
+        path.addLine(to: CGPoint(x: box.maxX, y: clip.bounds.maxY))
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        hairline.frame = clip.bounds
+        hairline.path = path
+        CATransaction.commit()
+    }
+
+    /// The hairline's path. Test seam: which sides are drawn is the whole of it.
+    public var hairlinePathForTesting: CGPath? { hairline.isHidden ? nil : hairline.path }
 
     /// Room kept clear at the head of the header — see `PaneHeader.leadingInset`. The
     /// canvas sets it on the pane under the window's traffic lights.
@@ -784,6 +835,11 @@ public final class PaneContainerView: NSView {
         clip.layerContentsRedrawPolicy = .onSetNeedsDisplay
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
+        // Over everything the pane holds, as the layer's own border was.
+        hairline.fillColor = nil
+        hairline.zPosition = 1000
+        hairline.isHidden = true
+        clip.layer?.addSublayer(hairline)
 
         ring.isHidden = true
 
@@ -928,7 +984,7 @@ public final class PaneContainerView: NSView {
             : Token.Space.paneShadowOpacity
         // Its hairline, resolved here for the reason the ring's tint is.
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
-            clip.layer?.borderColor = NSColor.separatorColor.cgColor
+            hairline.strokeColor = NSColor.separatorColor.cgColor
         }
     }
 
@@ -1030,6 +1086,7 @@ public final class PaneContainerView: NSView {
         glass.frame = bounds
         frost.frame = bounds
         clip.frame = bounds
+        updateHairline()
         let inset = Token.Space.focusRingInset
         ring.frame = bounds.insetBy(dx: inset, dy: inset)
         layer?.shadowPath = CGPath(roundedRect: bounds,
