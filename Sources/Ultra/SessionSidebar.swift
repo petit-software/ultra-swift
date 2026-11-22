@@ -1403,7 +1403,7 @@ private struct SessionRow: View {
         hasSessions && SessionTerminalVisibility.shared.isShown(for: store)
     }
     /// The leading slot's width: the icon's, and the chevron's that takes its place.
-    static let iconWidth: CGFloat = 20
+    static let iconWidth: CGFloat = WindowBarControls.sidebarIconWidth
     @State private var isOverIcon = false
     let canClose: Bool
     let select: () -> Void

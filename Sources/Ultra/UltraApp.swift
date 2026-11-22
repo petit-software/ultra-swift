@@ -937,12 +937,19 @@ struct RootView: View {
         })
     }
 
-    /// Where the panes start under the window's top edge: at the top, a window padding in
-    /// from it like every other edge — or, in the compact grid, the 2pt that puts their
-    /// headers on the traffic lights' line. There is no title band.
+    /// Where the panes start under the window's top edge: a window padding in from it
+    /// like every other edge — or, in the compact grid, AT it. There is no title band.
     private var canvasTopInset: CGFloat {
         _ = lookRevision
         return WindowBarControls.canvasTop
+    }
+
+    /// The line the window's controls are centred on: the traffic lights' — or, in the
+    /// compact grid in full screen, where there are none, the middle of the pane headers.
+    private var barLine: CGFloat {
+        _ = lookRevision
+        return ui.isFullScreen && Appearance.compact
+            ? Token.Space.tileHeaderHeight / 2 : WindowBarControls.line
     }
 
     /// How much of the canvas's top-left corner the window draws over. Beside the sidebar,
@@ -951,7 +958,20 @@ struct RootView: View {
     /// whose header moves its own contents clear of them.
     private var canvasCornerReserve: CGFloat {
         columnVisibility == .detailOnly
-            ? WindowBarControls.leading + WindowBarControls.box + WindowBarControls.spacing : 0
+            ? toggleLeading + WindowBarControls.box + WindowBarControls.spacing : 0
+    }
+
+    /// Where the sidebar's toggle starts: clear of the traffic lights — or, in full
+    /// screen, where none is, over the projects' icons in the sidebar under it.
+    private var toggleLeading: CGFloat {
+        ui.isFullScreen ? WindowBarControls.fullScreenLeading : WindowBarControls.leading
+    }
+
+    /// Follows this window into and out of full screen.
+    private func noteFullScreen(_ full: Bool, of notification: Notification) {
+        guard notification.object as? NSWindow === sessions.window, ui.isFullScreen != full
+        else { return }
+        withAnimation { ui.isFullScreen = full }
     }
 
     /// How much of the canvas's leading padding is taken back beside the sidebar. All of
@@ -1099,19 +1119,30 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: Preferences.didChange)) { _ in
             lookRevision &+= 1
         }
+        // Once the window has ARRIVED, either way, never on the way: a change to the
+        // window's content while AppKit is working out the frame to animate to leaves it
+        // a hundred thousand points wide on the way back out.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) {
+            noteFullScreen(true, of: $0)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) {
+            noteFullScreen(false, of: $0)
+        }
+        // A window the system restores straight into full screen is never told it
+        // entered: it is asked when it becomes key.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) {
+            if ($0.object as? NSWindow)?.styleMask.contains(.fullScreen) == true {
+                noteFullScreen(true, of: $0)
+            }
+        }
         .ignoresSafeArea()
             // No background behind the toolbar — the window already has one.
             //
             // In a normal window this changes nothing: `titlebarAppearsTransparent` means
             // AppKit builds no titlebar background at all, and the window's own material
-            // runs unbroken from the very top. FULL SCREEN is where it matters. There the
-            // titlebar and toolbar are hosted in a window of AppKit's own, which ignores
-            // that flag and paints an opaque bar behind them — a flat, several-shades-lighter
-            // strip across the top of a window that is otherwise one continuous surface,
-            // arriving the moment the green button is pressed.
-            //
-            // The supported way to say "I am drawing that myself", rather than reaching into
-            // the full-screen window and clearing the view AppKit put there.
+            // runs unbroken from the very top. In FULL SCREEN the titlebar and toolbar are
+            // hosted in a window of AppKit's own, which paints an opaque bar behind them
+            // whatever this says — see `FullScreenTitlebar`, which takes that bar off.
             .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
             // Under the palette's scrim, over everything else.
             .overlay(alignment: .topLeading) { sidebarToggle.ignoresSafeArea() }
@@ -1166,7 +1197,8 @@ struct RootView: View {
 
     /// The sidebar's toggle, beside the traffic lights and level with them, sidebar open
     /// or hidden: nothing moves as it collapses. Hidden, it lies on the first pane's
-    /// header, which keeps clear of it (`canvasCornerReserve`).
+    /// header, which keeps clear of it (`canvasCornerReserve`). In full screen, where
+    /// there are no traffic lights, it stands in their place (`toggleLeading`).
     ///
     /// Drawn by the window's content under the transparent titlebar, not as a toolbar
     /// item: a toolbar lays its items out by its own rules and wraps each in glass.
@@ -1189,8 +1221,8 @@ struct RootView: View {
         }
         .help(columnVisibility == .detailOnly ? "Show Sidebar (⌃⌘S)" : "Hide Sidebar (⌃⌘S)")
         .modifier(WindowBarControlLook())
-        .modifier(WindowBarControlStyle(line: WindowBarControls.line))
-        .padding(.leading, WindowBarControls.leading)
+        .modifier(WindowBarControlStyle(line: barLine))
+        .padding(.leading, toggleLeading)
     }
 
     /// The window's own controls — the palette, Add Pane and the layout verbs — in the
@@ -1282,7 +1314,7 @@ struct RootView: View {
             .help("More")
             .modifier(WindowBarControlLook())
         }
-        .modifier(WindowBarControlStyle(line: WindowBarControls.line))
+        .modifier(WindowBarControlStyle(line: barLine))
     }
 }
 
@@ -1413,16 +1445,25 @@ enum WindowBarControls {
     static var line: CGFloat { Appearance.compact ? 20 : 26 }
     /// Where the system starts the first traffic light, under each titlebar.
     static var lightsLeading: CGFloat { Appearance.compact ? 12 : 19 }
-    /// Where the canvas starts under the window's top edge, so the top row's headers are
-    /// centred on `line`: the window padding in the relaxed grid, which is that already,
-    /// and 2pt in the compact one.
-    static var canvasTop: CGFloat {
-        Appearance.compact ? line - Token.Space.tileHeaderHeight / 2 : Appearance.canvasPadding
-    }
+    /// Where the canvas starts under the window's top edge: the window padding in the
+    /// relaxed grid, which centres the top row's headers on `line`, and the edge itself
+    /// in the compact one. Compact panes stood 2pt under it for a while, to be on the
+    /// traffic lights' line to the point: it read as a gap along the top of a grid that
+    /// has none anywhere else, and the hairlines between panes stopped short of the edge.
+    static var canvasTop: CGFloat { Appearance.canvasPadding }
     /// From one traffic light to the next, as the system spaces them.
     static let lightsStep: CGFloat = 23
     /// Where the sidebar's toggle starts: clear of the third traffic light.
     static var leading: CGFloat { lightsLeading + 2 * lightsStep + 14 + 7 }
+    /// Where it starts in full screen, with no traffic lights to clear: centred on the
+    /// column of project icons in the sidebar, whose rows start `sidebarRowLeading` in.
+    static var fullScreenLeading: CGFloat {
+        sidebarRowLeading + sidebarIconWidth / 2 - box / 2
+    }
+    /// Where a sidebar list row's content starts: the system's inset for a source list.
+    static let sidebarRowLeading: CGFloat = 16
+    /// A sidebar row's leading slot, which holds the project's icon (`SessionRow.iconWidth`).
+    static let sidebarIconWidth: CGFloat = 20
     /// The sidebar's narrowest: the traffic lights and the toggle at one end of its head,
     /// the three controls at the other, and air between. Dragged narrower than this it
     /// does not squeeze: the split view holds it here, and hides it once the drag has

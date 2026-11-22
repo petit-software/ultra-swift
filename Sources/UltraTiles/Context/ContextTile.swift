@@ -245,12 +245,17 @@ private struct ContextRow: View {
         // Finder's grammar: one click picks the row out, and Space then shows the file in
         // Quick Look; two clicks DO the thing, which here is sending the file to the shell,
         // the thing this tile is for. One click used to send, and a list you cannot look
-        // at without typing into the prompt is a list you cannot look at. Double first, so
-        // a second click is read as the pair and not as two selects. A missing file can
+        // at without typing into the prompt is a list you cannot look at. A missing file can
         // still be selected — to be removed by key, one day — but has no reference to type,
         // so the double click does nothing and the pill's send is dimmed to say the same.
+        //
+        // The single click is SIMULTANEOUS with the double, not second to it. Two tap
+        // gestures in a row make the single wait out the double-click interval to learn
+        // it is not half of a pair: the row lit up a third of a second after the click.
+        // Selecting is harmless as the first half of a double click — Finder does the
+        // same — so it happens on the way down and the pair still sends.
         .onTapGesture(count: 2) { if !item.isMissing { send() } }
-        .onTapGesture { select() }
+        .simultaneousGesture(TapGesture().onEnded { select() })
         .onHover { isHovering = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -437,10 +442,15 @@ final class ContextHostingView: NSHostingView<ContextTile> {
     /// list is the one source of truth for what is being looked at.
     private func showSelectionInPanel() {
         guard let panel = QLPreviewPanel.shared(), panel.isVisible, controls(panel),
-              let index = model.previewableItems.firstIndex(where: { $0.id == model.selection })
+              let index = selectedPreviewIndex
         else { return }
         panel.reloadData()
         panel.currentPreviewItemIndex = index
+    }
+
+    /// Where the selected row is among what the panel can show, or nil.
+    private var selectedPreviewIndex: Int? {
+        model.previewableItems.firstIndex { $0.id == model.selection }
     }
 
     // MARK: Quick Look panel control
@@ -450,6 +460,14 @@ final class ContextHostingView: NSHostingView<ContextTile> {
     override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
         panel.dataSource = self
         panel.delegate = self
+        // HERE is where the panel first shows the selected row. It takes its controller
+        // after `makeKeyAndOrderFront` has returned, so `toggleQuickLook` asking it to
+        // show the selection found a panel that was not this pane's yet, did nothing,
+        // and the panel opened on its own index: the first file, whatever was selected.
+        if let index = selectedPreviewIndex {
+            panel.reloadData()
+            panel.currentPreviewItemIndex = index
+        }
     }
 
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {

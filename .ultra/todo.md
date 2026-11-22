@@ -1,4 +1,4 @@
-- [ ] ❯ tun settings to follow vertical navigation.
+- [x] ❯ tun settings to follow vertical navigation.
 
 ## Settings: vertical navigation
 
@@ -52,3 +52,18 @@ Planned, not started. The design is `docs/06-REMOTE.md`.
   - [ ] Keep the Mac awake while agents work and Remote Access is on — a setting
   - [ ] TestFlight build
   - [ ] Try by hand: Ultra Dev on the Mac, the app on a phone, the Mac out of reach
+
+## Full screen: the window is the screen
+
+- [x] No grey bar across the top of a full-screen window: the window AppKit hosts the titlebar in along the top of the screen is made transparent, and shown again while the menu bar is down; the main window only (`FullScreenTitlebar`, `WindowChrome.hidesFullScreenBar`)
+- [x] The sidebar's toggle moves to the leading edge in full screen, where no traffic lights are, centred over the projects' icons — and the first pane's header reserve with it (`RootView.toggleLeading`, `UIState.isFullScreen`)
+- [x] No rounded corners in full screen: the window's surface and the sidebar's are square (`WindowSurfaceView`)
+- [x] In the compact grid the panes start at the window's top edge, not 2pt under it — in a window and in full screen; in full screen the window's controls sit on the headers' middle (`WindowBarControls.canvasTop`, `RootView.barLine`)
+- [x] With the menu bar brought down in full screen, the titlebar shows under it as a bar with its traffic lights, and the window's content stands below the two instead of being covered; it takes the whole screen back when they go (`FullScreenTitlebar.sync`)
+- [ ] Try in Ultra Dev by hand: full screen with the sidebar open and hidden, compact and relaxed grid, the menu bar revealed, and back out to a window
+
+## Context: a click selects at once, Space shows what is selected
+
+- [x] A click on a Context row selects it on the click, not after the double-click interval (`ContextRow`)
+- [x] Space shows the SELECTED file in Quick Look, not the first: the panel is given the selection when it takes this pane as its controller (`ContextHostingView.beginPreviewPanelControl`)
+- [ ] Try in Ultra Dev by hand: click rows in Context, Space on the third, ↑ ↓ with the panel up, a double click still sends

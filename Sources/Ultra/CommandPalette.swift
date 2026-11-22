@@ -53,6 +53,9 @@ final class UIState {
     /// The release list on screen, or nil. Set by the first launch after an update and by
     /// Ultra ▸ What's New in Ultra…; the window presents it like its other sheets.
     var whatsNew: WhatsNewContent?
+    /// Whether the window is full screen, where there are no traffic lights and the
+    /// sidebar's toggle stands in their place (`RootView.toggleLeading`).
+    var isFullScreen = false
 }
 
 /// The universal fallback: every registered command, fuzzy-searchable, with its binding

@@ -109,7 +109,8 @@ public struct CanvasSurface: View {
         // about what it says. See `LayoutStore.systemWindowTitle`.
         .background(WindowChrome(theme: store.theme, title: store.systemWindowTitle,
                                  // The main window's canvas is the one given a top inset.
-                                 compactTitlebar: topInset != nil && Appearance.compact) {
+                                 compactTitlebar: topInset != nil && Appearance.compact,
+                                 hidesFullScreenBar: topInset != nil) {
             store.noteWindowFrame($0)
         })
     }
@@ -127,18 +128,24 @@ public struct WindowChrome: NSViewRepresentable {
     /// grid. It is what puts the traffic lights 6pt higher and 7pt further in, level with
     /// panes that start at the window's edge.
     private let compactTitlebar: Bool
+    /// Whether the bar across the top of the screen is taken off in full screen — the
+    /// main window, whose toolbar holds nothing. See `FullScreenTitlebar`.
+    private let hidesFullScreenBar: Bool
 
     public init(theme: TerminalTheme, title: String = "Ultra", compactTitlebar: Bool = false,
+                hidesFullScreenBar: Bool = false,
                 onFrameChange: ((CGRect) -> Void)? = nil) {
         self.theme = theme
         self.title = title
         self.compactTitlebar = compactTitlebar
+        self.hidesFullScreenBar = hidesFullScreenBar
         self.onFrameChange = onFrameChange
     }
 
     public func makeNSView(context: Context) -> NSView {
         let probe = NSView(frame: .zero)
         context.coordinator.onFrameChange = onFrameChange
+        context.coordinator.hidesFullScreenBar = hidesFullScreenBar
         DispatchQueue.main.async {
             configure(probe.window)
             context.coordinator.observe(probe.window)
@@ -148,6 +155,7 @@ public struct WindowChrome: NSViewRepresentable {
 
     public func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.onFrameChange = onFrameChange
+        context.coordinator.hidesFullScreenBar = hidesFullScreenBar
         configure(nsView.window)
         context.coordinator.observe(nsView.window)
     }
@@ -158,6 +166,10 @@ public struct WindowChrome: NSViewRepresentable {
     public final class Coordinator {
         var onFrameChange: ((CGRect) -> Void)?
         private weak var observed: NSWindow?
+        /// Whether this window shows no titlebar bar in full screen — the main window.
+        var hidesFullScreenBar = false
+        /// Between being told the window will leave full screen and its having left.
+        private var isLeavingFullScreen = false
         /// Held in a box so the observers are torn down by the box's own nonisolated
         /// deinit — a main-actor deinit cannot touch main-actor state.
         private var observers = ObserverBox()
@@ -171,6 +183,40 @@ public struct WindowChrome: NSViewRepresentable {
                     forName: name, object: window, queue: .main) { [weak self] notification in
                         guard let window = notification.object as? NSWindow else { return }
                         MainActor.assumeIsolated { self?.onFrameChange?(window.frame) }
+                    })
+            }
+            // The titlebar's own window, on its way down with the menu bar or back: it
+            // posts a move for every step.
+            observers.tokens.append(NotificationCenter.default.addObserver(
+                forName: NSWindow.didMoveNotification, object: nil, queue: .main) { [weak self] notification in
+                    let moved = notification.object as? NSWindow
+                    MainActor.assumeIsolated {
+                        guard let self, let moved, let window = self.observed, moved !== window,
+                              self.hidesFullScreenBar, !self.isLeavingFullScreen,
+                              window.styleMask.contains(.fullScreen),
+                              FullScreenTitlebar.isBar(moved, of: window) else { return }
+                        FullScreenTitlebar.sync(for: window)
+                    }
+                })
+            // Full screen: no bar across the top. On every update, because AppKit builds
+            // the bar during the transition and moves it as the menu bar comes and goes.
+            for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didUpdateNotification,
+                         NSWindow.willExitFullScreenNotification] {
+                let leaving = name == NSWindow.willExitFullScreenNotification
+                observers.tokens.append(NotificationCenter.default.addObserver(
+                    forName: name, object: window, queue: .main) { [weak self] notification in
+                        let window = notification.object as? NSWindow
+                        MainActor.assumeIsolated {
+                            guard let self, let window, self.hidesFullScreenBar else { return }
+                            if leaving {
+                                self.isLeavingFullScreen = true
+                                FullScreenTitlebar.restore(for: window)
+                            } else if window.styleMask.contains(.fullScreen), !self.isLeavingFullScreen {
+                                FullScreenTitlebar.sync(for: window)
+                            } else if !window.styleMask.contains(.fullScreen) {
+                                self.isLeavingFullScreen = false
+                            }
+                        }
                     })
             }
         }
@@ -237,6 +283,76 @@ public struct WindowChrome: NSViewRepresentable {
     }
 }
 
+/// The bar AppKit lays across the top of a full-screen window, taken off.
+///
+/// A full-screen window's titlebar and toolbar are hosted in a window of AppKit's own
+/// along the top of the screen, and it is opaque: a flat grey strip over the top row of
+/// pane headers and the head of the sidebar, in a window that is otherwise one surface
+/// from edge to edge. Neither `titlebarAppearsTransparent` nor SwiftUI's
+/// `toolbarBackgroundVisibility` reaches it on macOS 27, and fading the background views
+/// inside it clears the sidebar's half and leaves the rest.
+///
+/// So the bar's whole window is made transparent. It holds nothing of ours — the main
+/// window's toolbar is empty, kept for the titlebar's height — and it is found through
+/// the close button, which lives in it while the window is full screen: no class names.
+///
+/// With the pointer at the top of the screen the menu bar comes down and the bar under
+/// it, and THEN it is shown, as a bar: that is where the traffic lights are. AppKit
+/// slides the two over the window's content; here the content is moved down from under
+/// them instead: the window's content VIEW is made that much shorter. It keeps the
+/// titlebar's safe area wherever it stands, so everything in it is laid out exactly as
+/// it was, lower. Done in AppKit and not as a padding in SwiftUI for that reason: a view
+/// moved down in SwiftUI loses the safe area the sidebar's list is placed by.
+///
+/// Hiding the toolbar for the length of full screen was the other way and is not one:
+/// the sidebar's list and the canvas are laid out against its safe area.
+@MainActor
+enum FullScreenTitlebar {
+    /// The window hosting `window`'s titlebar while it is full screen, or nil in a window.
+    private static func bar(of window: NSWindow) -> NSWindow? {
+        guard let bar = window.standardWindowButton(.closeButton)?.window, bar !== window
+        else { return nil }
+        return bar
+    }
+
+    /// Whether `candidate` is the window hosting `window`'s titlebar in full screen. It
+    /// posts `didMove` for every step of the menu bar's way down and back.
+    static func isBar(_ candidate: NSWindow, of window: NSWindow) -> Bool {
+        bar(of: window) === candidate
+    }
+
+    /// Shows the bar and stands the content under it while the menu bar is down; hides
+    /// the bar and gives the content the whole screen otherwise. From the moment the two
+    /// start down, in one step: the content is out of the way before they arrive, and
+    /// every step of following them would be a layout of every pane.
+    static func sync(for window: NSWindow) {
+        guard let bar = bar(of: window) else { return }
+        let screen = bar.screen ?? window.screen
+        let top = screen?.frame.maxY ?? window.frame.maxY
+        let isDown = bar.frame.maxY < top - 0.5
+        let alpha: CGFloat = isDown ? 1 : 0
+        if bar.alphaValue != alpha { bar.alphaValue = alpha }
+        // The menu bar's height: what the screen keeps for it, notch included.
+        let reserved = screen.map { $0.frame.maxY - $0.visibleFrame.maxY } ?? 0
+        let menuBar = reserved > 0 ? reserved : NSApp.mainMenu?.menuBarHeight ?? 0
+        lower(window, by: isDown ? menuBar + bar.frame.height : 0)
+    }
+
+    /// On the way out, so the bar and the content are themselves again for the window.
+    static func restore(for window: NSWindow) {
+        if let bar = bar(of: window), bar.alphaValue != 1 { bar.alphaValue = 1 }
+        lower(window, by: 0)
+    }
+
+    private static func lower(_ window: NSWindow, by push: CGFloat) {
+        guard let content = window.contentView, let frame = content.superview else { return }
+        var target = frame.bounds
+        target.size.height -= push
+        if frame.isFlipped { target.origin.y += push }
+        if content.frame != target { content.frame = target }
+    }
+}
+
 /// The window's own surface: ONE glass material running edge to edge, header included.
 ///
 /// Placed by the APP behind the whole window, not by `CanvasSurface` behind the canvas. It
@@ -283,7 +399,8 @@ public struct WindowSurface: NSViewRepresentable {
 
 /// Rounds to `windowRadius`, which MUST be >= the system's 15.5pt mask. A larger radius is
 /// strictly inside that mask, so only this arc is ever drawn — the doubled-corner glitch
-/// only happens when the radius drawn here is *smaller* than the system's.
+/// only happens when the radius drawn here is *smaller* than the system's. Square in full
+/// screen, where the system's mask is gone too.
 final class WindowSurfaceView: NSVisualEffectView {
     /// A sublayer rather than a background colour: `NSVisualEffectView` paints its material
     /// over its own layer's background, so a tint set there would simply not be visible.
@@ -307,9 +424,38 @@ final class WindowSurfaceView: NSVisualEffectView {
     /// the cheapest something is the notification it can subscribe to itself.
     private let observers = ObserverBox()
 
+    /// Whether the window is the screen. A full-screen window has no corners: the system
+    /// takes its own mask off, and an arc drawn here would show the desktop's black
+    /// through each corner of the display.
+    private var isFullScreen = false {
+        didSet { guard isFullScreen != oldValue else { return }; needsLayout = true }
+    }
+
+    /// The radius drawn: the window's, or none in full screen.
+    private var radius: CGFloat { isFullScreen ? 0 : Token.Space.windowRadius }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         material = Appearance.windowMaterial.material
+        // Square from the start of the way in, round again from the start of the way out:
+        // the corners belong to the window whenever it is one.
+        for (name, full) in [(NSWindow.willEnterFullScreenNotification, true),
+                             (NSWindow.didEnterFullScreenNotification, true),
+                             (NSWindow.willExitFullScreenNotification, false)] {
+            observers.add(NotificationCenter.default.addObserver(
+                forName: name, object: nil, queue: .main) { [weak self] notification in
+                    let window = notification.object as? NSWindow
+                    MainActor.assumeIsolated {
+                        guard let self, window === self.window else { return }
+                        self.isFullScreen = full
+                    }
+                })
+        }
         observers.add(NotificationCenter.default.addObserver(
             forName: Preferences.didChange, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
@@ -329,14 +475,14 @@ final class WindowSurfaceView: NSVisualEffectView {
         guard let layer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer.cornerRadius = Token.Space.windowRadius
+        layer.cornerRadius = radius
         layer.cornerCurve = .continuous
         layer.maskedCorners = corners
         layer.masksToBounds = true
 
         if tint.superlayer == nil { layer.addSublayer(tint) }
         tint.frame = bounds
-        tint.cornerRadius = Token.Space.windowRadius
+        tint.cornerRadius = radius
         tint.cornerCurve = .continuous
         tint.maskedCorners = corners
         if aurora.superlayer == nil { layer.addSublayer(aurora) }

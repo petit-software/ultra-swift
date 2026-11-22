@@ -435,7 +435,7 @@ public final class SplitCanvasView: NSView {
 
     /// The sides of a pane that lie along the window's top or bottom edge, where a
     /// compact cell draws no hairline: against the top of the canvas when the canvas
-    /// starts at the window's top — the compact grid's 2pt aside —, and against its
+    /// starts at the window's top — the compact grid —, and against its
     /// bottom when nothing, the session belt for one, is under the panes. Never a
     /// floating pane's, which is nowhere near either.
     private func openEdges(of frame: CGRect, in canvas: CGRect) -> PaneContainerView.Edges {
