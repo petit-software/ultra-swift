@@ -297,12 +297,11 @@ public struct WindowChrome: NSViewRepresentable {
 /// the close button, which lives in it while the window is full screen: no class names.
 ///
 /// With the pointer at the top of the screen the menu bar comes down and the bar under
-/// it, and THEN it is shown, as a bar: that is where the traffic lights are. AppKit
-/// slides the two over the window's content; here the content is moved down from under
-/// them instead: the window's content VIEW is made that much shorter. It keeps the
-/// titlebar's safe area wherever it stands, so everything in it is laid out exactly as
-/// it was, lower. Done in AppKit and not as a padding in SwiftUI for that reason: a view
-/// moved down in SwiftUI loses the safe area the sidebar's list is placed by.
+/// it, and THEN it is shown, as a bar: that is where the traffic lights are. It lies
+/// over the top of the window's content for as long as the menu bar is down, as any
+/// full-screen window's does; the content stays where it is. Moving the content down
+/// from under the two was tried, and shipped in 0.40.19: the whole window jumping on a
+/// pointer that only brushed the top edge was worse than a bar over one row of headers.
 ///
 /// Hiding the toolbar for the length of full screen was the other way and is not one:
 /// the sidebar's list and the canvas are laid out against its safe area.
@@ -321,36 +320,90 @@ enum FullScreenTitlebar {
         bar(of: window) === candidate
     }
 
-    /// Shows the bar and stands the content under it while the menu bar is down; hides
-    /// the bar and gives the content the whole screen otherwise. From the moment the two
-    /// start down, in one step: the content is out of the way before they arrive, and
-    /// every step of following them would be a layout of every pane.
+    /// Shows the bar while the menu bar is down — from the moment the two start down to
+    /// the moment they are gone — and hides it otherwise.
     static func sync(for window: NSWindow) {
         guard let bar = bar(of: window) else { return }
-        let screen = bar.screen ?? window.screen
-        let top = screen?.frame.maxY ?? window.frame.maxY
+        let top = (bar.screen ?? window.screen)?.frame.maxY ?? window.frame.maxY
         let isDown = bar.frame.maxY < top - 0.5
         let alpha: CGFloat = isDown ? 1 : 0
         if bar.alphaValue != alpha { bar.alphaValue = alpha }
-        // The menu bar's height: what the screen keeps for it, notch included.
-        let reserved = screen.map { $0.frame.maxY - $0.visibleFrame.maxY } ?? 0
-        let menuBar = reserved > 0 ? reserved : NSApp.mainMenu?.menuBarHeight ?? 0
-        lower(window, by: isDown ? menuBar + bar.frame.height : 0)
+        if isDown { back(bar, of: window) }
     }
 
-    /// On the way out, so the bar and the content are themselves again for the window.
+    /// One opaque colour across the whole bar, and a hairline along its foot. AppKit's
+    /// own bar is a solid colour over the canvas and glass over the sidebar, so the
+    /// sidebar's head showed through the half lying on it, and nothing marked where the
+    /// bar ended and the panes began. Laid directly under the view the traffic lights
+    /// are in — found through the close button, like the bar itself — and so over
+    /// AppKit's two backgrounds. Setting the bar window's `backgroundColor` does nothing.
+    private static func back(_ bar: NSWindow, of window: NSWindow) {
+        guard let titlebar = window.standardWindowButton(.closeButton)?.superview,
+              let container = titlebar.superview,
+              !container.subviews.contains(where: { $0 is FullScreenBarBacking }) else { return }
+        let backing = FullScreenBarBacking(frame: container.bounds)
+        backing.autoresizingMask = [.width, .height]
+        container.addSubview(backing, positioned: .below, relativeTo: titlebar)
+    }
+
+    /// On the way out, so the bar is itself again for whatever AppKit does with it next.
     static func restore(for window: NSWindow) {
-        if let bar = bar(of: window), bar.alphaValue != 1 { bar.alphaValue = 1 }
-        lower(window, by: 0)
+        guard let bar = bar(of: window) else { return }
+        if bar.alphaValue != 1 { bar.alphaValue = 1 }
+        // The backing goes: back in a window, the titlebar is transparent again.
+        window.standardWindowButton(.closeButton)?.superview?.superview?.subviews
+            .filter { $0 is FullScreenBarBacking }.forEach { $0.removeFromSuperview() }
+    }
+}
+
+/// What the full-screen bar is drawn on: the window background colour, and a hairline
+/// along the bottom edge in the separator colour. Both are the system's dynamic colours,
+/// resolved in `updateLayer` — which runs under the view's own appearance, and again
+/// when that changes — so the bar is light in a light window and dark in a dark one.
+private final class FullScreenBarBacking: NSView {
+    private let hairline = CALayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
     }
 
-    private static func lower(_ window: NSWindow, by push: CGFloat) {
-        guard let content = window.contentView, let frame = content.superview else { return }
-        var target = frame.bounds
-        target.size.height -= push
-        if frame.isFlipped { target.origin.y += push }
-        if content.frame != target { content.frame = target }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        guard let layer else { return }
+        if hairline.superlayer == nil { layer.addSublayer(hairline) }
+        layer.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        hairline.backgroundColor = NSColor.separatorColor.cgColor
+        placeHairline()
     }
+
+    override func layout() {
+        super.layout()
+        placeHairline()
+    }
+
+    /// One pixel, whatever the display's scale: thin, not a rule.
+    private func placeHairline() {
+        let thickness = 1 / (window?.backingScaleFactor ?? 2)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        hairline.frame = CGRect(x: 0, y: isFlipped ? bounds.height - thickness : 0,
+                                width: bounds.width, height: thickness)
+        CATransaction.commit()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    /// Nothing here is clickable: the bar's own views are over it.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// The window's own surface: ONE glass material running edge to edge, header included.

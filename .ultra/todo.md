@@ -59,7 +59,8 @@ Planned, not started. The design is `docs/06-REMOTE.md`.
 - [x] The sidebar's toggle moves to the leading edge in full screen, where no traffic lights are, centred over the projects' icons — and the first pane's header reserve with it (`RootView.toggleLeading`, `UIState.isFullScreen`)
 - [x] No rounded corners in full screen: the window's surface and the sidebar's are square (`WindowSurfaceView`)
 - [x] In the compact grid the panes start at the window's top edge, not 2pt under it — in a window and in full screen; in full screen the window's controls sit on the headers' middle (`WindowBarControls.canvasTop`, `RootView.barLine`)
-- [x] With the menu bar brought down in full screen, the titlebar shows under it as a bar with its traffic lights, and the window's content stands below the two instead of being covered; it takes the whole screen back when they go (`FullScreenTitlebar.sync`)
+- [x] With the menu bar brought down in full screen, the titlebar shows under it as a bar with its traffic lights, over the top of the window's content; the content does not move (`FullScreenTitlebar.sync`)
+- [x] The bar that comes down in full screen is one opaque colour from edge to edge, with a one-pixel hairline along its foot; both follow light and dark (`FullScreenBarBacking`)
 - [ ] Try in Ultra Dev by hand: full screen with the sidebar open and hidden, compact and relaxed grid, the menu bar revealed, and back out to a window
 
 ## Context: a click selects at once, Space shows what is selected
