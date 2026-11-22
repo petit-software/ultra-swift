@@ -167,6 +167,24 @@ public struct AgentStateTracker: Equatable, Sendable {
         return nextSessions
     }
 
+    /// Put a session's finished turns away now rather than half an hour after they were
+    /// read: each of `panes` that is done becomes inactive, since when it finished, and
+    /// the session is rolled up again. A pane still working or asking is left as it is —
+    /// the next tick would say so anyway — and so the session stays live while one is.
+    /// The next turn in a pane makes it active again, as it does after the half hour.
+    public mutating func markInactive(_ session: UUID, panes: some Sequence<PaneID>) {
+        var states: [AgentState] = []
+        for paneID in panes {
+            guard var state = stateByPane[paneID] else { continue }
+            if case .done(let at, _) = state {
+                state = .inactive(since: at)
+                stateByPane[paneID] = state
+            }
+            states.append(state)
+        }
+        if let rolled = AgentState.rollup(states) { stateBySession[session] = rolled }
+    }
+
     /// One pane's state from its reading and what it was a tick ago.
     static func state(of pane: AgentPaneReading, previous: AgentState?,
                       viewed: Bool, at now: Date) -> AgentState? {

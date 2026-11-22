@@ -65,7 +65,6 @@ struct ChatSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 520)
     }
 
     private func keyRow(_ title: String, key: Binding<String>, provider: ChatProviderID,

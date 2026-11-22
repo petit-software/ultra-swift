@@ -217,6 +217,26 @@ final class AgentMonitor {
         if turned != Calendar.current.dateInterval(of: .minute, for: minute)?.start { minute = turned }
     }
 
+    /// Whether a session has finished turns to put away: it is done, read or not. A
+    /// working or asking one is not for marking, and an inactive one already is.
+    func canMarkInactive(_ session: UUID) -> Bool {
+        if case .done = stateBySession[session] { return true }
+        return false
+    }
+
+    /// File ▸ Session ▸ Mark as Inactive, and the sidebar row's right-click: the session
+    /// is as it would be half an hour after its last turn was read — grey, its terminals
+    /// no longer listed — until an agent in it works again.
+    func markInactive(_ session: UUID) {
+        guard canMarkInactive(session) else { return }
+        if case .done(let at, _) = standIns[session] { standIns[session] = .inactive(since: at) }
+        let panes = ShellWorkspace.Registry.factories[session].map { Array($0.agentSamples.keys) } ?? []
+        states.markInactive(session, panes: panes)
+        let next = states.stateBySession.merging(standIns) { _, standIn in standIn }
+        if next != stateBySession { stateBySession = next }
+        if states.stateByPane != stateByPane { stateByPane = states.stateByPane }
+    }
+
     /// Fold one sample into the running set, announcing whatever finished.
     ///
     /// Keyed by pane, not counted, because a count cannot tell "one finished and another

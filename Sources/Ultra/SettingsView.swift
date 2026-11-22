@@ -22,23 +22,81 @@ import UltraTiles
 /// The theme picker is back, on an Appearance tab, since the light look is being tuned:
 /// Dark, Light and Follow System, and under them the three numbers only light appearance
 /// draws with (`LightModeSections`). The dark look's numbers stay out, as above.
+///
+/// The panes are listed DOWN THE SIDE, as System Settings lists its own, not across the
+/// top: eight names had outgrown a toolbar's row, the window changed height with every
+/// tab, and the main window already navigates from a sidebar. One size of window now, and
+/// each pane scrolls inside it.
 struct UltraSettings: View {
+    @State private var pane = SettingsPane.general
+
     var body: some View {
-        TabView {
-            Tab("General", systemImage: "gearshape") { GeneralSettings() }
-            Tab("Appearance", systemImage: "circle.lefthalf.filled") { AppearanceSettings() }
-            Tab("Terminal", systemImage: "apple.terminal") { TerminalSettings() }
-            Tab("Tiles", systemImage: "square.grid.2x2") { TileSettings() }
-            Tab("Agents", systemImage: "sparkles") { AgentSettings() }
-            Tab("Chat", systemImage: "text.bubble") { ChatSettings() }
-            // Ultra Dev only: the look's numbers as sliders, for deciding a new default.
-            if TuningSettings.isAvailable {
-                Tab("Tuning", systemImage: "slider.horizontal.3") { TuningSettings() }
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(SettingsPane.shown, selection: selection) { pane in
+                Label(pane.title, systemImage: pane.symbol).tag(pane)
             }
-            Tab("About", systemImage: "info.circle") { AboutSettings() }
+            // The list is always there: it is the only way round the window.
+            .toolbar(removing: .sidebarToggle)
+            // Outside `toolbar(removing:)`, which drops a width set inside it.
+            .navigationSplitViewColumnWidth(Self.sidebarWidth)
+        } detail: {
+            Group {
+                switch pane {
+                case .general: GeneralSettings()
+                case .appearance: AppearanceSettings()
+                case .terminal: TerminalSettings()
+                case .tiles: TileSettings()
+                case .agents: AgentSettings()
+                case .chat: ChatSettings()
+                case .tuning: TuningSettings()
+                case .about: AboutSettings()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .navigationTitle(pane.title)
         }
-        .frame(width: 560)
+        .frame(width: Self.sidebarWidth + 560, height: 560)
     }
+
+    private static let sidebarWidth: CGFloat = 190
+
+    /// A list's selection is optional; a click on the empty space under the rows must
+    /// not leave the window showing nothing.
+    private var selection: Binding<SettingsPane?> {
+        Binding(get: { pane }, set: { if let new = $0 { pane = new } })
+    }
+}
+
+/// The panes of the Settings window, in the order its sidebar lists them.
+enum SettingsPane: String, CaseIterable, Identifiable {
+    case general, appearance, terminal, tiles, agents, chat, tuning, about
+
+    var id: String { rawValue }
+
+    var title: String { rawValue.capitalized }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .appearance: "circle.lefthalf.filled"
+        case .terminal: "apple.terminal"
+        case .tiles: "square.grid.2x2"
+        case .agents: "sparkles"
+        case .chat: "text.bubble"
+        case .tuning: "slider.horizontal.3"
+        case .about: "info.circle"
+        }
+    }
+
+    /// Tuning is Ultra Dev's only: the look's numbers as sliders, for deciding a new
+    /// default.
+    @MainActor static var shown: [SettingsPane] {
+        allCases.filter { $0 != .tuning || TuningSettings.isAvailable }
+    }
+}
+
+#Preview("Settings") {
+    UltraSettings()
 }
 
 /// Dark, light or the system's choice, and the light look's own numbers while it is
@@ -168,14 +226,13 @@ private struct GeneralSettings: View {
             Section {
                 Button("Reset All Settings") { Preferences.reset() }
             } footer: {
-                SettingNote("Every setting on every tab, back to what Ultra ships with. "
+                SettingNote("Every setting on every pane, back to what Ultra ships with. "
                             + "Layouts are not settings: the default layout above and each "
                             + "project's own arrangement are left alone.")
             }
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 520)
         .onAppear { hasDefaultLayout = layoutStorage.hasDefaultLayout }
     }
 
@@ -299,7 +356,6 @@ private struct TerminalSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 480)
     }
 }
 
@@ -389,7 +445,6 @@ private struct TileSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 560)
     }
 }
 
@@ -447,7 +502,6 @@ private struct AgentSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 400)
     }
 }
 

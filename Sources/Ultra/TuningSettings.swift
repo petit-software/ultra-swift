@@ -111,7 +111,6 @@ struct TuningSettings: View {
         }
         .formStyle(.grouped)
         .padding(.vertical, 6)
-        .frame(height: 520)
     }
 
     private func slider(_ title: String, _ get: @escaping () -> CGFloat,

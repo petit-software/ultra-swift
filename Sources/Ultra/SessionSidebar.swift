@@ -366,6 +366,14 @@ struct SessionSidebar: View {
                 SessionTerminalVisibility.shared.toggle(for: store)
             })
         }
+        // Done with it before the half hour is up: grey, its sessions folded away, until
+        // an agent's next turn. Only on a project with agent work to put away.
+        if AgentMonitor.shared.stateBySession[id] != nil {
+            items.append(SidebarMenuItem(PaneCommands.markSessionInactive.title,
+                                         isEnabled: AgentMonitor.shared.canMarkInactive(id)) {
+                AgentMonitor.shared.markInactive(id)
+            })
+        }
         // What dragging the row out of the sidebar does.
         if sessions.canMoveToNewWindow(id) {
             items.append(SidebarMenuItem("Move to New Window") { sessions.moveToNewWindow(id) })
@@ -801,11 +809,17 @@ struct SidebarRowPress: NSViewRepresentable {
             guard !items.isEmpty else { return false }
             let menu = NSMenu()
             menu.autoenablesItems = false
-            let targets = items.map { MenuTarget($0.action) }
-            for (item, target) in zip(items, targets) {
+            for item in items {
                 guard item.action != nil else { menu.addItem(.separator()); continue }
                 let entry = NSMenuItem(title: item.title, action: #selector(MenuTarget.fire), keyEquivalent: "")
+                let target = MenuTarget(item.action)
                 entry.target = target
+                // A menu item holds its target WEAKLY, and nothing else here held it: an
+                // optimised build let the targets go after the loop — their last use —
+                // before the menu was up, and every item of it did nothing. The item
+                // keeps its own.
+                entry.representedObject = target
+                entry.isEnabled = item.isEnabled
                 menu.addItem(entry)
             }
             press.menuShown(row - 1)
@@ -956,15 +970,19 @@ private struct SelectedProjectWash: View {
 /// One item of a sidebar row's right-click menu, or the line between two groups.
 struct SidebarMenuItem {
     let title: String
+    /// Dimmed when false: an item with nothing to act on stays where it is found.
+    let isEnabled: Bool
     let action: (() -> Void)?
 
-    init(_ title: String, action: @escaping () -> Void) {
+    init(_ title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
         self.title = title
+        self.isEnabled = isEnabled
         self.action = action
     }
 
     private init() {
         title = ""
+        isEnabled = true
         action = nil
     }
 

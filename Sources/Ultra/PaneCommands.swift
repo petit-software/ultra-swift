@@ -19,7 +19,7 @@ enum PaneCommands {
                                  + (TileFactory.offersSimulator ? simulator : []) + todo + context + ports + git + paneKinds + folders
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
-                                 + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions]
+                                 + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions, markSessionInactive]
                                  + [showAgents, openAgentProject, openWaiting, toggleAppearance]
                                  + colourModes + gridModes + [toggleAurora]
                                  + [filterProjects, clearProjectFilter]
@@ -357,6 +357,18 @@ enum PaneCommands {
                    "Hide Agents in Sidebar"],
         isEnabled: { SessionList.holding($0) != nil }) { store in
             SessionTerminalVisibility.shared.toggle(for: store)
+        }
+
+    /// The project put away before its half hour is up: its finished turns are inactive
+    /// at once — the row grey, its sessions no longer listed — until an agent's next
+    /// turn. The sidebar row's right-click has it too. Dims unless the project is done.
+    static let markSessionInactive = AppCommand(
+        id: "session.markInactive", title: "Mark as Inactive",
+        symbol: "moon.zzz", menuPath: ["File", "Session"],
+        keywords: ["Mark Project as Inactive", "Mark Session as Inactive", "Dismiss Done",
+                   "Clear Activity", "Mark as Read"],
+        isEnabled: { AgentMonitor.shared.canMarkInactive($0.workspaceID) }) { store in
+            AgentMonitor.shared.markInactive(store.workspaceID)
         }
 
     /// Every other window's sessions into this one, and every pane window's panes back
