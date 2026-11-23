@@ -68,6 +68,10 @@ final class SessionList {
         sessions.first { $0.workspaceID == selectedID }
     }
 
+    /// Every list there is, a window's or not — for `CanvasDiagnostics`, which writes down
+    /// what each holds.
+    static var all: [SessionList] { lists.allObjects }
+
     var isEmpty: Bool { sessions.isEmpty }
 
     /// What each row is called. The project's name, which is what a session IS.

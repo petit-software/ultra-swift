@@ -661,6 +661,12 @@ struct WorkspaceCommands: Commands {
         //
         // Closing a window is still one keystroke away, just the shifted one, which is the
         // arrangement Terminal and iTerm both settled on.
+        // Not through the focused session, unlike its neighbours: the item is for a window
+        // whose session may be the thing that is wrong, and it must not dim with it.
+        CommandGroup(after: .help) {
+            Button(PaneCommands.copyCanvasDiagnostics.title) { CanvasDiagnostics.copy() }
+        }
+
         CommandGroup(replacing: .saveItem) {}
         CommandGroup(after: .newItem) {
             Divider()

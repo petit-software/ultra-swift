@@ -22,8 +22,19 @@ enum PaneCommands {
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions, markSessionInactive, markSessionActive]
                                  + [showAgents, openAgentProject, openWaiting, toggleAppearance]
                                  + colourModes + gridModes + [toggleAurora]
-                                 + [filterProjects, clearProjectFilter]
+                                 + [filterProjects, clearProjectFilter, copyCanvasDiagnostics]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
+
+    /// What every window holds, as text on the clipboard and in a file: for a window
+    /// showing a project's name over no panes, or another project's (`CanvasDiagnostics`).
+    /// In every build, release included — the fault it is for shows up in daily use, not
+    /// in a build made to look for it. Always enabled: it reads, and needs no session.
+    static let copyCanvasDiagnostics = AppCommand(
+        id: "help.copyCanvasDiagnostics", title: "Copy Canvas Diagnostics",
+        symbol: "stethoscope", menuPath: ["Help"],
+        keywords: ["Debug", "Diagnose", "Missing Panes", "Wrong Panes", "Report a Problem"]) { _ in
+            CanvasDiagnostics.copy()
+        }
 
     /// Ultra Dev only: the overview with three stand-in agents, to look at the design
     /// without running three agents. Not in a release build at all — absent, not dimmed,
