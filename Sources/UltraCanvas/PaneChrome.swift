@@ -913,23 +913,37 @@ public final class PaneContainerView: NSView {
     /// A click on the handle that never became a drag is still a click on the header.
     func focusFromHandle() { actions.focus(paneID) }
 
-    /// What the drag carries: the pane as it looks right now, at a size that reads as a
-    /// thumbnail rather than as a second window being flung around.
+    /// What the drag carries: a plain card of the pane's colour with rounded corners, one
+    /// size whatever the pane's. No picture of the pane on it.
+    ///
+    /// It was a snapshot of the pane, and a pane's surface is not in a snapshot: glass
+    /// and frost are materials the window server draws, and a cell of the compact grid
+    /// has no surface at all. The pane under the pointer was its text on nothing, over
+    /// whatever it was dragged across. The card says what is being moved by where it was
+    /// picked up from; the drop target says where it goes.
     private func paneSnapshot() -> NSImage? {
-        guard bounds.width > 1, bounds.height > 1,
-              let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
-        cacheDisplay(in: bounds, to: rep)
-        let full = NSImage(size: bounds.size)
-        full.addRepresentation(rep)
-        let scale = min(1, 240 / max(bounds.width, 1))
-        let size = CGSize(width: (bounds.width * scale).rounded(),
-                          height: (bounds.height * scale).rounded())
-        let thumb = NSImage(size: size)
-        thumb.lockFocus()
-        full.draw(in: CGRect(origin: .zero, size: size),
-                  from: .zero, operation: .copy, fraction: 0.85)
-        thumb.unlockFocus()
-        return thumb
+        let backdrop = dragBackdrop
+        let radius = Token.Space.paneRadius
+        return NSImage(size: Self.dragImageSize, flipped: false) { rect in
+            backdrop.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+    }
+
+    /// The size of the card carried under the pointer.
+    private static let dragImageSize = CGSize(width: 280, height: 160)
+
+    /// The colour a dragged pane is carried on: what its surface reads as, with no
+    /// transparency left in it. A pinned pane's own sheet, else the theme's background —
+    /// the colour glass, frost and the compact grid's window all show the pane against.
+    private var dragBackdrop: NSColor {
+        let colour: NSColor = switch paneAppearance {
+        case .light: .white
+        case .dark: NSColor(TerminalTheme.dark.background)
+        case nil: NSColor(theme.background)
+        }
+        return (colour.usingColorSpace(.sRGB) ?? colour).withAlphaComponent(1)
     }
 
     private func refresh() {

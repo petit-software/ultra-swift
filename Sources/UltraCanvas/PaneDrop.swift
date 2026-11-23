@@ -4,42 +4,42 @@ import UltraLayout
 
 /// The highlight shown while a pane is being dragged.
 ///
-/// Glass tinted with the accent, sized to where the pane will ACTUALLY land — a half for an
+/// A plain wash of the label colour — what the sidebar shows for the place a dragged
+/// project would land in — sized to where the pane will ACTUALLY land: a half for an
 /// edge, the whole pane for a swap, a full side for a root split. Previewing the zone that
 /// was hit instead would show a quarter of a pane for a move that fills half of it.
+///
+/// It was glass tinted with the accent. Glass over a pane bent and blurred what the pane
+/// showed, a second material in a window that has one, and said nothing the wash does not.
 @MainActor
 final class DropHighlightView: NSView {
-    private let glass = NSGlassEffectView()
-
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        addSubview(glass)
+        layer?.cornerCurve = .continuous
         refreshTint()
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    /// Under Reduce Transparency the material is dropped rather than quietly kept, so the
-    /// highlight becomes a solid high-contrast fill instead of disappearing — the one state
-    /// where a drop target that is merely suggested would be no target at all.
+    /// Under Reduce Transparency — and Increase Contrast — the wash becomes a solid
+    /// high-contrast fill with a border: the states where a drop target that is merely
+    /// suggested would be no target at all.
     func refreshTint() {
-        // `NSColor.cgColor` is where a dynamic accent — System Accent is one — collapses,
-        // and it collapses against whatever appearance is current rather than this view's.
-        glass.cornerRadius = Token.Space.paneRadius
-        glass.style = Appearance.glassStyle.style
+        // `NSColor.cgColor` is where a dynamic colour collapses, and it collapses against
+        // whatever appearance is current rather than this view's.
+        layer?.cornerRadius = Token.Space.paneRadius
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
-            if Token.Environment_.reduceTransparency {
-                glass.isHidden = true
+            if Token.Environment_.reduceTransparency || Token.Environment_.increaseContrast {
                 layer?.backgroundColor = Token.Colour.accent.nsColor
                     .withAlphaComponent(0.55).cgColor
-                layer?.cornerRadius = Token.Space.paneRadius
                 layer?.borderWidth = 2
                 layer?.borderColor = Token.Colour.accent.nsColor.cgColor
             } else {
-                glass.isHidden = false
-                glass.tintColor = Token.Colour.accent.nsColor.withAlphaComponent(0.28)
+                // The sidebar's: `SessionSidebar.dragOverlay`.
+                layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.1).cgColor
+                layer?.borderWidth = 0
             }
         }
     }
@@ -47,11 +47,6 @@ final class DropHighlightView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         refreshTint()
-    }
-
-    override func layout() {
-        super.layout()
-        glass.frame = bounds
     }
 
     /// Decorative: a drag in progress must reach the canvas underneath, not this.

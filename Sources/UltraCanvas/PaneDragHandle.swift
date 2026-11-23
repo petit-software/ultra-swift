@@ -15,7 +15,7 @@ import UltraLayout
 @MainActor
 final class PaneDragHandleView: NSView {
     private let paneID: PaneID
-    /// A snapshot of the pane, so what you drag looks like what you are moving.
+    /// What is carried under the pointer: a plain card of the pane's colour.
     private let snapshot: () -> NSImage?
     private var mouseDownAt: NSPoint?
     /// On a floating canvas: what moves it, by a translation from where the drag began

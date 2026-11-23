@@ -85,3 +85,10 @@ Planned, not started. The design is `docs/06-REMOTE.md`.
 
 - [x] The shadows of the panes beside the sidebar fall on the sidebar, instead of stopping on a line down its edge: the sidebar draws the part that falls on it, over its own surface (`PaneShadowSpill`)
 - [ ] Try in Ultra by hand: relaxed grid, light and dark; drag the sidebar's width, switch projects, move focus between the panes on the leading edge
+
+## A pane's drop target is a plain wash
+
+- [x] Where a dragged pane will land is shown as a plain wash of the label colour, as the place a dragged project will land is in the sidebar; no glass (`DropHighlightView`)
+- [ ] Try in Ultra by hand: drag a pane over a terminal, an editor and the canvas's edges, light and dark
+- [x] The pane carried under the pointer is on a solid sheet of its own colour with rounded corners, in every surface — glass, frost, the compact grid, a pinned light or dark pane; it no longer shows what it is dragged over (`PaneContainerView.paneSnapshot`)
+- [x] What is carried under the pointer is always 280 by 160, and plain: the pane's colour, no picture of the pane (`PaneContainerView.dragImageSize`)
