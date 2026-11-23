@@ -74,3 +74,14 @@ Planned, not started. The design is `docs/06-REMOTE.md`.
 - [x] The compact grid opens under the compact titlebar on a slow launch too: the window is configured when its probe is put in a window, not a turn after the probe is made (`WindowProbe`, `WindowChrome.attach`)
 - [x] The window's … menu has no Windows group, and has Move Up and Move Down for the selected project (`RootView.windowBarMenus`)
 - [ ] Try in Ultra by hand: launch in the compact grid with every project restoring; Move Up and Move Down from the … menu, at the top and the bottom of the list
+
+## Compact titlebar from the first frame; Move Up and Move Down on the project's menu
+
+- [x] The compact grid's traffic lights are in their place in the window's first frame: the titlebar's style is set as the window takes its root view, before it is shown, not when the canvas arrives (`WindowChrome.prepareMainWindow`, `WorkspaceModel.attach`)
+- [x] Move Up and Move Down are on a project's right-click menu, for THAT project, and out of the window's … menu (`SessionSidebar.menuItems`, `SessionList.move(_:by:)`)
+- [ ] Try in Ultra by hand: quit and launch in the compact grid and watch the traffic lights; right-click a project that is not selected, Move Up and Move Down
+
+## A pane's shadow is not cut off at the sidebar
+
+- [x] The shadows of the panes beside the sidebar fall on the sidebar, instead of stopping on a line down its edge: the sidebar draws the part that falls on it, over its own surface (`PaneShadowSpill`)
+- [ ] Try in Ultra by hand: relaxed grid, light and dark; drag the sidebar's width, switch projects, move focus between the panes on the leading edge

@@ -385,6 +385,9 @@ final class WorkspaceModel {
     /// would empty it, and only AppKit says for certain that it has.
     func attach(to window: NSWindow) {
         guard sessions.window !== window else { return }
+        // Before the window is seen: the canvas, which keeps the titlebar's style from
+        // here on, is not in it until a project has been restored.
+        WindowChrome.prepareMainWindow(window)
         sessions.window = window
         if let closeObserver { NotificationCenter.default.removeObserver(closeObserver) }
         closeObserver = NotificationCenter.default.addObserver(
@@ -1293,24 +1296,14 @@ struct RootView: View {
                 // level is a few short lines that say where to look, not eight commands
                 // to read through. Moving a session to a window of its own and merging
                 // windows were a third group here; they are on the Window menu and in
-                // the palette, and were taken out of this one.
+                // the palette, and were taken out of this one. A project's place in the
+                // list is on the project's own right-click menu, not here.
                 Menu("Arrange Panes") {
                     windowBarItem(PaneCommands.equalizeColumns)
                     windowBarItem(PaneCommands.equalizeRows)
                 }
                 Menu("Layout") {
                     ForEach(PaneCommands.layouts) { windowBarItem($0) }
-                }
-                // The selected project's place in the list — View ▸ Move Session Up
-                // and Down, under the names the list's own rows would give them. Not on
-                // the Agents overview, which is no project and has no place to move from.
-                if !ui.showsAgents {
-                    Section {
-                        Button("Move Up") { sessions.moveSelected(by: -1) }
-                            .disabled(!sessions.canMoveSelected(by: -1))
-                        Button("Move Down") { sessions.moveSelected(by: 1) }
-                            .disabled(!sessions.canMoveSelected(by: 1))
-                    }
                 }
                 // Not about this canvas at all: how the whole app looks.
                 Divider()

@@ -982,6 +982,7 @@ public final class PaneContainerView: NSView {
         layer?.shadowOpacity = isBare ? 0 : showsFocus
             ? Token.Space.paneShadowOpacity * 1.6
             : Token.Space.paneShadowOpacity
+        NotificationCenter.default.post(name: PaneShadowSpill.changed, object: self)
         // Its hairline, resolved here for the reason the ring's tint is.
         effectiveAppearance.performAsCurrentDrawingAppearance { [self] in
             hairline.strokeColor = NSColor.separatorColor.cgColor
@@ -1093,6 +1094,7 @@ public final class PaneContainerView: NSView {
                                    cornerWidth: cornerRadius,
                                    cornerHeight: cornerRadius,
                                    transform: nil)
+        NotificationCenter.default.post(name: PaneShadowSpill.changed, object: self)
         let headerHeight = isPlain ? 0 : Token.Space.tileHeaderHeight
         // A visiting pane's strip sits above everything, and the rest moves down by it.
         let stripHeight = stripHost == nil ? 0 : min(headerHeight, bounds.height)

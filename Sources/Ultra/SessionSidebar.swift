@@ -77,6 +77,11 @@ struct SessionSidebar: View {
                               aurora: auroraColour)
                     .ignoresSafeArea()
             }
+            // Over the surface, under the list: the shadows of the panes beside the
+            // sidebar, which this column's surface would otherwise cut off at its edge.
+            PaneShadowSpill()
+                .ignoresSafeArea()
+                .accessibilityHidden(true)
             list
                 // Under the list, which is where every source list on this platform puts
                 // "add" — Finder's sidebar, Mail's mailboxes, Xcode's navigator. It was a
@@ -376,6 +381,18 @@ struct SessionSidebar: View {
             items.append(SidebarMenuItem(PaneCommands.markSessionInactive.title,
                                          isEnabled: AgentMonitor.shared.canMarkInactive(id)) {
                 AgentMonitor.shared.markInactive(id)
+            })
+        }
+        // This project's place in the list: View ▸ Move Session Up and Down, for the row
+        // the menu was opened on. Dimmed at the ends of the list; not there at all in a
+        // list of one.
+        if sessions.sessions.count > 1 {
+            items.append(.separator)
+            items.append(SidebarMenuItem("Move Up", isEnabled: sessions.canMove(id, by: -1)) {
+                sessions.move(id, by: -1)
+            })
+            items.append(SidebarMenuItem("Move Down", isEnabled: sessions.canMove(id, by: 1)) {
+                sessions.move(id, by: 1)
             })
         }
         // What dragging the row out of the sidebar does.

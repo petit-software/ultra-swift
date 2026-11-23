@@ -168,8 +168,14 @@ public struct WindowChrome: NSViewRepresentable {
     /// `updateNSView` to do it later: the compact grid opened under the tall unified
     /// titlebar, the traffic lights 6pt under the controls beside them and into the
     /// sidebar's toggle, and stayed so until something redrew the canvas.
+    ///
+    /// The titlebar's STYLE does not wait that turn: it is the window's own, needs no
+    /// toolbar to be set, and a frame drawn in between would have the other titlebar.
     private func attach(_ probe: WindowProbe, coordinator: Coordinator) {
         probe.onWindow = { [weak probe, weak coordinator] in
+            if let window = probe?.window {
+                applyToolbarStyle(window)
+            }
             DispatchQueue.main.async {
                 guard let window = probe?.window else { return }
                 configure(window)
@@ -240,6 +246,31 @@ public struct WindowChrome: NSViewRepresentable {
         }
     }
 
+    /// `.unifiedCompact` in the compact grid: the same bar, shorter, with the traffic
+    /// lights nearer the corner.
+    private func applyToolbarStyle(_ window: NSWindow) {
+        Self.setToolbarStyle(compact: compactTitlebar, on: window)
+    }
+
+    private static func setToolbarStyle(compact: Bool, on window: NSWindow) {
+        let style: NSWindow.ToolbarStyle = compact ? .unifiedCompact : .unified
+        if window.toolbarStyle != style { window.toolbarStyle = style }
+    }
+
+    /// The main window's titlebar style, for the moment the window first has content and
+    /// has not been shown.
+    ///
+    /// The canvas — and this representable with it — is not in the window until a
+    /// project has been restored, which is after the window is up: measured, 130ms
+    /// after, and the style a turn of the run loop after that. For that long the compact
+    /// grid's window stood under the tall unified titlebar, its traffic lights where the
+    /// relaxed grid has them, and then they travelled to their place in a window already
+    /// open. The window's root view calls this as it is put in the window, before the
+    /// first frame.
+    public static func prepareMainWindow(_ window: NSWindow) {
+        setToolbarStyle(compact: Appearance.compact, on: window)
+    }
+
     private func configure(_ window: NSWindow?) {
         guard let window else { return }
         // Titlebar, backdrop material, glass headers, menus and the palette all resolve
@@ -275,10 +306,7 @@ public struct WindowChrome: NSViewRepresentable {
         // a second NSToolbar here would fight it. This only picks the STYLE: `.unified` is
         // what gives the tall Finder-style titlebar the traffic lights are placed in.
         window.toolbar?.showsBaselineSeparator = false
-        // `.unifiedCompact` in the compact grid: the same bar, shorter, with the traffic
-        // lights nearer the corner.
-        let style: NSWindow.ToolbarStyle = compactTitlebar ? .unifiedCompact : .unified
-        if window.toolbarStyle != style { window.toolbarStyle = style }
+        applyToolbarStyle(window)
         // Native macOS tabs are OFF, because the window now has its own session sidebar and
         // two tab systems in one window is worse than either. A native tab bar also hides
         // itself at one tab, has room for a name only until there are about four, and lives

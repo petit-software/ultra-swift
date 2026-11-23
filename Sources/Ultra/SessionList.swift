@@ -568,6 +568,21 @@ final class SessionList {
         return sessions.indices.contains(selectedIndex + offset)
     }
 
+    /// Whether this session can move a row in this direction — the row a menu was
+    /// opened on, selected or not.
+    func canMove(_ id: UUID, by offset: Int) -> Bool {
+        guard let index = sessions.firstIndex(where: { $0.workspaceID == id }) else { return false }
+        return sessions.indices.contains(index + offset)
+    }
+
+    /// Move this session a row. Selection is untouched, as it is by a drag.
+    func move(_ id: UUID, by offset: Int) {
+        guard canMove(id, by: offset),
+              let index = sessions.firstIndex(where: { $0.workspaceID == id }) else { return }
+        sessions.swapAt(index, index + offset)
+        persist()
+    }
+
     /// The keyboard half of the drag. A drag-only reorder is the anti-pattern this app is
     /// written against: the sidebar is navigation, and navigation a terminal user cannot
     /// rearrange from the keys is navigation they will not rearrange.

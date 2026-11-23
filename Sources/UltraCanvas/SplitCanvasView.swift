@@ -455,6 +455,9 @@ public final class SplitCanvasView: NSView {
 
     public override func layout() {
         super.layout()
+        // The panes are about to be where they will be: what draws their shadows past
+        // the canvas's edge lays itself out after this, in the same pass or the next.
+        NotificationCenter.default.post(name: PaneShadowSpill.changed, object: self)
         cancelTitlebarSafeArea()
         let canvas = layoutBounds
         noteCanvasBounds(canvas)
