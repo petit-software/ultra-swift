@@ -143,21 +143,39 @@ public struct WindowChrome: NSViewRepresentable {
     }
 
     public func makeNSView(context: Context) -> NSView {
-        let probe = NSView(frame: .zero)
+        let probe = WindowProbe(frame: .zero)
         context.coordinator.onFrameChange = onFrameChange
         context.coordinator.hidesFullScreenBar = hidesFullScreenBar
-        DispatchQueue.main.async {
-            configure(probe.window)
-            context.coordinator.observe(probe.window)
-        }
+        attach(probe, coordinator: context.coordinator)
         return probe
     }
 
     public func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.onFrameChange = onFrameChange
         context.coordinator.hidesFullScreenBar = hidesFullScreenBar
+        // With this update's values: the theme and the title are the struct's.
+        if let probe = nsView as? WindowProbe { attach(probe, coordinator: context.coordinator) }
         configure(nsView.window)
         context.coordinator.observe(nsView.window)
+    }
+
+    /// Configures the window when the probe is put IN one, a turn of the run loop later —
+    /// SwiftUI is still building the window's toolbar while it adds the view.
+    ///
+    /// It was one `DispatchQueue.main.async` from `makeNSView`, on the assumption that the
+    /// view is in its window a turn after it is made. Usually it is. On a launch slow
+    /// enough that it was not, the window was never configured at all, and nothing ran
+    /// `updateNSView` to do it later: the compact grid opened under the tall unified
+    /// titlebar, the traffic lights 6pt under the controls beside them and into the
+    /// sidebar's toggle, and stayed so until something redrew the canvas.
+    private func attach(_ probe: WindowProbe, coordinator: Coordinator) {
+        probe.onWindow = { [weak probe, weak coordinator] in
+            DispatchQueue.main.async {
+                guard let window = probe?.window else { return }
+                configure(window)
+                coordinator?.observe(window)
+            }
+        }
     }
 
     public func makeCoordinator() -> Coordinator { Coordinator() }
@@ -280,6 +298,17 @@ public struct WindowChrome: NSViewRepresentable {
         window.invalidateShadow()
         // Dragging inside a pane must never move the window — a terminal owns its content.
         window.isMovableByWindowBackground = false
+    }
+}
+
+/// Tells `WindowChrome` when it has a window: a representable's view is made before it is
+/// in one, and nothing else says when that changes.
+private final class WindowProbe: NSView {
+    var onWindow: (() -> Void)?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { onWindow?() }
     }
 }
 

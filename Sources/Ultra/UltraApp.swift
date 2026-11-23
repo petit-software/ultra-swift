@@ -1290,8 +1290,10 @@ struct RootView: View {
             // move dividers, where Layout's three save or replace the whole arrangement.
             Menu {
                 // Grouped by what they act on, each group a submenu: the menu's first
-                // level is four short lines that say where to look, not eight commands
-                // to read through.
+                // level is a few short lines that say where to look, not eight commands
+                // to read through. Moving a session to a window of its own and merging
+                // windows were a third group here; they are on the Window menu and in
+                // the palette, and were taken out of this one.
                 Menu("Arrange Panes") {
                     windowBarItem(PaneCommands.equalizeColumns)
                     windowBarItem(PaneCommands.equalizeRows)
@@ -1299,9 +1301,16 @@ struct RootView: View {
                 Menu("Layout") {
                     ForEach(PaneCommands.layouts) { windowBarItem($0) }
                 }
-                Menu("Windows") {
-                    windowBarItem(PaneCommands.moveSessionToNewWindow)
-                    windowBarItem(PaneCommands.mergeWindows)
+                // The selected project's place in the list — View ▸ Move Session Up
+                // and Down, under the names the list's own rows would give them. Not on
+                // the Agents overview, which is no project and has no place to move from.
+                if !ui.showsAgents {
+                    Section {
+                        Button("Move Up") { sessions.moveSelected(by: -1) }
+                            .disabled(!sessions.canMoveSelected(by: -1))
+                        Button("Move Down") { sessions.moveSelected(by: 1) }
+                            .disabled(!sessions.canMoveSelected(by: 1))
+                    }
                 }
                 // Not about this canvas at all: how the whole app looks.
                 Divider()

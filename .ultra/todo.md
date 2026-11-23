@@ -68,3 +68,9 @@ Planned, not started. The design is `docs/06-REMOTE.md`.
 - [x] A click on a Context row selects it on the click, not after the double-click interval (`ContextRow`)
 - [x] Space shows the SELECTED file in Quick Look, not the first: the panel is given the selection when it takes this pane as its controller (`ContextHostingView.beginPreviewPanelControl`)
 - [ ] Try in Ultra Dev by hand: click rows in Context, Space on the third, ↑ ↓ with the panel up, a double click still sends
+
+## Compact grid at launch; the window's … menu
+
+- [x] The compact grid opens under the compact titlebar on a slow launch too: the window is configured when its probe is put in a window, not a turn after the probe is made (`WindowProbe`, `WindowChrome.attach`)
+- [x] The window's … menu has no Windows group, and has Move Up and Move Down for the selected project (`RootView.windowBarMenus`)
+- [ ] Try in Ultra by hand: launch in the compact grid with every project restoring; Move Up and Move Down from the … menu, at the top and the bottom of the list
