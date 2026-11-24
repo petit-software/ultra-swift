@@ -144,6 +144,11 @@ public struct AgentStateTracker: Equatable, Sendable {
     public struct PutAway: Equatable, Sendable {
         public var since: Date
         public var restoring: [PaneID: AgentState]
+        /// Put back from the last launch (`restoreInactive`) rather than put away in
+        /// this one. A restored pane relaunches its agent, and the banner it prints is
+        /// output like any other — so for these an agent seen working for the FIRST
+        /// time is it starting, not a turn, and does not bring the session back.
+        public var restored = false
     }
 
     /// The sessions put away by hand. Each is inactive whatever its panes say, until a
@@ -167,12 +172,13 @@ public struct AgentStateTracker: Equatable, Sendable {
             let isViewed = viewed.contains(session)
             var states: [AgentState] = []
             var turnBegan = false
+            let restored = putAway[session]?.restored == true
             for (paneID, pane) in panes {
                 let previous = stateByPane[paneID]
                 guard let state = Self.state(of: pane, previous: previous,
                                              viewed: isViewed, at: now) else { continue }
                 if case .working = state {
-                    if case .working = previous {} else { turnBegan = true }
+                    if case .working = previous {} else if previous != nil || !restored { turnBegan = true }
                 }
                 nextPanes[paneID] = state
                 states.append(state)
@@ -214,6 +220,28 @@ public struct AgentStateTracker: Equatable, Sendable {
         if case .inactive(let finished) = AgentState.rollup(states) { since = finished }
         putAway[session] = PutAway(since: since, restoring: restoring)
         stateBySession[session] = .inactive(since: since)
+    }
+
+    /// The sessions that are inactive, by hand or by the clock, and since when: what is
+    /// written down so the next launch can have them inactive still (`restoreInactive`).
+    public var inactiveSessions: [UUID: Date] {
+        stateBySession.compactMapValues { state in
+            if case .inactive(let since) = state { return since }
+            return nil
+        }
+    }
+
+    /// Put back the sessions that were inactive when the app last quit. Nothing of an
+    /// agent's state outlives the app — a fresh launch reads every pane for the first
+    /// time — so without this a project put away comes back as if it never had been.
+    /// Each is put away as if by hand: inactive whatever its panes say, until a new turn
+    /// begins in it or it is marked active. One the clock had made inactive comes back
+    /// the same way, since the finished turn it was counting from is gone.
+    public mutating func restoreInactive(_ sessions: [UUID: Date]) {
+        for (session, since) in sessions where putAway[session] == nil {
+            putAway[session] = PutAway(since: since, restoring: [:], restored: true)
+            stateBySession[session] = .inactive(since: since)
+        }
     }
 
     /// Undo `markInactive`: the session is as its panes say again, and the finished turns

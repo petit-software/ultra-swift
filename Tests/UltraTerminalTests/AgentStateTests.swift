@@ -198,6 +198,33 @@ struct AgentStateTests {
         #expect(tracker.stateBySession[other] == nil)
     }
 
+    @Test("inactive sessions restored at launch stay inactive through the agent's relaunch, until a turn")
+    func restoredInactive() {
+        // What one launch writes down: a session put away by hand.
+        var before = AgentStateTracker()
+        before.markInactive(session, panes: [], at: t0)
+        #expect(before.inactiveSessions == [session: t0])
+
+        // The next launch: nothing is known of any pane.
+        var tracker = AgentStateTracker()
+        tracker.restoreInactive(before.inactiveSessions)
+        #expect(tracker.stateBySession[session] == .inactive(since: t0))
+        #expect(tracker.putAway[session] != nil)
+        // The restored pane relaunches its agent, which prints its banner and goes quiet.
+        let t1 = t0.addingTimeInterval(3600)
+        tracker.observe(reading(.working, lastOutput: t1), viewed: [], at: t1)
+        #expect(tracker.stateBySession[session] == .inactive(since: t0))
+        let t2 = t1.addingTimeInterval(30)
+        tracker.observe(reading(.idle, lastOutput: t1), viewed: [], at: t2)
+        #expect(tracker.stateBySession[session] == .inactive(since: t0))
+        #expect(tracker.inactiveSessions == [session: t0])
+        // A turn is what brings it back, and it is then no longer written down.
+        let t3 = t2.addingTimeInterval(60)
+        tracker.observe(reading(.working, lastOutput: t3), viewed: [], at: t3)
+        #expect(tracker.stateBySession[session] == .working(since: t3))
+        #expect(tracker.inactiveSessions.isEmpty)
+    }
+
     @Test("marked active, a finished turn put away by hand is done as it was")
     func markedActive() {
         var tracker = AgentStateTracker()

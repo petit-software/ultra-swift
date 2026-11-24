@@ -103,7 +103,32 @@ final class AgentMonitor {
                                               workspaceID: workspaceID, paneID: paneID)
     }
 
-    private init() {}
+    /// Where the inactive sessions are written down between launches: session id to
+    /// the moment it went inactive. In the defaults, which the dev build keeps apart.
+    static let inactiveSessionsKey = "inactiveSessions"
+    private var savedInactive: [UUID: Date] = [:]
+
+    private init() {
+        let saved = UserDefaults.standard.dictionary(forKey: Self.inactiveSessionsKey) ?? [:]
+        for (key, value) in saved {
+            guard let id = UUID(uuidString: key), let seconds = value as? Double else { continue }
+            savedInactive[id] = Date(timeIntervalSinceReferenceDate: seconds)
+        }
+        states.restoreInactive(savedInactive)
+        stateBySession = states.stateBySession
+    }
+
+    /// Write the inactive sessions down when they have changed, so a fresh launch finds
+    /// them as they were left. From the tracker, not `stateBySession`: the demo's
+    /// stand-ins are not anyone's projects.
+    private func saveInactive() {
+        let inactive = states.inactiveSessions
+        guard inactive != savedInactive else { return }
+        savedInactive = inactive
+        var plist: [String: Double] = [:]
+        for (id, since) in inactive { plist[id.uuidString] = since.timeIntervalSinceReferenceDate }
+        UserDefaults.standard.set(plist, forKey: Self.inactiveSessionsKey)
+    }
 
     func start() {
         guard task == nil else { return }
@@ -213,6 +238,7 @@ final class AgentMonitor {
             .merging(standIns) { _, standIn in standIn }
         if next != stateBySession { stateBySession = next }
         if states.stateByPane != stateByPane { stateByPane = states.stateByPane }
+        saveInactive()
         let turned = Calendar.current.dateInterval(of: .minute, for: timestamp)?.start ?? timestamp
         if turned != Calendar.current.dateInterval(of: .minute, for: minute)?.start { minute = turned }
     }
@@ -259,6 +285,7 @@ final class AgentMonitor {
         let next = states.stateBySession.merging(standIns) { _, standIn in standIn }
         if next != stateBySession { stateBySession = next }
         if states.stateByPane != stateByPane { stateByPane = states.stateByPane }
+        saveInactive()
     }
 
     /// Fold one sample into the running set, announcing whatever finished.
