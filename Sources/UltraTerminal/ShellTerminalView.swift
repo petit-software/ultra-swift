@@ -291,11 +291,52 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     }
 
     public func apply(theme: TerminalTheme) {
+        let wasDark = spec.theme.isDark
         spec.theme = theme
         TerminalPalette.apply(theme, to: self)
+        // What is already on screen and in the scrollback was washed, or left alone, for
+        // the theme on its way out.
+        backgroundWasher.themeChanged(theme, in: getTerminal())
         // A light theme draws through CoreGraphics: see `drawsOnGPU`.
         applyRenderer()
         needsDisplay = true
+        // AFTER the palette, so the OSC 11 the program sends back on hearing this is
+        // answered with the new background and not the one on its way out.
+        if theme.isDark != wasDark, notifiesColorScheme { reportColorScheme() }
+    }
+
+    /// Keeps the pane's text readable on a surface a program drew for another theme. See
+    /// `LegibleBackgrounds`.
+    private lazy var backgroundWasher = BackgroundWasher(theme: spec.theme)
+
+    // MARK: - Colour scheme reports
+
+    /// Whether the program in this pane asked to hear when the pane turns light or dark
+    /// (`CSI ? 2031 h`). See `ColorSchemeReports`.
+    public private(set) var notifiesColorScheme = false
+    private var colorSchemeScanner = ColorSchemeReports.Scanner()
+
+    /// Where a report is written. The PTY, except in a test, which has no process to
+    /// write to and wants to read what would have been sent.
+    var colorSchemeReportSink: (([UInt8]) -> Void)?
+
+    private func reportColorScheme() {
+        let report = ColorSchemeReports.report(isDark: spec.theme.isDark)
+        if let colorSchemeReportSink { colorSchemeReportSink(report); return }
+        guard isRunning else { return }
+        // Through `send`, so it counts as input: the repaint a program answers it with is
+        // then an echo, and does not light the pane up as an agent that started working.
+        send(source: self, data: report[...])
+    }
+
+    /// Read what the program asked for out of its output. Internal for the tests.
+    func noteColorSchemeRequests<Bytes: Sequence>(in bytes: Bytes) where Bytes.Element == UInt8 {
+        for request in colorSchemeScanner.scan(bytes) {
+            switch request {
+            case .notify(let wanted): notifiesColorScheme = wanted
+            case .query: reportColorScheme()
+            }
+        }
     }
 
     // MARK: - Renderer
@@ -685,6 +726,9 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
         pendingDirectoryProbe = nil
         isRunning = false
         processID = nil
+        // Whoever subscribed is gone, and the next program in this pane did not ask.
+        notifiesColorScheme = false
+        colorSchemeScanner = ColorSchemeReports.Scanner()
         // SwiftTerm passes the raw `waitpid` status; everything past here wants the code.
         let code = exitCode.flatMap(ShellLauncher.exitCode(fromWaitStatus:))
         // A process killed by a signal reports no code at all. Treated as a failure rather
@@ -695,7 +739,14 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     }
 
     public func dataReceived(slice: ArraySlice<UInt8>) {
-        feed(byteArray: slice)
+        // Parsed, washed, and only then shown. `feed(byteArray:)` would do the first and
+        // the last in one call, and after a keystroke it draws at once — a frame of the
+        // dark composer under every character typed into it. So the engine is fed
+        // directly, and the view is handed an empty feed for the display it owes.
+        getTerminal().feed(buffer: slice)
+        backgroundWasher.sweep(getTerminal())
+        feed(byteArray: [])
+        noteColorSchemeRequests(in: slice)
         // One `gettimeofday` per burst on a path that already schedules a work item per
         // burst. It is what lets the status badge tell a thinking agent from a stopped one
         // — unless the burst is the pane echoing what was just typed into it.
