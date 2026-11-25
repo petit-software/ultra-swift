@@ -20,7 +20,7 @@ enum PaneCommands {
                                  + [newProject, openProject, newShell, openSetup, closeSession, whatsNew]
                                  + [nextSession, previousSession] + prompt
                                  + [moveSessionToNewWindow, mergeWindows, toggleActiveSessions, markSessionInactive, markSessionActive]
-                                 + [showAgents, openAgentProject, openWaiting, toggleAppearance]
+                                 + [showAgents, openAgentProject, openWaiting, answerWindow, toggleAppearance]
                                  + colourModes + gridModes + [toggleAurora]
                                  + [filterProjects, clearProjectFilter, copyCanvasDiagnostics]
                                  + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
@@ -172,6 +172,19 @@ enum PaneCommands {
         keywords: ["Needs You", "Answer Agent", "Waiting Agent"],
         isEnabled: { _ in !AgentsOverview.shared.waiting.isEmpty }) { _ in
             AgentsOverview.shared.openWaiting()
+        }
+
+    /// The answer window, by hand: every waiting pane as a tab in a small window that
+    /// floats over other apps, with the keyboard in it — or away again (`AnswerPanel`).
+    /// It comes up by itself when Ultra is behind something and Settings ▸ Agents asks
+    /// for it; this is the same window on request. ⌃⌘Y — yes, usually; ⌃⌥⌘A reaches it from other apps.
+    static let answerWindow = AppCommand(
+        id: "agents.answerWindow", title: "Show Answer Window", symbol: "text.bubble",
+        menuPath: ["View"],
+        binding: KeyBinding("y", [.command, .control]),
+        keywords: ["Answer Agent", "Floating Window", "Picture in Picture", "Approve",
+                   "Hide Answer Window"]) { _ in
+            AnswerPanel.shared.toggle()
         }
 
     /// From the overview, the focused pane's project: the pane goes home and its session

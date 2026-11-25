@@ -94,7 +94,16 @@ final class AgentMonitor {
     /// Injectable so tests can run the whole transition without a clock or a notification.
     var now: () -> Date = Date.init
     var isWatching: () -> Bool = {
-        NSApp?.isActive == true && (NSApp?.windows.contains { $0.isVisible } ?? false)
+        guard let app = NSApp, app.isActive else { return false }
+        // The answer window is not Ultra being looked at: it is up because it is not.
+        // And while it holds the keyboard over another app, AppKit reports this app
+        // active though that one is still in front — typing an answer from a browser
+        // is not having come back.
+        if app.keyWindow is AnswerWindow,
+           NSWorkspace.shared.frontmostApplication?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            return false
+        }
+        return app.windows.contains { $0.isVisible && !($0 is AnswerWindow) }
     }
     /// Title, body, and the session the news is about, so a click on the notification can
     /// go there. Nil for a completion, which no longer has a pane to go to.
@@ -161,6 +170,7 @@ final class AgentMonitor {
         observeStatuses(byWorkspace)
         // After the states, so a pane arriving on the overview wears its state at once.
         AgentsOverview.shared.refresh(byWorkspace)
+        AnswerPanel.shared.refresh()
     }
 
     /// What the sidebar lists under each session. Published only when it moved: this runs
@@ -313,6 +323,8 @@ final class AgentMonitor {
     /// A turn that ended: the same gates as a completion, with the bell letting a short
     /// turn through, and the session's name in the body so the reader knows where to go.
     private func announceIfWorthIt(_ end: AgentTurnEnd, in workspaceID: UUID?) {
+        // The answer window says it instead (`AnswerPanel`), and both would be twice.
+        guard Preferences.agentAttention == .notification else { return }
         guard AgentCompletionPolicy.shouldNotifyTurnEnd(
             duration: end.duration,
             rangBell: end.rangBell,

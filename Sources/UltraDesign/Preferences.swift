@@ -152,6 +152,36 @@ public enum Preferences {
         }
     }
 
+    /// How Ultra says an agent is waiting while you are somewhere else.
+    public enum AgentAttention: String, CaseIterable, Sendable, Identifiable {
+        /// A macOS notification; clicking it goes to the pane.
+        case notification
+        /// The answer window: the waiting pane's screen in a corner of the display,
+        /// to type into without coming back to Ultra.
+        case answerWindow
+        public var id: String { rawValue }
+        public var title: String {
+            switch self {
+            case .notification: "A Notification"
+            case .answerWindow: "A Window to Answer In"
+            }
+        }
+    }
+
+    /// Which of the two an agent's finished turn raises, when `notifiesOnAgentCompletion`
+    /// is on. A notification by default, which is what the switch has always meant.
+    public static var agentAttention: AgentAttention {
+        get {
+            store.string(forKey: prefix + "agentAttention")
+                .flatMap(AgentAttention.init(rawValue:)) ?? .notification
+        }
+        set {
+            guard newValue != agentAttention else { return }
+            store.set(newValue.rawValue, forKey: prefix + "agentAttention")
+            post()
+        }
+    }
+
     public static var themeMode: ThemeMode {
         get {
             store.string(forKey: prefix + "themeMode")
@@ -378,7 +408,7 @@ public enum Preferences {
 
     public static func reset() {
         for key in ["accentColour", "terminalFontSize", "terminalBackgroundOpacity", "themeMode",
-                    "notifiesOnAgentCompletion", "showsMenuBarIcon", "audibleBell", "promptMenus",
+                    "notifiesOnAgentCompletion", "agentAttention", "showsMenuBarIcon", "audibleBell", "promptMenus",
                     "linkClick", "opensLinksInBrowserPane",
                     "showsHiddenFiles", "portsInterval", "resourcesInterval", "gitInterval",
                     "pausePollingWhenOccluded", "defaultTodoPath", "defaultContextPath",
@@ -522,6 +552,11 @@ public final class PreferencesModel {
     public func linkClick() -> Binding<Preferences.LinkClick> {
         Binding(get: { _ = self.revision; return Preferences.linkClick },
                 set: { Preferences.linkClick = $0 })
+    }
+
+    public func agentAttention() -> Binding<Preferences.AgentAttention> {
+        Binding(get: { _ = self.revision; return Preferences.agentAttention },
+                set: { Preferences.agentAttention = $0 })
     }
 
     public func theme() -> Binding<Preferences.ThemeMode> {

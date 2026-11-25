@@ -87,6 +87,8 @@ enum SettingsSearch {
         .init(pane: .agents, section: "Notifications",
               title: "Notify me when an agent finishes or waits for me",
               keywords: ["notification", "alert", "done", "banner"]),
+        .init(pane: .agents, section: "Notifications", title: "When one waits, show",
+              keywords: ["answer window", "floating", "picture in picture", "approve", "reply"]),
 
         .init(pane: .chat, section: "Default", title: "New chats use",
               keywords: ["provider", "model", "service"]),

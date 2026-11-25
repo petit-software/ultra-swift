@@ -634,6 +634,10 @@ private struct AgentSettings: View {
                            // who switched it on and waited for the prompt never saw one.
                            if on { AgentCompletionNotifier.shared.requestAuthorization() }
                        }))
+                Picker("When one waits, show", selection: prefs.agentAttention()) {
+                    ForEach(Preferences.AgentAttention.allCases) { Text($0.title).tag($0) }
+                }
+                .disabled(!prefs.flag({ Preferences.notifiesOnAgentCompletion }, { _ in }).wrappedValue)
             } header: {
                 Text("Notifications")
             } footer: {
@@ -644,6 +648,12 @@ private struct AgentSettings: View {
                             agent rang, and only when you are not already looking at Ultra. \
                             Clicking the notification goes to the session. Turning this on \
                             asks macOS for permission to show notifications.
+
+                            The window to answer in shows the waiting pane in the top \
+                            right corner of the display, over whatever app you are in: \
+                            click it or press \(AnswerHotKey.display) and what you type \
+                            goes to the agent. One tab for each pane that is waiting. An \
+                            agent that exits is still a notification.
                             """)
             }
         }

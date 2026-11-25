@@ -133,6 +133,7 @@ struct WorkspaceWindow: View {
                 // rather than from `init` because there is nothing to count until a
                 // workspace exists, and stopping it is the app quitting.
                 AgentMonitor.shared.start()
+                AnswerPanel.shared.start()
                 // Idempotent too, and started here for the same reason: a notification
                 // delivered before the last quit is still on screen, and this is the first
                 // moment the app can take it back.
@@ -721,6 +722,11 @@ struct WorkspaceCommands: Commands {
             }
             .keyboardShortcut("0", modifiers: [.command, .option])
             .disabled(store.map { !PaneCommands.openWaiting.isEnabled($0) } ?? true)
+            Button(PaneCommands.answerWindow.title) {
+                if let store { PaneCommands.answerWindow.run(store) }
+            }
+            .keyboardShortcut("y", modifiers: [.command, .control])
+            .disabled(store == nil)
 
             Divider()
 

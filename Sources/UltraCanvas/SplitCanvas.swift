@@ -482,18 +482,23 @@ public struct WindowSurface: NSViewRepresentable {
     /// The project's colour for the aurora at the foot of the surface, or nil for none —
     /// the sidebar's surface, the Agents overview, a window with no project.
     private let aurora: NSColor?
+    /// Drawn as an active window's whatever the window is: the answer window is on screen
+    /// exactly while Ultra is NOT the active app, and a material that followed that
+    /// would be the flat grey of a window in the background the whole time it is up.
+    private let alwaysActive: Bool
 
     public init(corners: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner,
                                          .layerMinXMaxYCorner, .layerMaxXMaxYCorner],
-                aurora: NSColor? = nil) {
+                aurora: NSColor? = nil, alwaysActive: Bool = false) {
         self.corners = corners
         self.aurora = aurora
+        self.alwaysActive = alwaysActive
     }
 
     public func makeNSView(context: Context) -> NSVisualEffectView {
         let view = WindowSurfaceView()
         view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
+        view.state = alwaysActive ? .active : .followsWindowActiveState
         view.corners = corners
         view.auroraColour = aurora
         return view

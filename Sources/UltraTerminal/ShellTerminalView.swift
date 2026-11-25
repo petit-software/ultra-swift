@@ -141,7 +141,7 @@ public final class ShellTerminalView: TerminalView, @preconcurrency TerminalView
     /// The last `count` rows of the screen as text. The rows on view: scrolled up into
     /// the history, it is the history — and someone scrolled up there is reading the pane
     /// already. Trailing blank rows are dropped, so the bottom is where the text ends.
-    func screenTail(_ count: Int) -> [String] {
+    public func screenTail(_ count: Int) -> [String] {
         let terminal = getTerminal()
         var lines: [String] = []
         for row in max(0, terminal.rows - count - 6)..<terminal.rows {
