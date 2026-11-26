@@ -257,6 +257,9 @@ public struct GitTile: View {
                     ForEach(model.changes) { change in
                         ChangeRow(change: change,
                                   open: { open(change) },
+                                  openFile: canOpenFile(change) ? { openFile(change) } : nil,
+                                  openAll: openAllFiles,
+                                  reveal: { context.revealInFinder(fileURL(change)) },
                                   stage: { Task { await model.stage(change) } },
                                   unstage: { Task { await model.unstage(change) } },
                                   discard: { confirming = change },
@@ -278,6 +281,28 @@ public struct GitTile: View {
         context.openInEditor(.diff(DiffRequest(repositoryRoot: context.root,
                                                change: change,
                                                sides: model.availableSides(for: change))))
+    }
+
+    private func fileURL(_ change: GitModel.Change) -> URL {
+        context.root.appendingPathComponent(change.path)
+    }
+
+    /// Whether there is a file to open: a deleted one is gone, and an untracked FOLDER
+    /// is listed as one row ending in a slash.
+    private func canOpenFile(_ change: GitModel.Change) -> Bool {
+        change.staged != .deleted && change.unstaged != .deleted && !change.path.hasSuffix("/")
+    }
+
+    /// The file itself, to edit — where a click on the row shows what changed in it.
+    /// Through the same verb, so it lands as a tab in the editor already open.
+    private func openFile(_ change: GitModel.Change) {
+        context.openInEditor(.file(fileURL(change)))
+    }
+
+    /// Every changed file that still exists, each a tab: picking a change up where an
+    /// agent, or yesterday, left it.
+    private func openAllFiles() {
+        for change in model.changes where canOpenFile(change) { openFile(change) }
     }
 
     /// Polled, not watched. FSEvents would fire hundreds of times during a rebase or a
@@ -423,6 +448,10 @@ private struct PullRequestRow: View {
 private struct ChangeRow: View {
     let change: GitModel.Change
     let open: () -> Void
+    /// Nil when there is no file to open: it was deleted.
+    let openFile: (() -> Void)?
+    let openAll: () -> Void
+    let reveal: () -> Void
     let stage: () -> Void
     let unstage: () -> Void
     let discard: () -> Void
@@ -472,6 +501,11 @@ private struct ChangeRow: View {
         // widths whether staged or not, so the pill is the same size on every row.
         .tileHoverControls(isHovering) {
             HStack(spacing: 8) {
+                // Dimmed, not absent, on a deleted file: the pill keeps its size.
+                Button(action: { openFile?() }) { Image(systemName: "doc.text") }
+                    .help("Open file")
+                    .disabled(openFile == nil)
+                    .opacity(openFile == nil ? 0.35 : 1)
                 Button(action: send) { Image(systemName: "arrow.right.to.line") }
                     .help("Send path to shell")
                 if change.isStaged {
@@ -494,6 +528,22 @@ private struct ChangeRow: View {
         // The row opens the diff; the buttons on it keep their own actions because a
         // `.plain` button inside a tapped row still wins the hit.
         .onTapGesture(perform: open)
+        // Everything the row and its hover buttons do, by name.
+        .contextMenu {
+            Button("Show Diff", action: open)
+            Button("Open File") { openFile?() }.disabled(openFile == nil)
+            Button("Open All Changed Files", action: openAll)
+            Divider()
+            Button("Send Path to Shell", action: send)
+            Button("Show in Finder", action: reveal).disabled(openFile == nil)
+            Divider()
+            if change.isStaged {
+                Button("Unstage", action: unstage)
+            } else {
+                Button("Stage", action: stage)
+            }
+            Button("Discard Changes…", role: .destructive, action: discard)
+        }
         .help("Show diff")
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Shows this file's diff")
