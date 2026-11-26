@@ -184,7 +184,10 @@ final class AgentsOverview {
         }
         for (paneID, workspaceID) in arriving {
             guard let session = ShellWorkspace.Registry.stores[workspaceID],
-                  let home = session.holder(of: paneID), home !== store else { continue }
+                  let home = session.holder(of: paneID), home !== store,
+                  // A pane in the answer window is a visitor there, and stays: a
+                  // visitor is not its host's to lend on.
+                  home.home(of: paneID) == nil else { continue }
             if home.send(paneID, toVisit: store) { order.append(paneID) }
         }
         rebuild()

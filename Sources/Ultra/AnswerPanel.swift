@@ -16,16 +16,23 @@ import UltraTerminal
 /// is what the sidebar already knows — the panes whose agent is asking, or has finished
 /// and not been read (`AgentMonitor.stateByPane`) — one tab each.
 ///
-/// A MIRROR of the pane, not the pane. The terminal view stays where it is: moved into a
-/// window a third as wide it would be resized, and the agent would redraw its whole
-/// screen for the small size and again on the way back. So the window draws the bottom
-/// of the pane's screen as text (`AnswerScreen`) and hands every key it is given to the
-/// pane's own view, which encodes it for the program in it — the kitty keyboard
-/// protocol included — exactly as if it had been typed there.
+/// The pane ITSELF, on a visit. The selected tab's pane is lent to a one-pane canvas in
+/// this window the way a pane is lent to the Agents overview (`LayoutStore.send(_:toVisit:)`)
+/// — the same view, the same process — so it is a terminal in every respect: colours,
+/// the cursor, scrolling back, selecting, the mouse, an input method. Its project keeps
+/// its place with a stand-in, and it goes home when another tab is chosen or the window
+/// goes. The price is the one a resize always has: the program in it redraws for this
+/// window's size, and again on the way back.
+///
+/// It was a mirror first — the bottom of the screen as text, keys handed to the pane's
+/// view where it stood — to spare the agent that redraw. But a question is not always
+/// its last sixteen lines: the diff above the prompt, the plan being approved, need
+/// scrolling to and colour to read. The mirror is still what is shown for a pane that
+/// cannot come: one already away on the Agents overview.
 ///
 /// It never TAKES the keyboard. It comes up over an app someone is typing in, and a
 /// window that took the keys would send half a sentence to an agent. A click gives it
-/// the keyboard, or ⌃⌥⌘A from anywhere; the same key gives it back.
+/// the keyboard, or ⌘⎋ from anywhere; the same key gives it back.
 @MainActor
 @Observable
 final class AnswerPanel {
@@ -43,7 +50,9 @@ final class AnswerPanel {
         var state: AgentState
     }
 
-    static let size = CGSize(width: 460, height: 320)
+    /// The size it opens at, until it has been resized; and the smallest it goes.
+    static let size = CGSize(width: 640, height: 440)
+    static let minSize = CGSize(width: 420, height: 280)
     /// How far from the display's edges it sits.
     static let inset: CGFloat = 16
     /// How often the pane's screen is read while the window is up. Only then: hidden, it
@@ -56,6 +65,16 @@ final class AnswerPanel {
     private(set) var lines: [String] = []
     /// Whether the window has the keyboard, which is whether typing reaches the pane.
     private(set) var isKey = false
+    /// The pane that is in the window itself, on a visit to `store`. Nil while the
+    /// selected pane is shown as text instead, or there is none.
+    private(set) var hosted: PaneID?
+
+    /// The window's canvas: one pane, the visitor — or a blank one while nobody visits.
+    @ObservationIgnored let store: LayoutStore
+    @ObservationIgnored private let placeholder = PaneID()
+    /// Ultra Dev's preview: panes shown as if their agents were asking. See `showPreview`.
+    @ObservationIgnored private var preview: [PaneID] = []
+    @ObservationIgnored private var previewBegan = Date()
 
     /// Shown by hand (View ▸ Show Answer Window): up whatever Ultra is doing, with every
     /// waiting pane, until it is closed.
@@ -72,7 +91,44 @@ final class AnswerPanel {
     @ObservationIgnored private var keyMonitor: Any?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
-    private init() {}
+    private init() {
+        store = LayoutStore(tree: LayoutTree(single: placeholder), metrics: Self.metrics,
+                            theme: Preferences.resolvedTheme(), storage: nil) { _ in
+            // Only ever the blank pane: the visitor arrives by hand-over.
+            PaneContent(view: NSView(), record: PaneRecord(kind: .placeholder, title: "Answer",
+                                                           icon: "text.bubble"))
+        }
+        store.isFixedArrangement = true
+        store.workspaceTitle = "Answer"
+        // A pane closed here is closed at home, as on the overview.
+        store.surfaces.onRelease = { [weak self] paneID in self?.store.visitorClosed(paneID) }
+        store.onVisitorLeft = { [weak self] paneID in self?.visitorLeft(paneID) }
+        store.setPaneKinds({ [] }) { _, _ in }
+        store.surfaces.actions.split = { _, _ in NSSound.beep() }
+        let placeholder = placeholder
+        let named = store.surfaces.onBuild
+        store.surfaces.onBuild = { [weak self] paneID in
+            named?(paneID)
+            guard let self, paneID == placeholder else { return }
+            store.surfaces.existingSurface(for: paneID)?.isPlain = true
+        }
+        // This canvas resized the shell, so it asks the shell's own factory to commit.
+        store.onGeometrySettled = { [weak self] in
+            guard let self else { return }
+            for home in store.visitors.values {
+                ShellWorkspace.Registry.factories[home.session.workspaceID]?.commitResize()
+            }
+        }
+    }
+
+    /// The look's metrics with no padding round the canvas: the window's card is the edge.
+    private static var metrics: LayoutMetrics {
+        var metrics = LayoutMetrics.fromSettings
+        metrics.padding = 0
+        metrics.topPadding = 0
+        metrics.edgeInset = 0
+        return metrics
+    }
 
     var isShown: Bool { window?.isVisible == true }
 
@@ -111,7 +167,11 @@ final class AnswerPanel {
             && Preferences.agentAttention == .answerWindow
 
         var next: [Entry] = []
-        if isPinned || (enabled && !watching) {
+        if !preview.isEmpty {
+            for paneID in preview {
+                if let entry = entry(for: paneID, state: .needsYou(since: previewBegan)) { next.append(entry) }
+            }
+        } else if isPinned || (enabled && !watching) {
             for (paneID, state) in monitor.stateByPane
             where Self.wantsAnswer(state, since: isPinned ? nil : awaySince)
                 && dismissed[paneID] != state.since {
@@ -138,6 +198,43 @@ final class AnswerPanel {
         if next != entries { entries = next }
         if !entries.contains(where: { $0.id == selected }) { select(entries.first?.id) }
         if entries.isEmpty && !isPinned { hide() } else { show() }
+        host()
+    }
+
+    // MARK: - The pane in the window
+
+    /// Bring the selected pane into the window, and send home whichever was there.
+    /// Only while the window is up: a hidden window holds nobody's pane.
+    private func host() {
+        guard isShown else { return }
+        if let hosted, hosted != selected { sendHome(hosted) }
+        guard let selected, hosted != selected,
+              let entry = entries.first(where: { $0.id == selected }),
+              let session = ShellWorkspace.Registry.stores[entry.workspaceID],
+              let home = session.holder(of: selected), home !== store,
+              // A pane already away — on the Agents overview — stays there, and is
+              // shown here as text: a visitor is not its host's to lend on.
+              home.home(of: selected) == nil,
+              home.send(selected, toVisit: store) else { return }
+        store.theme = Preferences.resolvedTheme()
+        store.metrics = Self.metrics
+        // The window's bar names the pane; a header under it would say it twice.
+        store.surfaces.existingSurface(for: selected)?.isPlain = true
+        store.rearrange(LayoutTree(single: selected))
+        hosted = selected
+        store.focus(selected)
+        if isKey { store.reclaimKeyboardFocus() }
+    }
+
+    private func sendHome(_ paneID: PaneID) {
+        store.surfaces.existingSurface(for: paneID)?.isPlain = false
+        if store.home(of: paneID)?.takeHome(paneID) != true { visitorLeft(paneID) }
+    }
+
+    /// The visitor has gone — sent home, or its project closed it under the window.
+    private func visitorLeft(_ paneID: PaneID) {
+        if hosted == paneID { hosted = nil }
+        if store.tree.contains(paneID) { store.rearrange(LayoutTree(single: placeholder)) }
     }
 
     private static func isAsking(_ state: AgentState) -> Bool {
@@ -169,6 +266,7 @@ final class AnswerPanel {
     func select(_ paneID: PaneID?) {
         guard paneID != selected else { return }
         selected = paneID
+        host()
         readScreen()
     }
 
@@ -193,9 +291,28 @@ final class AnswerPanel {
     func close() {
         for entry in entries { dismissed[entry.id] = entry.state.since }
         isPinned = false
+        preview = []
         entries = []
         select(nil)
         hide()
+    }
+
+    /// Ultra Dev only: the window, up and holding the keyboard, on the shells of the
+    /// project in front as if each had an agent asking — to see and use the window
+    /// without waiting for one to. Closed like the real thing.
+    func showPreview() {
+        guard AgentsOverview.isDevBuild else { return }
+        let lists = SessionList.all
+        let list = lists.first { $0.window?.isMainWindow == true }
+            ?? lists.first { $0.window?.isVisible == true } ?? lists.first
+        let panes = (list?.selected?.tree.paneIDs ?? []).filter { shell(for: $0) != nil }
+        guard !panes.isEmpty else { NSSound.beep(); return }
+        preview = Array(panes.prefix(3))
+        previewBegan = Date()
+        isPinned = true
+        dismissed = [:]
+        refresh()
+        window?.makeKeyAndOrderFront(nil)
     }
 
     /// View ▸ Show Answer Window: up with every waiting pane and the keyboard, or away.
@@ -207,7 +324,7 @@ final class AnswerPanel {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// ⌃⌥⌘A, from any app, while the window is up: the keyboard goes to it, or back to
+    /// ⌘⎋, from any app, while the window is up: the keyboard goes to it, or back to
     /// whatever had it.
     func toggleKeyboard() {
         guard let window, window.isVisible else { return }
@@ -229,8 +346,8 @@ final class AnswerPanel {
         // The display the pointer is on: that is where the person is.
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let visible = screen?.visibleFrame {
-            window.setFrameOrigin(CGPoint(x: visible.maxX - Self.size.width - Self.inset,
-                                          y: visible.maxY - Self.size.height - Self.inset))
+            window.setFrameOrigin(CGPoint(x: visible.maxX - window.frame.width - Self.inset,
+                                          y: visible.maxY - window.frame.height - Self.inset))
         }
         window.orderFrontRegardless()
         AnswerHotKey.register { AnswerPanel.shared.toggleKeyboard() }
@@ -247,23 +364,30 @@ final class AnswerPanel {
         mirror?.cancel()
         mirror = nil
         AnswerHotKey.unregister()
+        if let hosted { sendHome(hosted) }
         guard let window, window.isVisible else { return }
         window.orderOut(nil)
         if isKey { isKey = false }
     }
 
+    /// The text shown for a pane that is not in the window. Nothing is read for one that is.
     private func readScreen() {
-        let next = selected.flatMap(shell(for:)).map {
+        let next = hosted != nil && hosted == selected ? [] : selected.flatMap(shell(for:)).map {
             AnswerScreen.lines(from: $0.screenTail(AnswerScreen.reads))
         } ?? []
         if next != lines { lines = next }
     }
 
     private func makeWindow() -> AnswerWindow {
-        let window = AnswerWindow(content: NSHostingView(rootView: AnswerWindowRoot()))
+        let content = NSHostingView(rootView: AnswerWindowRoot())
+        // The window is sized by hand and by its edges, not by what is in it.
+        content.sizingOptions = []
+        let window = AnswerWindow(content: content)
         window.onKeyChange = { [weak self] isKey in
             guard let self, self.isKey != isKey else { return }
             self.isKey = isKey
+            // The keyboard in the window is the keyboard in the pane.
+            if isKey { store.reclaimKeyboardFocus() }
         }
         self.window = window
         // Before the menus and before the window's own views: every key the window is
@@ -276,15 +400,22 @@ final class AnswerPanel {
         return window
     }
 
-    /// One key given to the window. With ⌘ it is the window's own; without, the pane's.
+    /// One key given to the window. With ⌘ it is the window's own — or the pane's copy,
+    /// paste and select all — and never the menu bar's: ⌘W reaching File ▸ Close, or ⌘D
+    /// Pane ▸ Split, would act on a window that is not even in front. Without ⌘ it is the
+    /// pane's: typed into it as the first responder when the pane is here, handed to its
+    /// view where it stands when it is not.
     private func handle(_ event: NSEvent) -> Bool {
         guard let window, event.window === window else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if flags.contains(.command) {
+            let shell = selected.flatMap(shell(for:))
             switch (event.keyCode, event.charactersIgnoringModifiers ?? "") {
             case (UInt16(kVK_Return), _), (UInt16(kVK_ANSI_KeypadEnter), _): openInUltra()
             case (_, "w"), (_, "W"): close()
-            case (_, "v"), (_, "V"): selected.flatMap(shell(for:))?.paste(self)
+            case (_, "v"), (_, "V"): shell?.paste(self)
+            case (_, "c"), (_, "C"): NSApp.sendAction(#selector(NSText.copy(_:)), to: shell, from: self)
+            case (_, "a"), (_, "A"): NSApp.sendAction(#selector(NSText.selectAll(_:)), to: shell, from: self)
             case (_, "]"), (_, "}"): step(1)
             case (_, "["), (_, "{"): step(-1)
             case (_, let key):
@@ -294,6 +425,8 @@ final class AnswerPanel {
             }
             return true
         }
+        // In the window, the pane hears the key itself.
+        if hosted != nil, hosted == selected { return false }
         if let shell = selected.flatMap(shell(for:)), shell.isRunning {
             shell.keyDown(with: event)
         }
@@ -308,7 +441,7 @@ final class AnswerWindow: NSPanel {
 
     init(content: NSView) {
         super.init(contentRect: NSRect(origin: .zero, size: AnswerPanel.size),
-                   styleMask: [.borderless, .nonactivatingPanel],
+                   styleMask: [.borderless, .nonactivatingPanel, .resizable],
                    backing: .buffered, defer: true)
         title = "Answer"
         isFloatingPanel = true
@@ -323,6 +456,10 @@ final class AnswerWindow: NSPanel {
         isMovableByWindowBackground = true
         isReleasedWhenClosed = false
         contentView = content
+        minSize = AnswerPanel.minSize
+        // The size it was dragged to is the size it comes back at; where, is decided
+        // each time it is shown.
+        setFrameAutosaveName("AnswerWindow")
     }
 
     // A borderless window refuses the keyboard unless it says otherwise.
@@ -340,12 +477,18 @@ final class AnswerWindow: NSPanel {
     }
 }
 
-/// ⌃⌥⌘A, heard in every app, for as long as the answer window is up and no longer: the
+/// ⌘⎋, heard in every app, for as long as the answer window is up and no longer: the
 /// one key path to a window that appears while another app has the keyboard. Carbon's
 /// hot keys, since they are the ones that need no permission from anybody.
+///
+/// Two keys, one hand. It was ⌃⌥⌘A first — chosen to collide with nothing, and nearly
+/// unpressable for it. ⌘⎋ is as free in practice, and Escape is the key for getting out
+/// of where the keyboard is, which is what this does in both directions. Escape on its
+/// own still goes to the pane.
 @MainActor
 enum AnswerHotKey {
-    static let display = "⌃⌥⌘A"
+    /// Spelled out: ⎋ is a glyph few people can name, and a hint nobody can read is no hint.
+    static let display = "⌘Esc"
     private static var hotKey: EventHotKeyRef?
     private static var handler: EventHandlerRef?
     private static var action: (() -> Void)?
@@ -363,7 +506,7 @@ enum AnswerHotKey {
         }
         // 'UAns': any four characters, the app's own.
         let id = EventHotKeyID(signature: 0x55416E73, id: 1)
-        RegisterEventHotKey(UInt32(kVK_ANSI_A), UInt32(controlKey | optionKey | cmdKey), id,
+        RegisterEventHotKey(UInt32(kVK_Escape), UInt32(cmdKey), id,
                             GetApplicationEventTarget(), 0, &hotKey)
     }
 
@@ -383,6 +526,8 @@ private struct AnswerWindowRoot: View {
         _ = PreferencesModel.shared.revision
         return AnswerWindowView(entries: panel.entries, selected: panel.selected,
                                 lines: panel.lines, isKey: panel.isKey,
+                                canvas: panel.hosted != nil && panel.hosted == panel.selected
+                                    ? panel.store : nil,
                                 now: AgentMonitor.shared.minute,
                                 select: { panel.select($0) },
                                 open: { panel.openInUltra() },
@@ -397,6 +542,8 @@ struct AnswerWindowView: View {
     let selected: PaneID?
     let lines: [String]
     let isKey: Bool
+    /// The canvas the selected pane is on, when it is in the window; nil shows `lines`.
+    var canvas: LayoutStore?
     let now: Date
     var select: (PaneID) -> Void = { _ in }
     var open: () -> Void = {}
@@ -417,7 +564,8 @@ struct AnswerWindowView: View {
             screen
             hint
         }
-        .frame(width: AnswerPanel.size.width, height: AnswerPanel.size.height)
+        .frame(minWidth: AnswerPanel.minSize.width, maxWidth: .infinity,
+               minHeight: AnswerPanel.minSize.height, maxHeight: .infinity)
         .background {
             if Token.Environment_.reduceTransparency {
                 Token.Colour.tileBackground
@@ -487,19 +635,28 @@ struct AnswerWindowView: View {
         }
     }
 
-    /// The pane's screen: a card of the pane's colour, the newest line at its foot. Its
-    /// border is where the keyboard is — the accent while keys reach the pane.
+    /// The pane: itself, on the window's canvas — or, when it cannot come, its screen as
+    /// text on a card of the pane's colour, the newest line at its foot. The border is
+    /// where the keyboard is — the accent while keys reach the pane.
     private var screen: some View {
         let card = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        return ScrollView {
-            Text(entry == nil ? "No agent is waiting for you." : lines.joined(separator: "\n"))
-                .font(Token.Type_.terminal(11))
-                .foregroundStyle(entry == nil ? theme.dimForeground : theme.foreground)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
+        return Group {
+            if let canvas {
+                SplitCanvas(store: canvas, topInset: 0)
+                    .clipShape(card)
+            } else {
+                ScrollView {
+                    Text(entry == nil ? "No agent is waiting for you." : lines.joined(separator: "\n"))
+                        .font(Token.Type_.terminal(11))
+                        .foregroundStyle(entry == nil ? theme.dimForeground : theme.foreground)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .defaultScrollAnchor(.bottom)
+                .background(theme.background, in: card)
+            }
         }
-        .defaultScrollAnchor(.bottom)
-        .background(theme.background, in: card)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay {
             card.strokeBorder(isKey ? Token.Colour.focusBorder : Token.Colour.separator,
                               lineWidth: isKey ? max(1.5, Token.Space.focusRingWidth) : 1)
@@ -540,7 +697,9 @@ struct AnswerWindowView: View {
                                  "  2. Yes, and don't ask again for rm commands in this folder",
                                  "  3. No, and tell Claude what to do differently (esc)"],
                          isKey: true, now: now)
+        .frame(width: 460, height: 320)
         AnswerWindowView(entries: [], selected: nil, lines: [], isKey: false, now: now)
+            .frame(width: 460, height: 320)
     }
     .padding(30)
 }

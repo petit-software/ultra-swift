@@ -98,6 +98,15 @@ struct TuningSettings: View {
             }
 
             Section {
+                Button("Preview Answer Window") { AnswerPanel.shared.showPreview() }
+            } header: {
+                Text("Answer window")
+            } footer: {
+                SettingNote("Shows the answer window on the shells of the project in front, as if "
+                            + "each had an agent asking — View ▸ Demo: Answer Window. ⌘W closes it.")
+            }
+
+            Section {
                 HStack {
                     Button(copied ? "Copied" : "Copy Values") { copy() }
                         .keyboardShortcut("c", modifiers: [.command, .shift])

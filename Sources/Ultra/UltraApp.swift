@@ -760,6 +760,7 @@ struct WorkspaceCommands: Commands {
                     if let store { PaneCommands.projectsDemo.run(store) }
                 }
                 .disabled(store.map { !PaneCommands.projectsDemo.isEnabled($0) } ?? true)
+                Button(PaneCommands.answerDemo.title) { AnswerPanel.shared.showPreview() }
             }
 
             Divider()

@@ -23,7 +23,7 @@ enum PaneCommands {
                                  + [showAgents, openAgentProject, openWaiting, answerWindow, toggleAppearance]
                                  + colourModes + gridModes + [toggleAurora]
                                  + [filterProjects, clearProjectFilter, copyCanvasDiagnostics]
-                                 + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo] : [])
+                                 + (AgentsOverview.isDevBuild ? [agentsDemo, projectsDemo, answerDemo] : [])
 
     /// What every window holds, as text on the clipboard and in a file: for a window
     /// showing a project's name over no panes, or another project's (`CanvasDiagnostics`).
@@ -46,6 +46,16 @@ enum PaneCommands {
         isEnabled: { SessionList.holding($0) != nil || AgentsOverview.shared.list != nil }) { store in
             guard let list = SessionList.holding(store) ?? AgentsOverview.shared.list else { return }
             AgentsOverview.shared.showDemo(in: list)
+        }
+
+    /// Ultra Dev only: the answer window on the shells of the project in front, as if
+    /// each had an agent asking (`AnswerPanel.showPreview`). Settings ▸ Tuning has a
+    /// button for it too. Like `agentsDemo`, absent from a release build.
+    static let answerDemo = AppCommand(
+        id: "debug.answerDemo", title: "Demo: Answer Window", symbol: "text.bubble",
+        menuPath: ["View"],
+        keywords: ["Debug", "Preview Answer Window"]) { _ in
+            AnswerPanel.shared.showPreview()
         }
 
     /// Ultra Dev only: eight generated projects, each a real folder with its own pane
@@ -177,7 +187,7 @@ enum PaneCommands {
     /// The answer window, by hand: every waiting pane as a tab in a small window that
     /// floats over other apps, with the keyboard in it — or away again (`AnswerPanel`).
     /// It comes up by itself when Ultra is behind something and Settings ▸ Agents asks
-    /// for it; this is the same window on request. ⌃⌘Y — yes, usually; ⌃⌥⌘A reaches it from other apps.
+    /// for it; this is the same window on request. ⌃⌘Y — yes, usually; ⌘⎋ reaches it from other apps.
     static let answerWindow = AppCommand(
         id: "agents.answerWindow", title: "Show Answer Window", symbol: "text.bubble",
         menuPath: ["View"],
