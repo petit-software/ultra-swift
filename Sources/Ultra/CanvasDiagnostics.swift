@@ -39,6 +39,8 @@ enum CanvasDiagnostics {
                    + "\(info?["CFBundleShortVersionString"] as? String ?? "?") "
                    + "(\(info?["CFBundleVersion"] as? String ?? "?"))")
         out.append("app: active=\(NSApp.isActive) key=\(name(NSApp.keyWindow)) main=\(name(NSApp.mainWindow))")
+        // A canvas found missing and put back, this run: see `CanvasWatch`.
+        out.append("canvas remounts: \(CanvasWatch.remounts)")
 
         let overview = AgentsOverview.shared
         out.append("")

@@ -43,6 +43,10 @@ final class UIState {
     /// read it — and set only through `AgentsOverview`, which lends the panes it shows
     /// and has to take them back when the window moves on.
     var showsAgents = false
+    /// The identity of the canvas in the window's detail column. Changed by `CanvasWatch`
+    /// when the selected project's canvas is found missing from the window, which makes
+    /// `RootView` build it again.
+    var canvasEpoch = 0
     /// The session waiting on "Close this session?", or nil.
     ///
     /// Every way to close one — the X on a sidebar row or a belt tab, their context menus,

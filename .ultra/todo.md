@@ -1,6 +1,8 @@
 ## Canvas diagnostics: capture a window showing the wrong panes
 
 - [x] Help ▸ Copy Canvas Diagnostics, and the palette: what every window holds — its projects, the one selected, each canvas in it and where every pane's view is — copied as text and saved under Application Support (`CanvasDiagnostics`)
+- [x] A selected project whose canvas is missing from the window is given one: looked at a moment after each selection, rebuilt when it is not there, counted in the diagnostics (`CanvasWatch`)
+- [ ] Find what closes the `AttributeGraph` cycle at launch that leaves the detail column on its placeholder — seen once, 0.40.24 opening after an update, not reproduced in Ultra Dev
 
 ## Inactive projects across launches
 

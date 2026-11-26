@@ -500,6 +500,8 @@ final class SessionList {
         if selectedID != id {
             selectedID = id
             persist()
+            // The selection is the model's; whether the window followed is looked at.
+            CanvasWatch.verify(self)
         }
         selected?.reclaimKeyboardFocus()
     }

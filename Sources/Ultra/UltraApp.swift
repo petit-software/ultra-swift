@@ -1052,25 +1052,31 @@ struct RootView: View {
             // terminal redraw. The inset reaches AppKit as one value: the panes move once,
             // and all the animation has left to do is slide a small strip of glass.
             ZStack(alignment: .bottom) {
-                if ui.showsAgents {
-                    // Every working agent's pane, lent to one canvas — see `AgentsOverview`.
-                    CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset,
-                                  topInset: canvasTopInset, cornerReserve: canvasCornerReserve,
-                                  leadingTrim: canvasLeadingTrim)
-                } else if let store {
-                    CanvasSurface(store: store, bottomInset: beltInset, topInset: canvasTopInset,
-                                  cornerReserve: canvasCornerReserve, leadingTrim: canvasLeadingTrim)
-                        // Over the canvas, above the belt when it is up: the question is the
-                        // session's, not any one pane's.
-                        .tileToast(setupNotice(for: store),
-                                   dismiss: { ProjectSetupOffers.shared.decline(in: store) },
-                                   lift: beltInset) {
-                            Button("Open") { ProjectSetupOffers.shared.accept(in: store) }
-                                .help("Open it as a session of its own — File ▸ Open Ultra Setup")
-                        }
-                } else {
-                    Color.clear
+                Group {
+                    if ui.showsAgents {
+                        // Every working agent's pane, lent to one canvas — see `AgentsOverview`.
+                        CanvasSurface(store: AgentsOverview.shared.store, bottomInset: beltInset,
+                                      topInset: canvasTopInset, cornerReserve: canvasCornerReserve,
+                                      leadingTrim: canvasLeadingTrim)
+                    } else if let store {
+                        CanvasSurface(store: store, bottomInset: beltInset, topInset: canvasTopInset,
+                                      cornerReserve: canvasCornerReserve, leadingTrim: canvasLeadingTrim)
+                            // Over the canvas, above the belt when it is up: the question is
+                            // the session's, not any one pane's.
+                            .tileToast(setupNotice(for: store),
+                                       dismiss: { ProjectSetupOffers.shared.decline(in: store) },
+                                       lift: beltInset) {
+                                Button("Open") { ProjectSetupOffers.shared.accept(in: store) }
+                                    .help("Open it as a session of its own — File ▸ Open Ultra Setup")
+                            }
+                    } else {
+                        Color.clear
+                    }
                 }
+                // Built again when the canvas was found missing from the window — an
+                // update SwiftUI gave up on leaves the placeholder standing over a project
+                // that is selected. See `CanvasWatch`.
+                .id(ui.canvasEpoch)
                 if ui.showsTabBelt {
                     SessionTabBelt(sessions: sessions, ui: ui, openFolder: chooseSessionFolder)
                         .padding([.horizontal, .bottom], beltPadding)
