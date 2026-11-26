@@ -65,11 +65,19 @@ public final class BrowserSession: Identifiable {
         // The shared, persistent store: a login to a dev server survives a relaunch, the way
         // it does in a browser. Per-project isolation is a choice to make later, on purpose.
         configuration.websiteDataStore = .default()
+        // What makes Web Inspector open in this app — see `isInspectable`, below.
+        configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.allowsBackForwardNavigationGestures = true
         view.allowsMagnification = true
         // Right-click ▸ Inspect Element. This is a developer's browser; the page being
         // debugged is usually the reason the pane is open.
+        //
+        // `isInspectable` alone is NOT that: it lets Safari's Develop menu attach from
+        // outside, and nothing more. The inspector in the app itself — the menu item, and
+        // `_inspector.show()` behind the footer's button and ⌥⌘I — is switched by the
+        // `developerExtrasEnabled` preference, set on the configuration above. Without it
+        // `show` returned having done nothing, and the button looked broken because it was.
         view.isInspectable = true
         applyTheme(to: view)
         let delegate = Delegate(session: self)
