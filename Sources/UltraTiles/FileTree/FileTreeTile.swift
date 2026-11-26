@@ -44,6 +44,8 @@ public struct FileTreeTile: View {
             }
             .padding(.vertical, 4)
         }
+        // On the pane where no row is: what the footer does, by name.
+        .contextMenu { paneMenu }
         .tileScrollBar()
         .tileFooter { footer }
     }
@@ -75,21 +77,94 @@ public struct FileTreeTile: View {
         }
     }
 
+    /// A row's menu: everything the row's click, double click and hover buttons do, by
+    /// name, and the things a file tree is expected to do that had no control at all —
+    /// copy a path, rename, move to the Trash.
     @ViewBuilder
     private func menu(for node: FileTreeModel.Node) -> some View {
         if node.isDirectory {
+            Button(model.isExpanded(node) ? "Collapse" : "Expand") { model.toggle(node) }
             // Descending INTO a folder, as opposed to expanding it in place: a deep tree in
             // a 300pt pane is mostly indentation, and re-rooting buys the width back.
             Button("Show Only This Folder") { open(node) }
+            Button("Go to Folder in Shell") {
+                context.injectIntoShell("cd " + shellQuoted(node.url.path))
+            }
         } else {
             Button("Open in Editor") { open(node) }
+            Button("Open in Default App") { NSWorkspace.shared.open(node.url) }
         }
+        Divider()
         Button("Send Path to Shell") { send(node) }
-        Button("Copy Path") {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(node.url.path, forType: .string)
-        }
+        Button("Copy Path") { copyToClipboard(node.url.path) }
+        Button("Copy Relative Path") { copyToClipboard(relativePath(node.url)) }
+        Button("Copy Name") { copyToClipboard(node.name) }
+        Divider()
         Button("Reveal in Finder") { context.revealInFinder(node.url) }
+        Divider()
+        Button("Rename…") { rename(node) }
+        Button("Move to Trash", role: .destructive) { trash(node) }
+    }
+
+    @ViewBuilder
+    private var paneMenu: some View {
+        Button("New File") { context.openInEditor(.newFile) }
+        Divider()
+        Button(model.showsHidden ? "Hide Dotfiles" : "Show Dotfiles") { model.showsHidden.toggle() }
+        Button("Reload") { model.reload() }
+        Divider()
+        if let parent {
+            Button("Show Enclosing Folder") { context.setRoot(parent) }
+        }
+        Button("Go to Folder in Shell") {
+            context.injectIntoShell("cd " + shellQuoted(model.root.path))
+        }
+        Button("Copy Path") { copyToClipboard(model.root.path) }
+        Button("Open Folder in Finder") { context.revealInFinder(model.root) }
+    }
+
+    /// The path from the project, where the file is under it: what an agent or an import
+    /// wants. The whole path otherwise.
+    private func relativePath(_ url: URL) -> String {
+        let root = context.projectRoot.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path.hasPrefix(root + "/") ? String(path.dropFirst(root.count + 1)) : path
+    }
+
+    /// Ask for a new name, and give the file it. A name that is taken, or cannot be
+    /// given, says why rather than doing nothing.
+    private func rename(_ node: FileTreeModel.Node) {
+        let alert = NSAlert()
+        alert.messageText = "Rename “\(node.name)”"
+        let field = NSTextField(string: node.name)
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != node.name, !name.contains("/") else { return }
+        let destination = node.url.deletingLastPathComponent().appendingPathComponent(name)
+        do {
+            try FileManager.default.moveItem(at: node.url, to: destination)
+            if selection == node.url { selection = destination }
+            model.reload()
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    /// To the Trash, not deleted: it can be put back from there, which is why this does
+    /// not ask first — Finder does not either.
+    private func trash(_ node: FileTreeModel.Node) {
+        do {
+            try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
+            if selection == node.url { selection = nil }
+            model.reload()
+        } catch {
+            NSAlert(error: error).runModal()
+        }
     }
 
     /// One handler for both clicks of a double, so the first is never held back waiting to

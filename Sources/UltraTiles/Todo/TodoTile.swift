@@ -92,6 +92,7 @@ public struct TodoTile: View {
                                                store.move(moved, before: heading.id + 1)
                                            },
                                            onDragOver: { dropTarget = $0 ? heading.id : nil })
+                                .contextMenu { menu(for: heading) }
                         }
                         // Only a heading that has a row can be folded: a hidden one has
                         // nothing to unfold it from.
@@ -111,14 +112,65 @@ public struct TodoTile: View {
                                         store.move(moved, before: item.id)
                                     },
                                     onDragOver: { dropTarget = $0 ? item.id : nil })
+                                .contextMenu { menu(for: item) }
                         }
                     }
                 }
                 // Room for the floating bar, so the last task scrolls out from under it.
                 .padding(.bottom, progressShown ? 44 : 6)
             }
+            // On the pane where no row is: the footer's verbs, by name.
+            .contextMenu { paneMenu }
             .tileScrollBar()
         }
+    }
+
+    /// A task's menu: its checkbox, its double click and its hover buttons, by name.
+    @ViewBuilder
+    private func menu(for item: TodoDocument.Item) -> some View {
+        Button(item.isDone ? "Mark as Not Done" : "Mark as Done") { store.toggle(item.id) }
+        Button("Edit Task") { editingID = item.id }
+        Divider()
+        Button("Send to Shell") { context.injectIntoShell(item.text) }
+        Button("Copy Text") { copyToClipboard(item.text) }
+        Divider()
+        Button("Remove Task") { store.removeItem(item.id) }
+    }
+
+    /// A section's menu.
+    @ViewBuilder
+    private func menu(for heading: TodoDocument.Heading) -> some View {
+        Button(target == heading.title ? "Add New Tasks at the Top of the List"
+                                       : "Add New Tasks Here") { toggleTarget(heading.title) }
+        Button(store.isCollapsed(heading.title) ? "Expand Section" : "Collapse Section") {
+            toggleCollapsed(heading.title)
+        }
+        Divider()
+        Button("Collapse All Sections") { store.collapseAll() }
+        Button("Expand All Sections") { store.expandAll() }
+        Divider()
+        Button("Rename Section") { editingID = heading.id }
+        Button("Copy Title") { copyToClipboard(heading.title) }
+        Divider()
+        Button("Remove Section") { remove(heading) }
+    }
+
+    @ViewBuilder
+    private var paneMenu: some View {
+        Button(store.showsProgress ? "Hide Progress" : "Show Progress") { store.toggleProgress() }
+        Divider()
+        Button("Collapse All Sections") { store.collapseAll() }
+        Button("Expand All Sections") { store.expandAll() }
+        Divider()
+        Button("Open List in Editor") { context.openInEditor(.file(store.url)) }
+            .disabled(!store.exists)
+        Button("Reveal List in Finder") { context.revealInFinder(store.url) }
+            .disabled(!store.exists)
+        Divider()
+        Button("Clear Completed Tasks") { store.removeCompleted() }
+            .disabled(store.document.completedCount == 0)
+        Button("Clear List…") { store.removeAllAfterConfirming() }
+            .disabled(store.document.isBlank)
     }
 
     /// Whether the bar is up: shown, and something to count.

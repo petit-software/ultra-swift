@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// What every tile is handed when it is built.
@@ -76,6 +77,13 @@ public struct TileContext {
     public static func inert(root: URL = URL(fileURLWithPath: NSHomeDirectory())) -> TileContext {
         TileContext(root: root)
     }
+}
+
+/// Put text on the clipboard: every tile's "Copy …".
+@MainActor
+public func copyToClipboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
 }
 
 /// Quote a path for a shell prompt.

@@ -44,6 +44,7 @@ public struct ContextTile: View {
                                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                                     frames.rects[item.id] = $0
                                 }
+                                .contextMenu { menu(for: item) }
                         }
                     }
                     .padding(.horizontal, ContextRow.inset)
@@ -52,6 +53,8 @@ public struct ContextTile: View {
                 .tileScrollBar()
             }
         }
+        // On the pane where no row is: the footer's verbs, by name.
+        .contextMenu { paneMenu }
         .tileFooter { footer }
         // The whole tile is the drop target, not a small well inside it — a drop zone you
         // have to aim at is a drop zone people miss.
@@ -98,6 +101,45 @@ public struct ContextTile: View {
                           choose: chooseLocation,
                           reset: { model.resetLocation() })
         }
+    }
+
+    /// A row's menu: the double click and the hover pill, by name, and what had no
+    /// control — opening the file, copying where it is.
+    @ViewBuilder
+    private func menu(for item: ContextModel.Item) -> some View {
+        let reference = ContextModel.reference(for: item, relativeTo: context.root)
+        Button("Send to Shell") { context.injectIntoShell(reference) }
+            .disabled(item.isMissing)
+        if !item.isDirectory {
+            Button("Open in Editor") { context.openInEditor(.file(item.url)) }
+                .disabled(item.isMissing)
+        }
+        Divider()
+        Button(item.isPinned ? "Unpin" : "Pin") { model.togglePin(item) }
+        Divider()
+        Button("Copy @Reference") { copyToClipboard(reference) }
+        Button("Copy Path") { copyToClipboard(item.url.path) }
+        Button("Reveal in Finder") { context.revealInFinder(item.url) }
+            .disabled(item.isMissing)
+        Divider()
+        Button("Remove from List") { model.remove(item) }
+    }
+
+    @ViewBuilder
+    private var paneMenu: some View {
+        Button("Add Files or Folders…") { addFromFinder() }
+        Divider()
+        Button("Send All to Shell") {
+            context.injectIntoShell(model.referenceText(relativeTo: context.root))
+        }
+        .disabled(model.items.isEmpty)
+        Button("Copy All @References") {
+            copyToClipboard(model.referenceText(relativeTo: context.root))
+        }
+        .disabled(model.items.isEmpty)
+        Divider()
+        Button("Clear Unpinned Items") { model.removeAllUnpinned() }
+            .disabled(model.items.allSatisfy(\.isPinned))
     }
 
     /// Adds whatever the panel returns, and silently skips what is already on the list —
